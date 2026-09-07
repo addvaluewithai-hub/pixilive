@@ -1,15 +1,16 @@
 import { type ChangeEvent, type FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { MicrophonePcmStream } from './audio/MicrophonePcmStream';
 import { PcmPlaybackQueue } from './audio/PcmPlaybackQueue';
+import { characterRegistry, DEFAULT_CHARACTER_ID, getCharacterDefinition } from './character/registry';
 import type { Emotion, MouthPose } from './character/types';
 import { CharacterStage } from './components/CharacterStage';
 import { GeminiLiveClient } from './live/GeminiLiveClient';
 import type { LiveStatus } from './live/types';
 
-const restingMouth: MouthPose = { open: 0.05, width: 0.35, round: 0.12, energy: 0 };
-const emotions: Emotion[] = ['calm', 'happy', 'curious', 'excited'];
+const restingMouth: MouthPose = { open: 0.045, width: 0.37, round: 0.08, energy: 0 };
 
 export function App() {
+  const [characterId, setCharacterId] = useState(DEFAULT_CHARACTER_ID);
   const [emotion, setEmotion] = useState<Emotion>('calm');
   const [mouth, setMouth] = useState<MouthPose>(restingMouth);
   const [status, setStatus] = useState<LiveStatus>('idle');
@@ -21,6 +22,8 @@ export function App() {
   const microphone = useRef(new MicrophonePcmStream());
   const playback = useRef<PcmPlaybackQueue | null>(null);
   const live = useRef<GeminiLiveClient | null>(null);
+
+  const character = useMemo(() => getCharacterDefinition(characterId), [characterId]);
 
   if (!playback.current) {
     playback.current = new PcmPlaybackQueue(
@@ -41,8 +44,12 @@ export function App() {
   }
 
   const connected = status === 'listening' || status === 'speaking';
+  const sessionLocked = status === 'connecting' || connected;
   const speaking = status === 'speaking' || mouth.energy > 0.015;
-  const statusLabel = useMemo(() => ({ idle: 'offline', connecting: 'connecting', listening: 'listening', speaking: 'speaking', error: 'error' })[status], [status]);
+  const statusLabel = useMemo(
+    () => ({ idle: 'offline', connecting: 'connecting', listening: 'listening', speaking: 'speaking', error: 'error' })[status],
+    [status],
+  );
 
   useEffect(() => {
     return () => {
@@ -52,10 +59,21 @@ export function App() {
     };
   }, []);
 
+  const selectCharacter = (event: ChangeEvent<HTMLSelectElement>) => {
+    if (sessionLocked) return;
+    const next = getCharacterDefinition(event.target.value);
+    setCharacterId(next.id);
+    setEmotion(next.defaultEmotion);
+    setMouth(restingMouth);
+    setInputTranscript('');
+    setOutputTranscript('');
+    setError('');
+  };
+
   const connect = async () => {
     setError('');
     try {
-      await live.current?.connect();
+      await live.current?.connect(character.systemPrompt);
       await microphone.current.start((chunk) => live.current?.sendAudio(chunk));
     } catch (reason) {
       setStatus('error');
@@ -82,7 +100,7 @@ export function App() {
   };
 
   return (
-    <main className="shell">
+    <main className={`shell shell-${character.theme}`}>
       <header className="brand">
         <div className="brand-mark" aria-hidden="true" />
         <div>
@@ -93,18 +111,28 @@ export function App() {
 
       <section className="hero">
         <div className="copy">
-          <span className="eyebrow"><i /> live procedural character</span>
-          <h1>Meet Nova.<span>Now she can talk back.</span></h1>
-          <p>Custom PixiJS animation, low-latency Gemini Live audio, ephemeral browser auth, and a character rig we fully control.</p>
+          <span className="eyebrow"><i /> procedural character runtime</span>
+          <h1>Meet {character.name}.<span>{character.tagline}</span></h1>
+          <p>{character.description} Everything visible is rendered and animated from code.</p>
           <div className="transcript" aria-live="polite">
             {inputTranscript && <p><b>You</b>{inputTranscript}</p>}
-            {outputTranscript && <p><b>Nova</b>{outputTranscript}</p>}
+            {outputTranscript && <p><b>{character.name}</b>{outputTranscript}</p>}
           </div>
         </div>
 
         <div className="stage-wrap">
-          <CharacterStage emotion={emotion} mouth={mouth} speaking={speaking} reactionNonce={reactionNonce} />
-          <button className="tap-reaction" onClick={() => setReactionNonce((value) => value + 1)} aria-label="Make Nova react" />
+          <CharacterStage
+            character={character}
+            emotion={emotion}
+            mouth={mouth}
+            speaking={speaking}
+            reactionNonce={reactionNonce}
+          />
+          <button
+            className="tap-reaction"
+            onClick={() => setReactionNonce((value) => value + 1)}
+            aria-label={`Make ${character.name} react`}
+          />
         </div>
       </section>
 
@@ -114,9 +142,20 @@ export function App() {
           <span className={`status status-${status}`}><i />{statusLabel}</span>
         </div>
 
+        <label className="section-label" htmlFor="character-select">Character</label>
+        <select id="character-select" className="character-select" value={character.id} onChange={selectCharacter} disabled={sessionLocked}>
+          {characterRegistry.map((item) => (
+            <option key={item.id} value={item.id}>{item.name} — {item.tagline}</option>
+          ))}
+        </select>
+        <p className="character-description">
+          {character.description}
+          {sessionLocked && <span> End the voice session to switch characters.</span>}
+        </p>
+
         <label className="section-label">Emotion</label>
         <div className="emotion-grid">
-          {emotions.map((item) => (
+          {character.emotions.map((item) => (
             <button key={item} className={emotion === item ? 'active' : ''} onClick={() => setEmotion(item)}>{item}</button>
           ))}
         </div>
@@ -124,19 +163,24 @@ export function App() {
         <label className="section-label">Gemini Live</label>
         {!connected ? (
           <button className="primary" disabled={status === 'connecting'} onClick={() => void connect()}>
-            {status === 'connecting' ? 'Connecting…' : 'Start voice session'}
+            {status === 'connecting' ? 'Connecting…' : `Talk to ${character.name}`}
           </button>
         ) : (
           <button className="danger" onClick={() => void disconnect()}>End voice session</button>
         )}
 
         <form className="text-turn" onSubmit={submitText}>
-          <input value={text} onChange={(event: ChangeEvent<HTMLInputElement>) => setText(event.target.value)} placeholder={connected ? 'Or type to Nova…' : 'Connect to send text'} disabled={!connected} />
+          <input
+            value={text}
+            onChange={(event: ChangeEvent<HTMLInputElement>) => setText(event.target.value)}
+            placeholder={connected ? `Or type to ${character.name}…` : 'Connect to send text'}
+            disabled={!connected}
+          />
           <button type="submit" disabled={!connected || !text.trim()}>Send</button>
         </form>
 
         <div className="meter" aria-hidden="true"><span style={{ width: `${Math.round(mouth.energy * 100)}%` }} /></div>
-        <p className="hint">Audio goes browser → Gemini Live with a short-lived token. Your long-lived key stays inside the Cloudflare Worker.</p>
+        <p className="hint">Each character owns its art, motion, framing and Gemini persona. Shared audio and Live infrastructure stays reusable.</p>
         {error && <p className="error">{error}</p>}
       </aside>
     </main>

@@ -27,6 +27,7 @@ export class GeminiLiveClient {
   private setupComplete = false;
   private resumptionHandle: string | null = null;
   private reconnecting = false;
+  private systemInstruction = '';
 
   constructor(private readonly callbacks: LiveCallbacks) {}
 
@@ -34,8 +35,9 @@ export class GeminiLiveClient {
     return this.socket?.readyState === WebSocket.OPEN && this.setupComplete;
   }
 
-  async connect() {
+  async connect(systemInstruction: string) {
     if (this.socket && this.socket.readyState <= WebSocket.OPEN) return;
+    this.systemInstruction = systemInstruction.trim();
     this.callbacks.onStatus('connecting');
     const response = await fetch(TOKEN_ENDPOINT, { method: 'POST', headers: { accept: 'application/json' } });
     if (!response.ok) throw new Error((await response.text()) || `Token request failed (${response.status})`);
@@ -81,7 +83,7 @@ export class GeminiLiveClient {
             systemInstruction: {
               parts: [
                 {
-                  text: 'You are Nova, a warm, clever, expressive AI companion living inside an animated character. Keep spoken responses natural and concise. React conversationally, allow interruptions, and avoid sounding like a formal assistant.',
+                  text: this.systemInstruction || 'You are a warm, expressive conversational AI companion. Keep spoken responses natural and concise.',
                 },
               ],
             },

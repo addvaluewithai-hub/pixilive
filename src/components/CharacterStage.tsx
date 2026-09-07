@@ -1,18 +1,19 @@
 import { Application, Container, Graphics, type Ticker } from 'pixi.js';
 import { useEffect, useRef } from 'react';
-import { NovaCharacter } from '../character/NovaCharacter';
+import type { CharacterDefinition, CharacterRuntime } from '../character/runtime';
 import type { Emotion, MouthPose } from '../character/types';
 
 interface CharacterStageProps {
+  character: CharacterDefinition;
   emotion: Emotion;
   mouth: MouthPose;
   speaking: boolean;
   reactionNonce: number;
 }
 
-export function CharacterStage({ emotion, mouth, speaking, reactionNonce }: CharacterStageProps) {
+export function CharacterStage({ character, emotion, mouth, speaking, reactionNonce }: CharacterStageProps) {
   const hostRef = useRef<HTMLDivElement | null>(null);
-  const novaRef = useRef<NovaCharacter | null>(null);
+  const runtimeRef = useRef<CharacterRuntime | null>(null);
 
   useEffect(() => {
     const host = hostRef.current;
@@ -45,24 +46,32 @@ export function CharacterStage({ emotion, mouth, speaking, reactionNonce }: Char
       nextApp.stage.addChild(world);
 
       const particles: Array<{ graphic: Graphics; speed: number; phase: number }> = [];
-      for (let index = 0; index < 28; index += 1) {
-        const graphic = new Graphics().circle(0, 0, Math.random() * 2 + 0.7).fill({
-          color: index % 3 === 0 ? 0x6de8f2 : 0x9c8cff,
-          alpha: Math.random() * 0.28 + 0.05,
-        });
+      const { ambient, framing } = character;
+      for (let index = 0; index < ambient.count; index += 1) {
+        const radius = ambient.radiusMin + Math.random() * (ambient.radiusMax - ambient.radiusMin);
+        const alpha = ambient.alphaMin + Math.random() * (ambient.alphaMax - ambient.alphaMin);
+        const graphic = new Graphics().circle(0, 0, radius).fill({ color: ambient.color, alpha });
         world.addChild(graphic);
-        particles.push({ graphic, speed: 0.08 + Math.random() * 0.22, phase: Math.random() * Math.PI * 2 });
+        particles.push({ graphic, speed: 0.06 + Math.random() * 0.16, phase: Math.random() * Math.PI * 2 });
       }
 
-      const nova = new NovaCharacter();
-      novaRef.current = nova;
-      world.addChild(nova.view);
+      const runtime = character.create();
+      runtimeRef.current = runtime;
+      world.addChild(runtime.view);
+      runtime.setEmotion(emotion);
+      if (speaking) runtime.setMouth(mouth, true);
+      else runtime.settleMouth();
 
       const layout = () => {
         const width = host.clientWidth;
         const height = host.clientHeight;
-        nova.view.position.set(width * 0.5, height * 0.48);
-        nova.view.scale.set(Math.max(0.62, Math.min(width / 620, height / 650, 1.2)));
+        runtime.view.position.set(width * framing.x, height * framing.y);
+        runtime.view.scale.set(
+          Math.max(
+            framing.minScale,
+            Math.min(width / framing.widthReference, height / framing.heightReference, framing.maxScale),
+          ),
+        );
         for (const particle of particles) {
           if (particle.graphic.x === 0 && particle.graphic.y === 0) {
             particle.graphic.position.set(Math.random() * width, Math.random() * height);
@@ -76,21 +85,22 @@ export function CharacterStage({ emotion, mouth, speaking, reactionNonce }: Char
 
       pointerMove = (event: PointerEvent) => {
         const rect = host.getBoundingClientRect();
-        nova.lookAt(
+        runtime.lookAt(
           ((event.clientX - rect.left) / rect.width - 0.5) * 2,
-          ((event.clientY - rect.top) / rect.height - 0.47) * 2,
+          ((event.clientY - rect.top) / rect.height - framing.y) * 2,
         );
       };
-      pointerDown = () => nova.react();
+      pointerDown = () => runtime.react();
       host.addEventListener('pointermove', pointerMove);
       host.addEventListener('pointerdown', pointerDown);
 
       nextApp.ticker.add((ticker: Ticker) => {
-        nova.update(ticker);
+        runtime.update(ticker);
         const height = host.clientHeight;
+        const dt = Math.min(0.033, ticker.deltaMS / 1000);
         for (const particle of particles) {
-          particle.graphic.y -= particle.speed * 20 * Math.min(0.033, ticker.deltaMS / 1000);
-          particle.graphic.x += Math.sin(performance.now() * 0.00025 + particle.phase) * particle.speed * 0.18;
+          particle.graphic.y -= particle.speed * 14 * dt;
+          particle.graphic.x += Math.sin(performance.now() * 0.0002 + particle.phase) * particle.speed * 0.12;
           if (particle.graphic.y < -10) particle.graphic.y = height + 10;
         }
       });
@@ -98,23 +108,23 @@ export function CharacterStage({ emotion, mouth, speaking, reactionNonce }: Char
 
     return () => {
       disposed = true;
-      novaRef.current = null;
+      runtimeRef.current = null;
       resizeObserver?.disconnect();
       if (pointerMove) host.removeEventListener('pointermove', pointerMove);
       if (pointerDown) host.removeEventListener('pointerdown', pointerDown);
       app?.destroy(true, { children: true });
       host.replaceChildren();
     };
-  }, []);
+  }, [character]);
 
-  useEffect(() => novaRef.current?.setEmotion(emotion), [emotion]);
+  useEffect(() => runtimeRef.current?.setEmotion(emotion), [character, emotion]);
   useEffect(() => {
-    if (speaking) novaRef.current?.setMouth(mouth, true);
-    else novaRef.current?.settleMouth();
-  }, [mouth, speaking]);
+    if (speaking) runtimeRef.current?.setMouth(mouth, true);
+    else runtimeRef.current?.settleMouth();
+  }, [character, mouth, speaking]);
   useEffect(() => {
-    if (reactionNonce > 0) novaRef.current?.react();
-  }, [reactionNonce]);
+    if (reactionNonce > 0) runtimeRef.current?.react();
+  }, [character, reactionNonce]);
 
-  return <div className="character-stage" ref={hostRef} aria-label="Nova animated character" />;
+  return <div className="character-stage" ref={hostRef} aria-label={`${character.name} animated character`} />;
 }
