@@ -14,17 +14,11 @@ export class PcmPlaybackQueue {
   private active = new Set<AudioBufferSourceNode>();
   private poseTimers = new Set<number>();
   private readonly analyzer = new VisemeAnalyzer();
-  private turnCompletePending = false;
 
   constructor(private readonly onMouthPose: (pose: MouthPose) => void, private readonly onIdle: () => void) {}
 
   pushTranscript(text: string) {
     this.analyzer.pushTranscript(text);
-  }
-
-  finishTurn() {
-    this.turnCompletePending = true;
-    if (this.active.size === 0) this.finishVisualTurn();
   }
 
   async enqueue(base64: string, sampleRate = 24_000) {
@@ -41,11 +35,10 @@ export class PcmPlaybackQueue {
     source.buffer = buffer;
     source.connect(this.context.destination);
     this.active.add(source);
-    this.turnCompletePending = false;
 
     const now = this.context.currentTime;
-    // A small look-ahead gives the viseme analyzer and output transcription a chance
-    // to stay in front of playback without making the conversation feel sluggish.
+    // A small look-ahead gives the analyzer and output transcription time to stay
+    // just ahead of playback without making the conversation feel sluggish.
     const startAt = Math.max(now + (this.nextStart === 0 ? 0.075 : 0.012), this.nextStart);
 
     for (const { offsetSeconds, pose } of poses) {
@@ -63,8 +56,8 @@ export class PcmPlaybackQueue {
       this.active.delete(source);
       if (this.active.size === 0) {
         this.nextStart = 0;
+        this.analyzer.resetTranscript();
         this.onIdle();
-        if (this.turnCompletePending) this.finishVisualTurn();
       }
     };
   }
@@ -81,7 +74,6 @@ export class PcmPlaybackQueue {
     }
     this.active.clear();
     this.nextStart = 0;
-    this.turnCompletePending = false;
     this.analyzer.resetTranscript();
     this.onIdle();
   }
@@ -90,11 +82,5 @@ export class PcmPlaybackQueue {
     this.interrupt();
     await this.context?.close();
     this.context = null;
-  }
-
-  private finishVisualTurn() {
-    this.turnCompletePending = false;
-    this.analyzer.resetTranscript();
-    this.onIdle();
   }
 }
