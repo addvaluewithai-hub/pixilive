@@ -1,5 +1,5 @@
 import { Application } from 'pixi.js';
-import { MiloVisemeCharacter } from '../character/MiloVisemeCharacter';
+import { DirectedMiloCharacter } from '../character/DirectedMiloCharacter';
 import type { CharacterMode, PerformanceCue } from '../character/performance';
 
 interface HarnessWindow extends Window {
@@ -32,7 +32,7 @@ export async function mountMiloPerformanceHarness(cue: PerformanceCue, mode: Cha
   harnessWindow.__pixilivePerformanceApp = app;
   host.appendChild(app.canvas);
 
-  const character = new MiloVisemeCharacter();
+  const character = new DirectedMiloCharacter();
   app.stage.addChild(character.view);
   character.view.position.set(320, 315);
   character.view.scale.set(1.28);
