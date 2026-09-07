@@ -27,10 +27,16 @@ export function App() {
   const playback = useRef<PcmPlaybackQueue | null>(null);
   const live = useRef<GeminiLiveClient | null>(null);
   const statusRef = useRef<LiveStatus>('idle');
+  const modeRef = useRef<CharacterMode>('idle');
   const userActiveRef = useRef(false);
   const thinkingTimerRef = useRef<number | null>(null);
 
   const character = useMemo(() => getCharacterDefinition(characterId), [characterId]);
+
+  const changeCharacterMode = (next: CharacterMode) => {
+    modeRef.current = next;
+    setCharacterMode(next);
+  };
 
   const clearThinkingTimer = () => {
     if (thinkingTimerRef.current !== null) {
@@ -42,11 +48,11 @@ export function App() {
   const updateLiveStatus = (next: LiveStatus) => {
     statusRef.current = next;
     setStatus(next);
-    if (next === 'speaking') setCharacterMode('speaking');
-    else if (next === 'idle' || next === 'error') setCharacterMode('idle');
-    else if (next === 'connecting') setCharacterMode('thinking');
-    else if (next === 'listening' && userActiveRef.current) setCharacterMode('listening');
-    else if (next === 'listening' && characterMode !== 'thinking') setCharacterMode('listening');
+    if (next === 'speaking') changeCharacterMode('speaking');
+    else if (next === 'idle' || next === 'error') changeCharacterMode('idle');
+    else if (next === 'connecting') changeCharacterMode('thinking');
+    else if (next === 'listening' && userActiveRef.current) changeCharacterMode('listening');
+    else if (next === 'listening' && modeRef.current !== 'thinking') changeCharacterMode('listening');
   };
 
   const handleMicLevel = (level: number) => {
@@ -55,18 +61,20 @@ export function App() {
 
     if (level >= speakingThreshold) {
       clearThinkingTimer();
-      if (!userActiveRef.current) userActiveRef.current = true;
-      setCharacterMode('listening');
+      userActiveRef.current = true;
+      changeCharacterMode('listening');
       return;
     }
 
     if (userActiveRef.current && level <= silenceThreshold) {
       userActiveRef.current = false;
-      setCharacterMode('thinking');
+      changeCharacterMode('thinking');
       clearThinkingTimer();
       thinkingTimerRef.current = window.setTimeout(() => {
         thinkingTimerRef.current = null;
-        if (statusRef.current === 'listening' && !userActiveRef.current) setCharacterMode('listening');
+        if (statusRef.current === 'listening' && !userActiveRef.current && modeRef.current === 'thinking') {
+          changeCharacterMode('listening');
+        }
       }, 680);
     }
   };
@@ -89,15 +97,15 @@ export function App() {
       },
       onPerformanceCue: (cue) => {
         setPerformanceCue({ ...cue });
-        if (statusRef.current !== 'speaking') setCharacterMode('thinking');
+        if (statusRef.current !== 'speaking') changeCharacterMode('thinking');
       },
       onPerformanceCancelled: () => {
         setInterruptKey((value) => value + 1);
-        if (statusRef.current !== 'idle') setCharacterMode('listening');
+        if (statusRef.current !== 'idle') changeCharacterMode('listening');
       },
       onInterrupted: () => {
         playback.current?.interrupt();
-        setCharacterMode('listening');
+        changeCharacterMode('listening');
       },
       onError: setError,
     });
@@ -127,7 +135,7 @@ export function App() {
     setEmotion(next.defaultEmotion);
     setMouth(restingMouth);
     setPerformanceCue(null);
-    setCharacterMode('idle');
+    changeCharacterMode('idle');
     setInputTranscript('');
     setOutputTranscript('');
     setError('');
@@ -142,7 +150,7 @@ export function App() {
         (chunk) => live.current?.sendAudio(chunk),
         handleMicLevel,
       );
-      setCharacterMode('listening');
+      changeCharacterMode('listening');
     } catch (reason) {
       updateLiveStatus('error');
       setError(reason instanceof Error ? reason.message : 'Could not start Gemini Live');
@@ -160,7 +168,7 @@ export function App() {
     playback.current?.interrupt();
     setInterruptKey((value) => value + 1);
     setPerformanceCue(null);
-    setCharacterMode('idle');
+    changeCharacterMode('idle');
     updateLiveStatus('idle');
   };
 
@@ -169,7 +177,7 @@ export function App() {
     if (!connected || !text.trim()) return;
     live.current?.sendText(text);
     setInputTranscript(text.trim());
-    setCharacterMode('thinking');
+    changeCharacterMode('thinking');
     setText('');
   };
 
