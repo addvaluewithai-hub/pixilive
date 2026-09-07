@@ -2,7 +2,8 @@ import { chromium } from 'playwright';
 import { mkdir } from 'node:fs/promises';
 import path from 'node:path';
 
-const baseUrl = process.env.PIXILIVE_PREVIEW_URL ?? 'http://127.0.0.1:4173';
+const appUrl = process.env.PIXILIVE_PREVIEW_URL ?? 'http://127.0.0.1:4173';
+const harnessUrl = process.env.PIXILIVE_VISUAL_HARNESS_URL ?? 'http://127.0.0.1:4174';
 const outputDir = path.resolve('visual-artifacts');
 
 await mkdir(outputDir, { recursive: true });
@@ -24,7 +25,7 @@ const visemePoses = {
 };
 
 try {
-  await page.goto(baseUrl, { waitUntil: 'networkidle' });
+  await page.goto(appUrl, { waitUntil: 'networkidle' });
   await page.locator('.character-stage canvas').waitFor({ state: 'visible' });
 
   const characterSelect = page.locator('#character-select');
@@ -54,7 +55,7 @@ try {
   }
 
   for (const [name, pose] of Object.entries(visemePoses)) {
-    await page.goto(baseUrl, { waitUntil: 'domcontentloaded' });
+    await page.goto(harnessUrl, { waitUntil: 'domcontentloaded' });
     await page.evaluate(async (mouthPose) => {
       const harness = await import('/src/visual/visemeHarness.ts');
       await harness.mountMiloVisemeHarness(mouthPose);
