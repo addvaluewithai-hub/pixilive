@@ -80,8 +80,6 @@ export class MiloVisemeCharacter {
   constructor() {
     this.view = this.base.view;
 
-    // These are stable internal layers of our own procedural Milo implementation.
-    // Keeping access isolated here means the shared runtime never depends on them.
     this.layers = this.base as unknown as MiloLayers;
     this.layers.mouth.visible = false;
     this.layers.armBack.visible = false;
@@ -172,6 +170,7 @@ export class MiloVisemeCharacter {
 
   private applyPerformance(state: PerformanceState) {
     const intensity = state.intensity;
+    this.layers.body.scale.x = 1;
     let eyeScale = 1;
     let browLift = 0;
     let browTilt = 0;
@@ -243,7 +242,6 @@ export class MiloVisemeCharacter {
     this.layers.browRight.rotation += browTilt * affectWeight;
     this.layers.head.rotation += headTilt * affectWeight;
 
-    // Listening reactions are small and irregular; speech beats are even smaller.
     if (state.mode === 'listening') {
       this.layers.head.y += state.listeningBeat * 2.2;
       this.layers.head.rotation += Math.sin(state.listeningBeat * Math.PI) * 0.012;
@@ -275,7 +273,7 @@ export class MiloVisemeCharacter {
       this.layers.root.y += 2.2 * intensity;
       this.layers.root.rotation += 0.01 * (state.gestureVariant % 2 ? -1 : 1) * intensity;
     } else if (state.posture === 'open') {
-      this.layers.body.scale.x *= 1 + 0.008 * intensity;
+      this.layers.body.scale.x = 1 + 0.008 * intensity;
     }
 
     this.smile = clamp(this.emotionSmile + smileAdd * affectWeight, -0.05, 0.92);
