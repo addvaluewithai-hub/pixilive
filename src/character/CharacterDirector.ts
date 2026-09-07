@@ -13,16 +13,16 @@ const damp = (from: number, to: number, speed: number, dt: number) =>
 
 const gestureDuration: Record<CharacterGesture, number> = {
   none: 0.1,
-  explain: 2.5,
-  emphasize: 1.25,
-  reassure: 2.4,
-  agree: 1.15,
-  disagree: 1.35,
-  think: 2.7,
-  celebrate: 2.1,
-  shrug: 1.85,
-  greet: 1.9,
-  goodbye: 2.0,
+  explain: 2.8,
+  emphasize: 1.45,
+  reassure: 2.8,
+  agree: 1.35,
+  disagree: 1.55,
+  think: 3.0,
+  celebrate: 2.45,
+  shrug: 2.15,
+  greet: 2.15,
+  goodbye: 2.2,
 };
 
 /**
@@ -54,16 +54,16 @@ export class CharacterDirector {
 
   perform(input: Partial<PerformanceCue>) {
     const next = normalizePerformanceCue(input);
+    const repeated = next.gesture !== 'none' && this.recentGestures.slice(-2).includes(next.gesture);
 
-    // Avoid a model accidentally turning Milo into a repetitive gesture machine.
-    if (next.gesture !== 'none' && this.recentGestures.slice(-2).includes(next.gesture)) {
-      next.gesture = Math.random() < 0.7 ? 'none' : next.gesture;
-    }
-
+    // Never throw away an explicit model direction. Repetition is handled by
+    // choosing another variant, not by silently turning the gesture into "none".
     this.cue = next;
     this.cueAge = 0;
     this.gesturePhase = 0;
-    this.gestureVariant = (this.gestureVariant + 1 + Math.floor(Math.random() * 3)) % 6;
+    const variationJump = repeated ? 3 : 1 + Math.floor(Math.random() * 3);
+    this.gestureVariant = (this.gestureVariant + variationJump) % 6;
+
     if (next.gesture !== 'none') {
       this.recentGestures.push(next.gesture);
       if (this.recentGestures.length > 6) this.recentGestures.shift();
@@ -76,7 +76,7 @@ export class CharacterDirector {
 
   interrupt() {
     // Jump into the settle half of the gesture instead of snapping to rest.
-    this.gesturePhase = Math.max(this.gesturePhase, 0.72);
+    this.gesturePhase = Math.max(this.gesturePhase, 0.74);
     this.speechEnergy = 0;
   }
 
@@ -94,28 +94,28 @@ export class CharacterDirector {
   update(dt: number): PerformanceState {
     this.cueAge += dt;
     this.beatCooldown = Math.max(0, this.beatCooldown - dt);
-    this.smoothedEnergy = damp(this.smoothedEnergy, this.speechEnergy, 13, dt);
+    this.smoothedEnergy = damp(this.smoothedEnergy, this.speechEnergy, 11, dt);
 
     const rise = this.smoothedEnergy - this.previousEnergy;
-    if (this.mode === 'speaking' && this.smoothedEnergy > 0.19 && rise > 0.045 && this.beatCooldown <= 0) {
+    if (this.mode === 'speaking' && this.smoothedEnergy > 0.13 && rise > 0.018 && this.beatCooldown <= 0) {
       this.speechBeat = 1;
-      this.beatCooldown = 0.2 + Math.random() * 0.12;
+      this.beatCooldown = 0.32 + Math.random() * 0.18;
     }
     this.previousEnergy = this.smoothedEnergy;
-    this.speechBeat = damp(this.speechBeat, 0, 9.5, dt);
+    this.speechBeat = damp(this.speechBeat, 0, 7.8, dt);
 
     if (this.mode === 'listening') {
       this.listeningClock += dt;
-      const nextBeatAt = 2.2 + this.gestureVariant * 0.18;
+      const nextBeatAt = 2.5 + this.gestureVariant * 0.2;
       if (this.listeningClock > nextBeatAt) {
         this.listeningBeat = 1;
-        this.listeningClock = -Math.random() * 1.2;
+        this.listeningClock = -Math.random() * 1.4;
         this.gestureVariant = (this.gestureVariant + 1) % 6;
       }
     } else {
       this.listeningClock = 0;
     }
-    this.listeningBeat = damp(this.listeningBeat, 0, 3.7, dt);
+    this.listeningBeat = damp(this.listeningBeat, 0, 3.2, dt);
 
     if (this.gesturePhase < 1) {
       const duration = gestureDuration[this.cue.gesture] || 1.5;
@@ -124,13 +124,20 @@ export class CharacterDirector {
 
     // Affect can linger briefly after a gesture, then returns toward neutral locally.
     let cue = this.cue;
-    if (this.cueAge > 7 && this.gesturePhase >= 1) {
+    if (this.cueAge > 8 && this.gesturePhase >= 1) {
       cue = {
         ...neutralPerformanceCue,
-        intensity: damp(this.cue.intensity, neutralPerformanceCue.intensity, 1.2, dt),
+        intensity: damp(this.cue.intensity, neutralPerformanceCue.intensity, 1.1, dt),
       };
-      if (this.cueAge > 9) this.cue = cue;
+      if (this.cueAge > 10) this.cue = cue;
     }
+
+    // Agree/disagree used to drive two rapid head oscillations. Expose a half-rate
+    // visual phase for those gestures so the character performs one readable nod
+    // or head sweep instead of shaking.
+    const visualPhase = this.cue.gesture === 'agree' || this.cue.gesture === 'disagree'
+      ? this.gesturePhase * 0.5
+      : this.gesturePhase;
 
     return {
       ...cue,
@@ -138,7 +145,7 @@ export class CharacterDirector {
       speechEnergy: this.smoothedEnergy,
       speechBeat: this.speechBeat,
       listeningBeat: this.listeningBeat,
-      gesturePhase: this.gesturePhase,
+      gesturePhase: visualPhase,
       gestureEnvelope: this.gestureEnvelope(this.gesturePhase),
       gestureVariant: this.gestureVariant,
     };
@@ -146,11 +153,11 @@ export class CharacterDirector {
 
   private gestureEnvelope(phase: number) {
     if (phase >= 1) return 0;
-    // Fast anticipation, readable action, soft settle. Always interruptible.
-    if (phase < 0.16) return phase / 0.16 * 0.34;
-    if (phase < 0.38) return 0.34 + ((phase - 0.16) / 0.22) * 0.66;
-    if (phase < 0.67) return 1;
-    const t = (phase - 0.67) / 0.33;
+    // Small anticipation, quick travel, a long readable hold, then a soft settle.
+    if (phase < 0.12) return (phase / 0.12) * 0.22;
+    if (phase < 0.32) return 0.22 + ((phase - 0.12) / 0.2) * 0.78;
+    if (phase < 0.74) return 1;
+    const t = (phase - 0.74) / 0.26;
     return 1 - t * t * (3 - 2 * t);
   }
 }
