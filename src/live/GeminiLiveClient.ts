@@ -1,13 +1,55 @@
+import { normalizePerformanceCue, type PerformanceCue } from '../character/performance';
 import type { LiveCallbacks } from './types';
 
 const MODEL = 'gemini-3.1-flash-live-preview';
 const TOKEN_ENDPOINT = '/api/gemini-token';
 const LIVE_ENDPOINT = 'wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1alpha.GenerativeService.BidiGenerateContentConstrained';
 const SETUP_TIMEOUT_MS = 12_000;
+const PERFORMANCE_TOOL = 'direct_character';
+
+const PERFORMANCE_GUIDANCE = `
+You can direct the on-screen character with the direct_character tool before speaking.
+Use it for semantic acting intent, never low-level animation. Prefer one call before a substantive response when body language helps.
+Keep many casual turns subtle: gesture="none" is valid and desirable. Avoid repeating the same gesture on consecutive turns.
+Choose affect, posture and gaze based on the meaning you are about to communicate. The local character engine handles exact timing, motion and interruption.
+`;
+
+const performanceTool = {
+  functionDeclarations: [
+    {
+      name: PERFORMANCE_TOOL,
+      description: 'Set the semantic acting intention for the on-screen character immediately before the spoken response. Use meaning-level cues only; local animation code chooses exact timing and motion.',
+      parametersJsonSchema: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          affect: {
+            type: 'string',
+            enum: ['neutral', 'warm', 'curious', 'enthusiastic', 'reassuring', 'concerned', 'surprised', 'thoughtful', 'playful'],
+          },
+          intensity: { type: 'number', minimum: 0, maximum: 1 },
+          gesture: {
+            type: 'string',
+            enum: ['none', 'explain', 'emphasize', 'reassure', 'agree', 'disagree', 'think', 'celebrate', 'shrug', 'greet', 'goodbye'],
+          },
+          posture: { type: 'string', enum: ['neutral', 'engaged', 'lean_in', 'lean_back', 'open'] },
+          gaze: { type: 'string', enum: ['user', 'thinking_up', 'thinking_side', 'away', 'auto'] },
+        },
+        required: ['affect', 'intensity', 'gesture', 'posture', 'gaze'],
+      },
+    },
+  ],
+};
 
 interface TokenResponse {
   token: string;
   model: string;
+}
+
+interface FunctionCall {
+  id?: string;
+  name: string;
+  args?: Record<string, unknown>;
 }
 
 interface ServerMessage {
@@ -19,6 +61,8 @@ interface ServerMessage {
     outputTranscription?: { text?: string };
     modelTurn?: { parts?: Array<{ inlineData?: { data?: string; mimeType?: string }; text?: string }> };
   };
+  toolCall?: { functionCalls?: FunctionCall[] };
+  toolCallCancellation?: { ids?: string[] };
   sessionResumptionUpdate?: { newHandle?: string; resumable?: boolean };
   goAway?: { timeLeft?: string };
 }
@@ -39,6 +83,7 @@ export class GeminiLiveClient {
   private resumptionHandle: string | null = null;
   private reconnecting = false;
   private systemInstruction = '';
+  private activePerformanceCallIds = new Set<string>();
 
   constructor(private readonly callbacks: LiveCallbacks) {}
 
@@ -79,6 +124,7 @@ export class GeminiLiveClient {
   close() {
     this.reconnecting = false;
     this.setupComplete = false;
+    this.activePerformanceCallIds.clear();
     this.socket?.close(1000, 'client close');
     this.socket = null;
     this.callbacks.onStatus('idle');
@@ -132,10 +178,11 @@ export class GeminiLiveClient {
             systemInstruction: {
               parts: [
                 {
-                  text: this.systemInstruction || 'You are a warm, expressive conversational AI companion. Keep spoken responses natural and concise.',
+                  text: `${this.systemInstruction || 'You are a warm, expressive conversational AI companion. Keep spoken responses natural and concise.'}\n\n${PERFORMANCE_GUIDANCE}`,
                 },
               ],
             },
+            tools: [performanceTool],
             realtimeInputConfig: {
               activityHandling: 'START_OF_ACTIVITY_INTERRUPTS',
               automaticActivityDetection: {
@@ -177,9 +224,20 @@ export class GeminiLiveClient {
           resolveSetup();
         }
 
+        if (message.toolCall?.functionCalls?.length) {
+          this.handleToolCalls(message.toolCall.functionCalls);
+        }
+
+        if (message.toolCallCancellation?.ids?.length) {
+          const cancelledPerformance = message.toolCallCancellation.ids.some((id) => this.activePerformanceCallIds.has(id));
+          for (const id of message.toolCallCancellation.ids) this.activePerformanceCallIds.delete(id);
+          if (cancelledPerformance) this.callbacks.onPerformanceCancelled();
+        }
+
         const content = message.serverContent;
         if (content?.interrupted) {
           this.callbacks.onInterrupted();
+          this.callbacks.onPerformanceCancelled();
           this.callbacks.onStatus('listening');
         }
 
@@ -231,6 +289,29 @@ export class GeminiLiveClient {
         }
       });
     });
+  }
+
+  private handleToolCalls(functionCalls: FunctionCall[]) {
+    const functionResponses = functionCalls.map((call) => {
+      if (call.name === PERFORMANCE_TOOL) {
+        const cue = normalizePerformanceCue((call.args ?? {}) as Partial<PerformanceCue>);
+        this.callbacks.onPerformanceCue(cue);
+        if (call.id) this.activePerformanceCallIds.add(call.id);
+        return {
+          id: call.id,
+          name: call.name,
+          response: { result: 'Character direction accepted. Local animation timing is active.' },
+        };
+      }
+
+      return {
+        id: call.id,
+        name: call.name,
+        response: { error: `Unknown client tool: ${call.name}` },
+      };
+    });
+
+    this.send({ toolResponse: { functionResponses } });
   }
 
   private async resumeSession() {

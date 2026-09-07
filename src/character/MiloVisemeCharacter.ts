@@ -1,5 +1,8 @@
 import { Graphics, type Container, type Ticker } from 'pixi.js';
+import { CharacterDirector } from './CharacterDirector';
+import { MiloArmRig } from './MiloArmRig';
 import { MiloCharacter } from './MiloCharacter';
+import type { CharacterMode, PerformanceCue, PerformanceState } from './performance';
 import type { Emotion, MouthPose, Viseme } from './types';
 
 const C = {
@@ -38,67 +41,113 @@ const completePose = (pose: MouthPose): Required<MouthPose> => ({
   cornerPull: clamp(pose.cornerPull ?? 0),
 });
 
+interface MiloLayers {
+  root: Container;
+  body: Container;
+  shoulders: Container;
+  head: Container;
+  mouth: Graphics;
+  armBack: Container;
+  armFront: Container;
+  browLeft: Graphics;
+  browRight: Graphics;
+  cheekLeft: Graphics;
+  cheekRight: Graphics;
+  eyeLeft: { root: Container };
+  eyeRight: { root: Container };
+}
+
 /**
- * A mouth-rig decorator for Milo.
- *
- * Milo's original procedural body/face remains the source of truth. We hide its
- * legacy mouth layer and add a richer mouth layer that consumes the shared
- * viseme signals. This keeps the character runtime backward-compatible while
- * the shared mouth contract evolves for future characters.
+ * Production Milo runtime: viseme mouth + semantic acting + articulated arms.
+ * The original MiloCharacter remains the visual base while this layer adds the
+ * richer performance contract shared by every PixiLive character.
  */
 export class MiloVisemeCharacter {
   readonly view: Container;
 
   private readonly base = new MiloCharacter();
   private readonly mouth = new Graphics();
+  private readonly director = new CharacterDirector();
+  private readonly arms = new MiloArmRig();
+  private readonly layers: MiloLayers;
   private target = completePose(restPose);
   private rendered = completePose(restPose);
   private speaking = false;
+  private emotionSmile = 0.18;
   private smile = 0.18;
+  private userGaze = { x: 0, y: 0 };
 
   constructor() {
     this.view = this.base.view;
 
-    // TypeScript `private` is compile-time only here; these are stable layers of
-    // our own Milo implementation. Keeping the adapter isolated in this file
-    // prevents the shared character runtime from depending on Milo internals.
-    const layers = this.base as unknown as { head: Container; mouth: Graphics };
-    layers.mouth.visible = false;
+    // These are stable internal layers of our own procedural Milo implementation.
+    // Keeping access isolated here means the shared runtime never depends on them.
+    this.layers = this.base as unknown as MiloLayers;
+    this.layers.mouth.visible = false;
+    this.layers.armBack.visible = false;
+    this.layers.armFront.visible = false;
+
     this.mouth.y = 46;
-    layers.head.addChild(this.mouth);
+    this.layers.head.addChild(this.mouth);
+    this.layers.shoulders.addChild(this.arms.view);
     this.drawMouth();
   }
 
   setEmotion(emotion: Emotion) {
     this.base.setEmotion(emotion);
-    this.smile = emotion === 'happy' ? 0.72 : emotion === 'excited' ? 0.58 : emotion === 'curious' ? 0.26 : 0.18;
+    this.emotionSmile = emotion === 'happy' ? 0.72 : emotion === 'excited' ? 0.58 : emotion === 'curious' ? 0.26 : 0.18;
   }
 
   setMouth(pose: MouthPose, speaking = true) {
     this.target = completePose(pose);
     this.speaking = speaking;
+    this.director.setSpeechEnergy(pose.energy);
     this.base.setMouth(pose, speaking);
   }
 
   settleMouth() {
     this.target = completePose(restPose);
     this.speaking = false;
+    this.director.setSpeechEnergy(0);
     this.base.settleMouth();
   }
 
   lookAt(normalizedX: number, normalizedY: number) {
-    this.base.lookAt(normalizedX, normalizedY);
+    this.userGaze.x = clamp(normalizedX, -1, 1);
+    this.userGaze.y = clamp(normalizedY, -1, 1);
   }
 
   react() {
     this.base.react();
   }
 
-  update(ticker: Ticker) {
-    this.base.update(ticker);
-    const dt = Math.min(0.033, ticker.deltaMS / 1000);
-    const speed = this.target.viseme === 'MBP' ? 32 : 24;
+  setMode(mode: CharacterMode) {
+    this.director.setMode(mode);
+  }
 
+  perform(cue: PerformanceCue) {
+    this.director.perform(cue);
+  }
+
+  setSpeechEnergy(energy: number) {
+    this.director.setSpeechEnergy(energy);
+  }
+
+  interruptPerformance() {
+    this.director.interrupt();
+  }
+
+  update(ticker: Ticker) {
+    const dt = Math.min(0.033, ticker.deltaMS / 1000);
+    const performance = this.director.update(dt);
+    const gaze = this.resolveGaze(performance);
+    this.base.lookAt(gaze.x, gaze.y);
+    this.base.update(ticker);
+
+    this.applyPerformance(performance);
+    this.arms.update(performance, dt);
+
+    const speed = this.target.viseme === 'MBP' ? 32 : 24;
     this.rendered.open = damp(this.rendered.open, this.target.open, speed, dt);
     this.rendered.width = damp(this.rendered.width, this.target.width, 20, dt);
     this.rendered.round = damp(this.rendered.round, this.target.round, 22, dt);
@@ -109,8 +158,130 @@ export class MiloVisemeCharacter {
     this.rendered.tongue = damp(this.rendered.tongue, this.target.tongue, 20, dt);
     this.rendered.cornerPull = damp(this.rendered.cornerPull, this.target.cornerPull, 20, dt);
     this.rendered.viseme = this.target.viseme;
-
     this.drawMouth();
+  }
+
+  private resolveGaze(state: PerformanceState) {
+    if (state.gaze === 'thinking_up' || (state.gaze === 'auto' && state.mode === 'thinking')) {
+      return { x: state.gestureVariant % 2 ? -0.28 : 0.3, y: -0.52 };
+    }
+    if (state.gaze === 'thinking_side') return { x: state.gestureVariant % 2 ? -0.68 : 0.68, y: -0.08 };
+    if (state.gaze === 'away') return { x: state.gestureVariant % 2 ? -0.82 : 0.82, y: 0.08 };
+    return this.userGaze;
+  }
+
+  private applyPerformance(state: PerformanceState) {
+    const intensity = state.intensity;
+    let eyeScale = 1;
+    let browLift = 0;
+    let browTilt = 0;
+    let headTilt = 0;
+    let smileAdd = 0;
+
+    switch (state.affect) {
+      case 'warm':
+        eyeScale = 0.95;
+        browLift = -1;
+        smileAdd = 0.16;
+        headTilt = -0.018;
+        break;
+      case 'curious':
+        eyeScale = 1.05;
+        browLift = -3;
+        browTilt = 0.055;
+        headTilt = 0.04;
+        smileAdd = 0.05;
+        break;
+      case 'enthusiastic':
+        eyeScale = 1.08;
+        browLift = -4;
+        smileAdd = 0.22;
+        headTilt = -0.02;
+        break;
+      case 'reassuring':
+        eyeScale = 0.91;
+        browLift = -1.2;
+        smileAdd = 0.13;
+        headTilt = 0.028;
+        break;
+      case 'concerned':
+        eyeScale = 0.96;
+        browLift = -2;
+        browTilt = -0.075;
+        smileAdd = -0.12;
+        headTilt = 0.025;
+        break;
+      case 'surprised':
+        eyeScale = 1.17;
+        browLift = -6;
+        smileAdd = -0.04;
+        break;
+      case 'thoughtful':
+        eyeScale = 0.97;
+        browLift = -1.5;
+        browTilt = 0.035;
+        headTilt = 0.045;
+        break;
+      case 'playful':
+        eyeScale = 1.02;
+        browLift = -2;
+        browTilt = 0.07;
+        headTilt = -0.045;
+        smileAdd = 0.2;
+        break;
+      case 'neutral':
+      default:
+        break;
+    }
+
+    const affectWeight = 0.35 + intensity * 0.65;
+    this.layers.eyeLeft.root.scale.y *= 1 + (eyeScale - 1) * affectWeight;
+    this.layers.eyeRight.root.scale.y *= 1 + (eyeScale - 1) * affectWeight;
+    this.layers.browLeft.y += browLift * affectWeight;
+    this.layers.browRight.y += browLift * affectWeight;
+    this.layers.browLeft.rotation += -browTilt * affectWeight;
+    this.layers.browRight.rotation += browTilt * affectWeight;
+    this.layers.head.rotation += headTilt * affectWeight;
+
+    // Listening reactions are small and irregular; speech beats are even smaller.
+    if (state.mode === 'listening') {
+      this.layers.head.y += state.listeningBeat * 2.2;
+      this.layers.head.rotation += Math.sin(state.listeningBeat * Math.PI) * 0.012;
+    }
+    if (state.mode === 'thinking') {
+      this.layers.head.rotation += 0.018;
+      this.layers.head.y -= 1.2;
+    }
+    if (state.mode === 'speaking') {
+      this.layers.head.y -= state.speechBeat * 1.5;
+      this.layers.head.rotation += (state.gestureVariant % 2 ? -1 : 1) * state.speechBeat * 0.006;
+    }
+
+    if (state.gesture === 'agree') {
+      this.layers.head.y += Math.sin(state.gesturePhase * Math.PI * 4) * 3.2 * state.gestureEnvelope;
+    } else if (state.gesture === 'disagree') {
+      this.layers.head.rotation += Math.sin(state.gesturePhase * Math.PI * 4) * 0.055 * state.gestureEnvelope;
+    } else if (state.gesture === 'think') {
+      this.layers.head.rotation += 0.035 * state.gestureEnvelope;
+    } else if (state.gesture === 'celebrate') {
+      this.layers.head.y -= 3.5 * state.gestureEnvelope;
+    }
+
+    if (state.posture === 'lean_in' || state.posture === 'engaged') {
+      this.layers.root.y -= 2.4 * intensity;
+      this.layers.root.scale.x *= 1 + 0.006 * intensity;
+      this.layers.root.scale.y *= 1 + 0.006 * intensity;
+    } else if (state.posture === 'lean_back') {
+      this.layers.root.y += 2.2 * intensity;
+      this.layers.root.rotation += 0.01 * (state.gestureVariant % 2 ? -1 : 1) * intensity;
+    } else if (state.posture === 'open') {
+      this.layers.body.scale.x *= 1 + 0.008 * intensity;
+    }
+
+    this.smile = clamp(this.emotionSmile + smileAdd * affectWeight, -0.05, 0.92);
+    const cheekBoost = (state.affect === 'warm' || state.affect === 'reassuring' || state.affect === 'playful') ? 0.12 * intensity : 0;
+    this.layers.cheekLeft.alpha += cheekBoost;
+    this.layers.cheekRight.alpha += cheekBoost;
   }
 
   private drawMouth() {

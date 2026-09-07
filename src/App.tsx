@@ -2,6 +2,7 @@ import { type ChangeEvent, type FormEvent, useEffect, useMemo, useRef, useState 
 import { MicrophonePcmStream } from './audio/MicrophonePcmStream';
 import { PcmPlaybackQueue } from './audio/PcmPlaybackQueue';
 import { characterRegistry, DEFAULT_CHARACTER_ID, getCharacterDefinition } from './character/registry';
+import type { CharacterMode, PerformanceCue } from './character/performance';
 import type { Emotion, MouthPose } from './character/types';
 import { CharacterStage } from './components/CharacterStage';
 import { GeminiLiveClient } from './live/GeminiLiveClient';
@@ -14,15 +15,61 @@ export function App() {
   const [emotion, setEmotion] = useState<Emotion>('calm');
   const [mouth, setMouth] = useState<MouthPose>(restingMouth);
   const [status, setStatus] = useState<LiveStatus>('idle');
+  const [characterMode, setCharacterMode] = useState<CharacterMode>('idle');
+  const [performanceCue, setPerformanceCue] = useState<PerformanceCue | null>(null);
+  const [interruptKey, setInterruptKey] = useState(0);
   const [inputTranscript, setInputTranscript] = useState('');
   const [outputTranscript, setOutputTranscript] = useState('');
   const [error, setError] = useState('');
   const [text, setText] = useState('');
+
   const microphone = useRef(new MicrophonePcmStream());
   const playback = useRef<PcmPlaybackQueue | null>(null);
   const live = useRef<GeminiLiveClient | null>(null);
+  const statusRef = useRef<LiveStatus>('idle');
+  const userActiveRef = useRef(false);
+  const thinkingTimerRef = useRef<number | null>(null);
 
   const character = useMemo(() => getCharacterDefinition(characterId), [characterId]);
+
+  const clearThinkingTimer = () => {
+    if (thinkingTimerRef.current !== null) {
+      window.clearTimeout(thinkingTimerRef.current);
+      thinkingTimerRef.current = null;
+    }
+  };
+
+  const updateLiveStatus = (next: LiveStatus) => {
+    statusRef.current = next;
+    setStatus(next);
+    if (next === 'speaking') setCharacterMode('speaking');
+    else if (next === 'idle' || next === 'error') setCharacterMode('idle');
+    else if (next === 'connecting') setCharacterMode('thinking');
+    else if (next === 'listening' && userActiveRef.current) setCharacterMode('listening');
+    else if (next === 'listening' && characterMode !== 'thinking') setCharacterMode('listening');
+  };
+
+  const handleMicLevel = (level: number) => {
+    const speakingThreshold = 0.075;
+    const silenceThreshold = 0.035;
+
+    if (level >= speakingThreshold) {
+      clearThinkingTimer();
+      if (!userActiveRef.current) userActiveRef.current = true;
+      setCharacterMode('listening');
+      return;
+    }
+
+    if (userActiveRef.current && level <= silenceThreshold) {
+      userActiveRef.current = false;
+      setCharacterMode('thinking');
+      clearThinkingTimer();
+      thinkingTimerRef.current = window.setTimeout(() => {
+        thinkingTimerRef.current = null;
+        if (statusRef.current === 'listening' && !userActiveRef.current) setCharacterMode('listening');
+      }, 680);
+    }
+  };
 
   if (!playback.current) {
     playback.current = new PcmPlaybackQueue(
@@ -33,14 +80,25 @@ export function App() {
 
   if (!live.current) {
     live.current = new GeminiLiveClient({
-      onStatus: setStatus,
+      onStatus: updateLiveStatus,
       onAudio: (audio) => void playback.current?.enqueue(audio),
       onInputTranscript: setInputTranscript,
       onOutputTranscript: (transcript) => {
         setOutputTranscript(transcript);
         playback.current?.pushTranscript(transcript);
       },
-      onInterrupted: () => playback.current?.interrupt(),
+      onPerformanceCue: (cue) => {
+        setPerformanceCue({ ...cue });
+        if (statusRef.current !== 'speaking') setCharacterMode('thinking');
+      },
+      onPerformanceCancelled: () => {
+        setInterruptKey((value) => value + 1);
+        if (statusRef.current !== 'idle') setCharacterMode('listening');
+      },
+      onInterrupted: () => {
+        playback.current?.interrupt();
+        setCharacterMode('listening');
+      },
       onError: setError,
     });
   }
@@ -55,6 +113,7 @@ export function App() {
 
   useEffect(() => {
     return () => {
+      clearThinkingTimer();
       live.current?.close();
       void microphone.current.stop();
       void playback.current?.close();
@@ -67,6 +126,8 @@ export function App() {
     setCharacterId(next.id);
     setEmotion(next.defaultEmotion);
     setMouth(restingMouth);
+    setPerformanceCue(null);
+    setCharacterMode('idle');
     setInputTranscript('');
     setOutputTranscript('');
     setError('');
@@ -74,11 +135,16 @@ export function App() {
 
   const connect = async () => {
     setError('');
+    setPerformanceCue(null);
     try {
       await live.current?.connect(character.systemPrompt);
-      await microphone.current.start((chunk) => live.current?.sendAudio(chunk));
+      await microphone.current.start(
+        (chunk) => live.current?.sendAudio(chunk),
+        handleMicLevel,
+      );
+      setCharacterMode('listening');
     } catch (reason) {
-      setStatus('error');
+      updateLiveStatus('error');
       setError(reason instanceof Error ? reason.message : 'Could not start Gemini Live');
       live.current?.close();
       await microphone.current.stop();
@@ -86,11 +152,16 @@ export function App() {
   };
 
   const disconnect = async () => {
+    clearThinkingTimer();
+    userActiveRef.current = false;
     live.current?.endAudioStream();
     live.current?.close();
     await microphone.current.stop();
     playback.current?.interrupt();
-    setStatus('idle');
+    setInterruptKey((value) => value + 1);
+    setPerformanceCue(null);
+    setCharacterMode('idle');
+    updateLiveStatus('idle');
   };
 
   const submitText = (event: FormEvent) => {
@@ -98,6 +169,7 @@ export function App() {
     if (!connected || !text.trim()) return;
     live.current?.sendText(text);
     setInputTranscript(text.trim());
+    setCharacterMode('thinking');
     setText('');
   };
 
@@ -128,6 +200,9 @@ export function App() {
             emotion={emotion}
             mouth={mouth}
             speaking={speaking}
+            mode={characterMode}
+            performanceCue={performanceCue}
+            interruptKey={interruptKey}
           />
         </div>
       </section>
@@ -156,6 +231,12 @@ export function App() {
           ))}
         </div>
 
+        <div className="performance-readout" aria-live="polite">
+          <span>Performance</span>
+          <strong>{characterMode}</strong>
+          <em>{performanceCue ? `${performanceCue.affect} · ${performanceCue.gesture}` : 'local autonomous acting'}</em>
+        </div>
+
         <label className="section-label">Gemini Live</label>
         {!connected ? (
           <button className="primary" disabled={status === 'connecting'} onClick={() => void connect()}>
@@ -176,7 +257,7 @@ export function App() {
         </form>
 
         <div className="meter" aria-hidden="true"><span style={{ width: `${Math.round(mouth.energy * 100)}%` }} /></div>
-        <p className="hint">Each character owns its art, motion, framing and Gemini persona. Shared audio and Live infrastructure stays reusable.</p>
+        <p className="hint">Gemini chooses semantic intent. PixiLive locally handles acting, timing, gesture variation, listening behavior and interruption.</p>
         {error && <p className="error">{error}</p>}
       </aside>
     </main>
