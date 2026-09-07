@@ -42,19 +42,33 @@ jobs:
           npm install --no-save --no-audit --no-fund playwright@latest
           npx playwright install --with-deps chromium
 
-      - name: Start visual test server
+      - name: Start app and viseme harness servers
         run: |
-          npx vite --host 127.0.0.1 --port 4173 > /tmp/pixilive-visual.log 2>&1 &
-          for attempt in {1..30}; do
-            if curl --fail --silent http://127.0.0.1:4173 > /dev/null; then
-              exit 0
+          npx vite preview --host 127.0.0.1 --port 4173 > /tmp/pixilive-preview.log 2>&1 &
+          npx vite --host 127.0.0.1 --port 4174 > /tmp/pixilive-harness.log 2>&1 &
+
+          for port in 4173 4174; do
+            ready=0
+            for attempt in {1..30}; do
+              if curl --fail --silent http://127.0.0.1:$port > /dev/null; then
+                ready=1
+                break
+              fi
+              sleep 1
+            done
+
+            if [ "$ready" -ne 1 ]; then
+              echo "Server on port $port did not become ready"
+              cat /tmp/pixilive-preview.log || true
+              cat /tmp/pixilive-harness.log || true
+              exit 1
             fi
-            sleep 1
           done
-          cat /tmp/pixilive-visual.log
-          exit 1
 
       - name: Capture registered characters and visemes
+        env:
+          PIXILIVE_PREVIEW_URL: http://127.0.0.1:4173
+          PIXILIVE_VISUAL_HARNESS_URL: http://127.0.0.1:4174
         run: node scripts/capture-characters.mjs
 
       - name: Upload visual artifacts
