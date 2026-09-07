@@ -1,4 +1,4 @@
-import { MiloCharacter } from './MiloCharacter';
+import { MiloVisemeCharacter } from './MiloVisemeCharacter';
 import { NovaCharacter } from './NovaCharacter';
 import type { CharacterDefinition } from './runtime';
 
@@ -31,7 +31,7 @@ export const characterRegistry = [
       alphaMin: 0.025,
       alphaMax: 0.125,
     },
-    create: () => new MiloCharacter(),
+    create: () => new MiloVisemeCharacter(),
   },
   {
     id: 'nova',

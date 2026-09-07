@@ -7,7 +7,7 @@ import { CharacterStage } from './components/CharacterStage';
 import { GeminiLiveClient } from './live/GeminiLiveClient';
 import type { LiveStatus } from './live/types';
 
-const restingMouth: MouthPose = { open: 0.045, width: 0.37, round: 0.08, energy: 0 };
+const restingMouth: MouthPose = { open: 0.045, width: 0.37, round: 0.08, energy: 0, viseme: 'REST' };
 
 export function App() {
   const [characterId, setCharacterId] = useState(DEFAULT_CHARACTER_ID);
@@ -36,7 +36,10 @@ export function App() {
       onStatus: setStatus,
       onAudio: (audio) => void playback.current?.enqueue(audio),
       onInputTranscript: setInputTranscript,
-      onOutputTranscript: setOutputTranscript,
+      onOutputTranscript: (transcript) => {
+        setOutputTranscript(transcript);
+        playback.current?.pushTranscript(transcript);
+      },
       onInterrupted: () => playback.current?.interrupt(),
       onError: setError,
     });
