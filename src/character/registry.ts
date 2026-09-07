@@ -1,5 +1,5 @@
+import { DirectedMiloCharacter } from './DirectedMiloCharacter';
 import { DirectedNovaCharacter } from './DirectedNovaCharacter';
-import { MiloVisemeCharacter } from './MiloVisemeCharacter';
 import type { CharacterDefinition } from './runtime';
 
 const commonEmotions = ['calm', 'happy', 'curious', 'excited'] as const;
@@ -31,7 +31,7 @@ export const characterRegistry = [
       alphaMin: 0.025,
       alphaMax: 0.125,
     },
-    create: () => new MiloVisemeCharacter(),
+    create: () => new DirectedMiloCharacter(),
   },
   {
     id: 'nova',
