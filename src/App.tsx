@@ -6,7 +6,7 @@ import { CharacterStage } from './components/CharacterStage';
 import { GeminiLiveClient } from './live/GeminiLiveClient';
 import type { LiveStatus } from './live/types';
 
-const restingMouth: MouthPose = { open: 0.05, width: 0.35, round: 0.12, energy: 0 };
+const restingMouth: MouthPose = { open: 0.045, width: 0.37, round: 0.08, energy: 0 };
 const emotions: Emotion[] = ['calm', 'happy', 'curious', 'excited'];
 
 export function App() {
@@ -42,7 +42,10 @@ export function App() {
 
   const connected = status === 'listening' || status === 'speaking';
   const speaking = status === 'speaking' || mouth.energy > 0.015;
-  const statusLabel = useMemo(() => ({ idle: 'offline', connecting: 'connecting', listening: 'listening', speaking: 'speaking', error: 'error' })[status], [status]);
+  const statusLabel = useMemo(
+    () => ({ idle: 'offline', connecting: 'connecting', listening: 'listening', speaking: 'speaking', error: 'error' })[status],
+    [status],
+  );
 
   useEffect(() => {
     return () => {
@@ -93,18 +96,18 @@ export function App() {
 
       <section className="hero">
         <div className="copy">
-          <span className="eyebrow"><i /> live procedural character</span>
-          <h1>Meet Nova.<span>Now she can talk back.</span></h1>
-          <p>Custom PixiJS animation, low-latency Gemini Live audio, ephemeral browser auth, and a character rig we fully control.</p>
+          <span className="eyebrow"><i /> 100% procedural character</span>
+          <h1>Meet Milo.<span>Drawn entirely in code.</span></h1>
+          <p>A monochrome PixiJS character with a fully controllable face, live speech motion, gaze, emotion and secondary animation — no character image assets.</p>
           <div className="transcript" aria-live="polite">
             {inputTranscript && <p><b>You</b>{inputTranscript}</p>}
-            {outputTranscript && <p><b>Nova</b>{outputTranscript}</p>}
+            {outputTranscript && <p><b>Milo</b>{outputTranscript}</p>}
           </div>
         </div>
 
         <div className="stage-wrap">
           <CharacterStage emotion={emotion} mouth={mouth} speaking={speaking} reactionNonce={reactionNonce} />
-          <button className="tap-reaction" onClick={() => setReactionNonce((value) => value + 1)} aria-label="Make Nova react" />
+          <button className="tap-reaction" onClick={() => setReactionNonce((value) => value + 1)} aria-label="Make Milo react" />
         </div>
       </section>
 
@@ -131,12 +134,12 @@ export function App() {
         )}
 
         <form className="text-turn" onSubmit={submitText}>
-          <input value={text} onChange={(event: ChangeEvent<HTMLInputElement>) => setText(event.target.value)} placeholder={connected ? 'Or type to Nova…' : 'Connect to send text'} disabled={!connected} />
+          <input value={text} onChange={(event: ChangeEvent<HTMLInputElement>) => setText(event.target.value)} placeholder={connected ? 'Or type to Milo…' : 'Connect to send text'} disabled={!connected} />
           <button type="submit" disabled={!connected || !text.trim()}>Send</button>
         </form>
 
         <div className="meter" aria-hidden="true"><span style={{ width: `${Math.round(mouth.energy * 100)}%` }} /></div>
-        <p className="hint">Audio goes browser → Gemini Live with a short-lived token. Your long-lived key stays inside the Cloudflare Worker.</p>
+        <p className="hint">Audio goes browser → Gemini Live with a short-lived token. Your long-lived key stays inside the Cloudflare Pages Function.</p>
         {error && <p className="error">{error}</p>}
       </aside>
     </main>
