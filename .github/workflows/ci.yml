@@ -42,19 +42,19 @@ jobs:
           npm install --no-save --no-audit --no-fund playwright@latest
           npx playwright install --with-deps chromium
 
-      - name: Start production preview
+      - name: Start visual test server
         run: |
-          npx vite preview --host 127.0.0.1 --port 4173 > /tmp/pixilive-preview.log 2>&1 &
+          npx vite --host 127.0.0.1 --port 4173 > /tmp/pixilive-visual.log 2>&1 &
           for attempt in {1..30}; do
             if curl --fail --silent http://127.0.0.1:4173 > /dev/null; then
               exit 0
             fi
             sleep 1
           done
-          cat /tmp/pixilive-preview.log
+          cat /tmp/pixilive-visual.log
           exit 1
 
-      - name: Capture registered characters
+      - name: Capture registered characters and visemes
         run: node scripts/capture-characters.mjs
 
       - name: Upload visual artifacts
