@@ -42,7 +42,6 @@ export class MiloCharacter {
   private readonly fringe = new Container();
   private readonly armBack = new Container();
   private readonly armFront = new Container();
-  private readonly scarf = new Container();
   private readonly mouth = new Graphics();
   private readonly cheekLeft = new Graphics();
   private readonly cheekRight = new Graphics();
@@ -72,7 +71,7 @@ export class MiloCharacter {
 
   constructor() {
     this.view.addChild(this.root);
-    this.shadow = new Graphics().ellipse(0, 237, 111, 17).fill({ color: C.paper, alpha: 0.075 });
+    this.shadow = new Graphics().ellipse(0, 240, 106, 16).fill({ color: C.paper, alpha: 0.07 });
     this.root.addChild(this.shadow);
     this.buildBody();
     this.buildHead();
@@ -138,11 +137,11 @@ export class MiloCharacter {
     this.root.scale.set(1 + this.reaction * 0.012);
     this.shadow.scale.x = 1 - drift * 0.015 - this.reaction * 0.03;
 
-    this.body.y = 88 + breathe * 1.5;
-    this.body.scale.y = 1 + breathe * 0.008;
-    this.shoulders.rotation = Math.sin(this.time * 0.9) * 0.004;
-    this.armBack.rotation = 0.018 + Math.sin(this.time * 0.78) * 0.006 - this.reaction * 0.018;
-    this.armFront.rotation = -0.014 - Math.sin(this.time * 0.82 + 0.7) * 0.006 + this.reaction * 0.014;
+    this.body.y = 92 + breathe * 1.3;
+    this.body.scale.y = 1 + breathe * 0.007;
+    this.shoulders.rotation = Math.sin(this.time * 0.9) * 0.003;
+    this.armBack.rotation = 0.01 + Math.sin(this.time * 0.78) * 0.004 - this.reaction * 0.012;
+    this.armFront.rotation = -0.008 - Math.sin(this.time * 0.82 + 0.7) * 0.004 + this.reaction * 0.01;
 
     this.head.position.set(this.gaze.x * 2.2, -57 + this.gaze.y * 1.4 - this.reaction * 2.5);
     this.head.rotation = mood.tilt + Math.sin(this.time * 0.72) * 0.01 + this.gaze.x * 0.019 - this.gaze.y * 0.005;
@@ -151,7 +150,6 @@ export class MiloCharacter {
     this.fringeLag = damp(this.fringeLag, fringeTarget, 5.2, dt);
     this.fringe.rotation = this.fringeLag + Math.sin(this.time * 1.15) * 0.006;
     this.hair.rotation = Math.sin(this.time * 0.65) * 0.004 - this.gaze.x * 0.004;
-    this.scarf.rotation = -this.head.rotation * 0.18 + Math.sin(this.time * 0.9) * 0.004;
 
     const eyeScale = mood.eye * this.blink;
     this.eyeLeft.root.scale.y = eyeScale;
@@ -173,69 +171,94 @@ export class MiloCharacter {
   }
 
   private buildBody() {
-    this.body.y = 88;
+    this.body.y = 92;
     this.root.addChild(this.body);
 
+    const neck = new Graphics()
+      .moveTo(-15, -53)
+      .bezierCurveTo(-15, -38, -13, -25, -20, -10)
+      .bezierCurveTo(-9, -3, 9, -3, 20, -10)
+      .bezierCurveTo(13, -25, 15, -38, 15, -53)
+      .closePath()
+      .fill(C.paper)
+      .stroke({ width: 3.5, color: C.ink, join: 'round' });
+
     const torso = new Graphics()
-      .moveTo(-72, -6)
-      .bezierCurveTo(-88, 20, -92, 92, -82, 171)
-      .bezierCurveTo(-48, 188, 49, 188, 82, 171)
-      .bezierCurveTo(92, 92, 88, 20, 72, -6)
-      .bezierCurveTo(48, -24, -48, -24, -72, -6)
+      .moveTo(-61, -4)
+      .bezierCurveTo(-78, 4, -87, 29, -89, 62)
+      .bezierCurveTo(-92, 108, -88, 149, -81, 174)
+      .bezierCurveTo(-46, 190, 46, 190, 81, 174)
+      .bezierCurveTo(88, 149, 92, 108, 89, 62)
+      .bezierCurveTo(87, 29, 78, 4, 61, -4)
+      .bezierCurveTo(38, -17, -38, -17, -61, -4)
       .closePath()
       .fill(C.ink)
       .stroke({ width: 4, color: C.paper, alpha: 0.94, join: 'round' });
 
     const collar = new Graphics()
-      .moveTo(-25, -13)
-      .bezierCurveTo(-16, 4, -8, 14, 0, 21)
-      .bezierCurveTo(8, 14, 16, 4, 25, -13)
-      .stroke({ width: 3, color: C.paper, alpha: 0.6, cap: 'round' });
+      .moveTo(-34, -8)
+      .bezierCurveTo(-24, -5, -13, -1, 0, 16)
+      .bezierCurveTo(13, -1, 24, -5, 34, -8)
+      .stroke({ width: 3, color: C.paper, alpha: 0.68, cap: 'round', join: 'round' })
+      .moveTo(-12, -4)
+      .bezierCurveTo(-7, 5, -3, 10, 0, 16)
+      .bezierCurveTo(4, 10, 8, 5, 13, -4)
+      .stroke({ width: 2, color: C.paper, alpha: 0.28, cap: 'round' });
 
     const hem = new Graphics()
       .moveTo(-62, 160)
       .bezierCurveTo(-28, 168, 30, 168, 63, 160)
-      .stroke({ width: 2, color: C.paper, alpha: 0.36, cap: 'round' });
+      .stroke({ width: 2, color: C.paper, alpha: 0.32, cap: 'round' });
 
-    this.body.addChild(torso, collar, hem);
-    this.shoulders.y = 16;
+    this.body.addChild(neck, torso, collar, hem);
+    this.shoulders.y = 10;
     this.body.addChild(this.shoulders);
 
-    this.armBack.position.set(-28, 48);
-    this.armBack.pivot.set(-22, 0);
+    this.armBack.position.set(-58, 21);
+    this.armBack.pivot.set(0, 0);
     this.armBack.addChild(
       new Graphics()
-        .moveTo(-60, -8)
-        .bezierCurveTo(-73, 11, -68, 37, -50, 50)
-        .lineTo(43, 75)
-        .bezierCurveTo(56, 79, 68, 67, 63, 53)
-        .lineTo(56, 34)
-        .bezierCurveTo(51, 22, 37, 15, 24, 19)
-        .lineTo(-37, 33)
-        .bezierCurveTo(-46, 15, -51, 1, -60, -8)
+        .moveTo(0, 0)
+        .bezierCurveTo(-12, 18, -16, 43, -12, 63)
+        .bezierCurveTo(-8, 77, 2, 84, 16, 84)
+        .lineTo(78, 76)
+        .bezierCurveTo(90, 75, 97, 66, 94, 56)
+        .bezierCurveTo(91, 46, 81, 41, 70, 44)
+        .lineTo(12, 53)
+        .bezierCurveTo(11, 37, 17, 20, 25, 11)
+        .bezierCurveTo(18, 5, 9, 1, 0, 0)
         .closePath()
         .fill(C.paper)
         .stroke({ width: 4, color: C.ink, join: 'round' }),
+      new Graphics()
+        .moveTo(59, 47)
+        .bezierCurveTo(65, 54, 69, 63, 69, 73)
+        .stroke({ width: 2, color: C.ink, alpha: 0.45, cap: 'round' }),
     );
-    this.armBack.addChild(this.makeFingerLines(26, 28, false));
+    this.armBack.addChild(this.makeFingerLines(76, 48, false));
 
-    this.armFront.position.set(23, 69);
-    this.armFront.pivot.set(8, 0);
+    this.armFront.position.set(58, 31);
+    this.armFront.pivot.set(0, 0);
     this.armFront.addChild(
       new Graphics()
-        .moveTo(58, -15)
-        .bezierCurveTo(71, 5, 67, 30, 48, 42)
-        .lineTo(-51, 59)
-        .bezierCurveTo(-66, 62, -77, 49, -72, 35)
-        .lineTo(-65, 17)
-        .bezierCurveTo(-60, 5, -45, -3, -31, 1)
-        .lineTo(38, 18)
-        .bezierCurveTo(44, 4, 49, -7, 58, -15)
+        .moveTo(0, 0)
+        .bezierCurveTo(13, 16, 17, 42, 13, 61)
+        .bezierCurveTo(9, 78, -3, 88, -18, 89)
+        .lineTo(-83, 89)
+        .bezierCurveTo(-96, 89, -104, 80, -103, 69)
+        .bezierCurveTo(-102, 58, -93, 49, -82, 48)
+        .lineTo(-13, 55)
+        .bezierCurveTo(-12, 38, -17, 20, -25, 10)
+        .bezierCurveTo(-17, 4, -8, 1, 0, 0)
         .closePath()
         .fill(C.paper)
         .stroke({ width: 4, color: C.ink, join: 'round' }),
+      new Graphics()
+        .moveTo(-69, 51)
+        .bezierCurveTo(-75, 60, -77, 70, -75, 83)
+        .stroke({ width: 2, color: C.ink, alpha: 0.45, cap: 'round' }),
     );
-    this.armFront.addChild(this.makeFingerLines(-36, 8, true));
+    this.armFront.addChild(this.makeFingerLines(-81, 51, true));
 
     this.shoulders.addChild(this.armBack, this.armFront);
   }
@@ -243,27 +266,6 @@ export class MiloCharacter {
   private buildHead() {
     this.head.y = -57;
     this.root.addChild(this.head);
-
-    this.scarf.position.set(2, 99);
-    this.scarf.addChild(
-      new Graphics()
-        .moveTo(-29, -9)
-        .bezierCurveTo(-25, 10, -16, 24, 0, 31)
-        .bezierCurveTo(16, 24, 25, 10, 29, -9)
-        .bezierCurveTo(15, -1, -15, -1, -29, -9)
-        .closePath()
-        .fill(C.paper)
-        .stroke({ width: 4, color: C.ink, join: 'round' }),
-      new Graphics()
-        .moveTo(5, 22)
-        .lineTo(27, 42)
-        .bezierCurveTo(32, 48, 28, 53, 22, 49)
-        .lineTo(3, 31)
-        .closePath()
-        .fill(C.paper)
-        .stroke({ width: 3, color: C.ink, join: 'round' }),
-    );
-    this.head.addChild(this.scarf);
 
     const ears = new Graphics()
       .ellipse(-82, 7, 16, 22)
@@ -372,10 +374,11 @@ export class MiloCharacter {
     const hand = new Graphics();
     const s = mirror ? -1 : 1;
     hand
-      .moveTo(x - 14 * s, y + 2).bezierCurveTo(x - 7 * s, y - 9, x + 1 * s, y - 8, x + 5 * s, y + 1)
-      .moveTo(x - 7 * s, y + 4).bezierCurveTo(x - 1 * s, y - 7, x + 7 * s, y - 7, x + 10 * s, y + 2)
-      .moveTo(x, y + 7).bezierCurveTo(x + 5 * s, y - 2, x + 12 * s, y - 1, x + 13 * s, y + 7)
-      .stroke({ width: 2.5, color: C.ink, cap: 'round' });
+      .moveTo(x - 10 * s, y + 2)
+      .bezierCurveTo(x - 6 * s, y - 6, x - 1 * s, y - 6, x + 2 * s, y)
+      .moveTo(x - 3 * s, y + 4)
+      .bezierCurveTo(x + 1 * s, y - 4, x + 6 * s, y - 3, x + 8 * s, y + 2)
+      .stroke({ width: 2.2, color: C.ink, cap: 'round' });
     return hand;
   }
 
