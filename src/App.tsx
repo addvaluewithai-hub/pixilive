@@ -18,7 +18,6 @@ export function App() {
   const [outputTranscript, setOutputTranscript] = useState('');
   const [error, setError] = useState('');
   const [text, setText] = useState('');
-  const [reactionNonce, setReactionNonce] = useState(0);
   const microphone = useRef(new MicrophonePcmStream());
   const playback = useRef<PcmPlaybackQueue | null>(null);
   const live = useRef<GeminiLiveClient | null>(null);
@@ -126,12 +125,6 @@ export function App() {
             emotion={emotion}
             mouth={mouth}
             speaking={speaking}
-            reactionNonce={reactionNonce}
-          />
-          <button
-            className="tap-reaction"
-            onClick={() => setReactionNonce((value) => value + 1)}
-            aria-label={`Make ${character.name} react`}
           />
         </div>
       </section>

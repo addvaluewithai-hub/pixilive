@@ -8,10 +8,9 @@ interface CharacterStageProps {
   emotion: Emotion;
   mouth: MouthPose;
   speaking: boolean;
-  reactionNonce: number;
 }
 
-export function CharacterStage({ character, emotion, mouth, speaking, reactionNonce }: CharacterStageProps) {
+export function CharacterStage({ character, emotion, mouth, speaking }: CharacterStageProps) {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const runtimeRef = useRef<CharacterRuntime | null>(null);
 
@@ -122,9 +121,6 @@ export function CharacterStage({ character, emotion, mouth, speaking, reactionNo
     if (speaking) runtimeRef.current?.setMouth(mouth, true);
     else runtimeRef.current?.settleMouth();
   }, [character, mouth, speaking]);
-  useEffect(() => {
-    if (reactionNonce > 0) runtimeRef.current?.react();
-  }, [character, reactionNonce]);
 
   return <div className="character-stage" ref={hostRef} aria-label={`${character.name} animated character`} />;
 }
