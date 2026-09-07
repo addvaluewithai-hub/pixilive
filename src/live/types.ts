@@ -5,6 +5,7 @@ export interface LiveCallbacks {
   onAudio: (base64Pcm16: string) => void;
   onInputTranscript: (text: string) => void;
   onOutputTranscript: (text: string) => void;
+  onTurnComplete: () => void;
   onInterrupted: () => void;
   onError: (message: string) => void;
 }
