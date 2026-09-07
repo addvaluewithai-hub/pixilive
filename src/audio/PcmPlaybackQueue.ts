@@ -1,4 +1,5 @@
 import type { MouthPose } from '../character/types';
+import { VisemeAnalyzer } from './VisemeAnalyzer';
 
 const base64ToInt16 = (base64: string) => {
   const binary = atob(base64);
@@ -7,39 +8,28 @@ const base64ToInt16 = (base64: string) => {
   return new Int16Array(bytes.buffer);
 };
 
-const inferMouthPose = (samples: Int16Array): MouthPose => {
-  if (samples.length === 0) return { open: 0.05, width: 0.35, round: 0.12, energy: 0 };
-  let energy = 0;
-  let zeroCrossings = 0;
-  let previous = samples[0];
-  for (const sample of samples) {
-    const normalized = sample / 32768;
-    energy += normalized * normalized;
-    if ((sample >= 0) !== (previous >= 0)) zeroCrossings += 1;
-    previous = sample;
-  }
-  const rms = Math.sqrt(energy / samples.length);
-  const voice = Math.min(1, Math.max(0, (rms - 0.006) * 7));
-  const brightness = Math.min(1, zeroCrossings / Math.max(1, samples.length * 0.22));
-  return {
-    open: 0.05 + voice * 0.82,
-    width: Math.min(1, 0.3 + brightness * 0.42 + voice * 0.24),
-    round: Math.min(1, 0.1 + (1 - brightness) * voice * 0.62),
-    energy: voice,
-  };
-};
-
 export class PcmPlaybackQueue {
   private context: AudioContext | null = null;
   private nextStart = 0;
   private active = new Set<AudioBufferSourceNode>();
   private poseTimers = new Set<number>();
+  private readonly analyzer = new VisemeAnalyzer();
+  private turnCompletePending = false;
 
   constructor(private readonly onMouthPose: (pose: MouthPose) => void, private readonly onIdle: () => void) {}
 
+  pushTranscript(text: string) {
+    this.analyzer.pushTranscript(text);
+  }
+
+  finishTurn() {
+    this.turnCompletePending = true;
+    if (this.active.size === 0) this.finishVisualTurn();
+  }
+
   async enqueue(base64: string, sampleRate = 24_000) {
     const samples = base64ToInt16(base64);
-    const pose = inferMouthPose(samples);
+    const poses = this.analyzer.analyze(samples, sampleRate);
     if (!this.context) this.context = new AudioContext({ sampleRate, latencyHint: 'interactive' });
     if (this.context.state === 'suspended') await this.context.resume();
 
@@ -51,15 +41,21 @@ export class PcmPlaybackQueue {
     source.buffer = buffer;
     source.connect(this.context.destination);
     this.active.add(source);
+    this.turnCompletePending = false;
 
     const now = this.context.currentTime;
-    const startAt = Math.max(now + 0.015, this.nextStart);
-    const poseDelayMs = Math.max(0, (startAt - now) * 1000);
-    const timer = window.setTimeout(() => {
-      this.poseTimers.delete(timer);
-      this.onMouthPose(pose);
-    }, poseDelayMs);
-    this.poseTimers.add(timer);
+    // A small look-ahead gives the viseme analyzer and output transcription a chance
+    // to stay in front of playback without making the conversation feel sluggish.
+    const startAt = Math.max(now + (this.nextStart === 0 ? 0.075 : 0.012), this.nextStart);
+
+    for (const { offsetSeconds, pose } of poses) {
+      const delayMs = Math.max(0, (startAt + offsetSeconds - now) * 1000);
+      const timer = window.setTimeout(() => {
+        this.poseTimers.delete(timer);
+        this.onMouthPose(pose);
+      }, delayMs);
+      this.poseTimers.add(timer);
+    }
 
     source.start(startAt);
     this.nextStart = startAt + buffer.duration;
@@ -68,6 +64,7 @@ export class PcmPlaybackQueue {
       if (this.active.size === 0) {
         this.nextStart = 0;
         this.onIdle();
+        if (this.turnCompletePending) this.finishVisualTurn();
       }
     };
   }
@@ -84,6 +81,8 @@ export class PcmPlaybackQueue {
     }
     this.active.clear();
     this.nextStart = 0;
+    this.turnCompletePending = false;
+    this.analyzer.resetTranscript();
     this.onIdle();
   }
 
@@ -91,5 +90,11 @@ export class PcmPlaybackQueue {
     this.interrupt();
     await this.context?.close();
     this.context = null;
+  }
+
+  private finishVisualTurn() {
+    this.turnCompletePending = false;
+    this.analyzer.resetTranscript();
+    this.onIdle();
   }
 }
