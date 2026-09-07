@@ -1,0 +1,10 @@
+export type LiveStatus = 'idle' | 'connecting' | 'listening' | 'speaking' | 'error';
+
+export interface LiveCallbacks {
+  onStatus: (status: LiveStatus) => void;
+  onAudio: (base64Pcm16: string) => void;
+  onInputTranscript: (text: string) => void;
+  onOutputTranscript: (text: string) => void;
+  onInterrupted: () => void;
+  onError: (message: string) => void;
+}
