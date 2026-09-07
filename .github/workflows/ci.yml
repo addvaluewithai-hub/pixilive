@@ -16,9 +16,9 @@ concurrency:
 
 jobs:
   build:
-    name: Typecheck and build
+    name: Typecheck, build, and visual check
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
 
     steps:
       - name: Checkout
@@ -36,3 +36,31 @@ jobs:
 
       - name: Build
         run: npm run build
+
+      - name: Install Playwright Chromium
+        run: |
+          npm install --no-save --no-audit --no-fund playwright@latest
+          npx playwright install --with-deps chromium
+
+      - name: Start production preview
+        run: |
+          npx vite preview --host 127.0.0.1 --port 4173 > /tmp/pixilive-preview.log 2>&1 &
+          for attempt in {1..30}; do
+            if curl --fail --silent http://127.0.0.1:4173 > /dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          cat /tmp/pixilive-preview.log
+          exit 1
+
+      - name: Capture registered characters
+        run: node scripts/capture-characters.mjs
+
+      - name: Upload visual artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: character-screenshots-${{ github.sha }}
+          path: visual-artifacts/*.png
+          if-no-files-found: error
+          retention-days: 14
