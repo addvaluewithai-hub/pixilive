@@ -16,7 +16,6 @@ interface NovaLayers {
   earLeft: Container;
   earRight: Container;
   antenna: Container;
-  antennaGlow: { scale: { set(value: number): void } };
   browLeft: { rotation: number; y: number };
   browRight: { rotation: number; y: number };
   eyeLeft: { root: Container };
@@ -75,6 +74,7 @@ export class DirectedNovaCharacter {
   private applyPerformance(state: PerformanceState) {
     const w = state.intensity * 0.7 + 0.3;
     const envelope = state.gestureEnvelope * w;
+    this.layers.body.scale.x = 1;
 
     switch (state.affect) {
       case 'warm':
@@ -171,6 +171,6 @@ export class DirectedNovaCharacter {
 
     if (state.posture === 'lean_in' || state.posture === 'engaged') this.layers.character.scale.set(1 + 0.012 * w);
     if (state.posture === 'lean_back') this.layers.character.rotation += 0.015 * (state.gestureVariant % 2 ? -1 : 1) * w;
-    if (state.posture === 'open') this.layers.body.scale.x *= 1 + 0.012 * w;
+    if (state.posture === 'open') this.layers.body.scale.x = 1 + 0.012 * w;
   }
 }
