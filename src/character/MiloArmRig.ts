@@ -2,9 +2,6 @@ import { Container, Graphics } from 'pixi.js';
 import type { PerformanceState } from './performance';
 
 const C = { paper: 0xf7f5ef, ink: 0x0b0c0e };
-const UPPER_LENGTH = 60;
-const FOREARM_LENGTH = 106;
-
 const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
 const lerp = (from: number, to: number, amount: number) => from + (to - from) * amount;
 const damp = (from: number, to: number, speed: number, dt: number) =>
@@ -14,12 +11,14 @@ const dampAngle = (from: number, to: number, speed: number, dt: number) =>
   from + normalizeAngle(to - from) * (1 - Math.exp(-speed * dt));
 
 type HandPose = 'folded' | 'relaxed' | 'open' | 'emphasis';
-type ArmSide = -1 | 1; // -1 = left, +1 = right
+type ArmSide = -1 | 1;
 
-interface HandTarget {
-  x: number;
-  y: number;
-  rotation: number;
+interface JointPose {
+  elbowX: number;
+  elbowY: number;
+  handX: number;
+  handY: number;
+  handRotation: number;
   hand: HandPose;
 }
 
@@ -28,33 +27,38 @@ interface RigArm {
   shoulderX: number;
   shoulderY: number;
   root: Container;
-  forearm: Container;
+  upper: Graphics;
+  forearm: Graphics;
   hand: Graphics;
-  upperRotation: number;
-  forearmRotation: number;
+  elbowX: number;
+  elbowY: number;
+  handX: number;
+  handY: number;
   handRotation: number;
   handPose: HandPose;
 }
 
-const restTarget = (side: ArmSide): HandTarget =>
+const restPose = (side: ArmSide): JointPose =>
   side === -1
-    ? { x: 47, y: 67, rotation: -0.06, hand: 'folded' }
-    : { x: -47, y: 70, rotation: 0.06, hand: 'folded' };
+    ? { elbowX: -79, elbowY: 58, handX: 47, handY: 66, handRotation: -0.04, hand: 'folded' }
+    : { elbowX: 79, elbowY: 60, handX: -47, handY: 70, handRotation: 0.04, hand: 'folded' };
 
-const blendTarget = (from: HandTarget, to: HandTarget, amount: number): HandTarget => ({
-  x: lerp(from.x, to.x, amount),
-  y: lerp(from.y, to.y, amount),
-  rotation: lerp(from.rotation, to.rotation, amount),
-  hand: amount > 0.2 ? to.hand : from.hand,
+const blendPose = (from: JointPose, to: JointPose, amount: number): JointPose => ({
+  elbowX: lerp(from.elbowX, to.elbowX, amount),
+  elbowY: lerp(from.elbowY, to.elbowY, amount),
+  handX: lerp(from.handX, to.handX, amount),
+  handY: lerp(from.handY, to.handY, amount),
+  handRotation: lerp(from.handRotation, to.handRotation, amount),
+  hand: amount > 0.18 ? to.hand : from.hand,
 });
 
 /**
- * A real two-bone arm rig for Milo.
+ * Art-directed procedural arm rig.
  *
- * Gestures are authored as hand targets in character space. A tiny IK solver
- * derives shoulder and elbow angles every frame. That makes the poses readable
- * (hands can genuinely leave the crossed-arm silhouette) while keeping every
- * transition interruptible and naturally damped.
+ * The character director gives us meaning. This rig turns that meaning into
+ * authored shoulder/elbow/hand silhouettes and smoothly blends the joints.
+ * Unlike generic IK, the elbow is intentionally placed by the animator so every
+ * gesture reads cleanly in Milo's flat editorial drawing style.
  */
 export class MiloArmRig {
   readonly view = new Container();
@@ -66,139 +70,170 @@ export class MiloArmRig {
     this.left = this.makeArm(-58, 3, -1);
     this.right = this.makeArm(58, 5, 1);
     this.view.addChild(this.left.root, this.right.root);
-
-    // Start in the real crossed-arm pose instead of animating in from zero.
-    this.snapToTarget(this.left, restTarget(-1));
-    this.snapToTarget(this.right, restTarget(1));
+    this.snap(this.left, restPose(-1));
+    this.snap(this.right, restPose(1));
   }
 
   update(state: PerformanceState, dt: number) {
-    let left = restTarget(-1);
-    let right = restTarget(1);
-
+    let left = restPose(-1);
+    let right = restPose(1);
     const activeSide: ArmSide = state.gestureVariant % 2 === 0 ? 1 : -1;
-    const intensityGain = 0.72 + state.intensity * 0.38;
-    const action = clamp(state.gestureEnvelope * intensityGain, 0, 1);
+    const strength = clamp(state.gestureEnvelope * (0.78 + state.intensity * 0.32), 0, 1);
     const anticipation = state.gesturePhase < 0.14
       ? Math.sin((state.gesturePhase / 0.14) * Math.PI) * (0.4 + state.intensity * 0.6)
       : 0;
 
-    const activeRest = restTarget(activeSide);
-    const passiveSide: ArmSide = activeSide === 1 ? -1 : 1;
-    const passiveRest = restTarget(passiveSide);
-
-    const targetFor = (side: ArmSide, target: HandTarget) => {
-      const from = side === -1 ? left : right;
-      const blended = blendTarget(from, target, action);
-      if (side === -1) left = blended;
-      else right = blended;
+    const setActive = (pose: JointPose) => {
+      if (activeSide === -1) left = blendPose(left, pose, strength);
+      else right = blendPose(right, pose, strength);
     };
 
     switch (state.gesture) {
-      case 'explain': {
-        const target: HandTarget = {
-          x: activeSide * 121,
-          y: 20,
-          rotation: activeSide * -0.16,
+      case 'explain':
+        setActive({
+          elbowX: activeSide * 86,
+          elbowY: 55 + anticipation * 7,
+          handX: activeSide * 132,
+          handY: 34 + anticipation * 9,
+          handRotation: activeSide * -0.12,
           hand: 'open',
-        };
-        target.x -= activeSide * anticipation * 12;
-        target.y += anticipation * 9;
-        targetFor(activeSide, target);
+        });
         break;
-      }
-      case 'emphasize': {
-        const target: HandTarget = {
-          x: activeSide * 104,
-          y: 43,
-          rotation: activeSide * -0.1,
+
+      case 'emphasize':
+        setActive({
+          elbowX: activeSide * 84,
+          elbowY: 57 + anticipation * 6,
+          handX: activeSide * 111,
+          handY: 49 + anticipation * 6,
+          handRotation: activeSide * -0.08,
           hand: 'emphasis',
-        };
-        target.x -= activeSide * anticipation * 10;
-        target.y += anticipation * 7;
-        targetFor(activeSide, target);
+        });
         break;
-      }
-      case 'reassure': {
-        const leftTarget: HandTarget = { x: -92, y: 25 + anticipation * 7, rotation: 0.12, hand: 'open' };
-        const rightTarget: HandTarget = { x: 92, y: 25 + anticipation * 7, rotation: -0.12, hand: 'open' };
-        left = blendTarget(left, leftTarget, action);
-        right = blendTarget(right, rightTarget, action);
+
+      case 'reassure':
+        left = blendPose(left, {
+          elbowX: -87,
+          elbowY: 56 + anticipation * 6,
+          handX: -55,
+          handY: 79 + anticipation * 5,
+          handRotation: 0.08,
+          hand: 'open',
+        }, strength);
+        right = blendPose(right, {
+          elbowX: 87,
+          elbowY: 56 + anticipation * 6,
+          handX: 55,
+          handY: 79 + anticipation * 5,
+          handRotation: -0.08,
+          hand: 'open',
+        }, strength);
         break;
-      }
-      case 'think': {
-        const target: HandTarget = { x: 37, y: -76, rotation: -0.4, hand: 'relaxed' };
-        target.y += anticipation * 12;
-        right = blendTarget(right, target, action);
+
+      case 'think':
+        right = blendPose(right, {
+          elbowX: 88,
+          elbowY: 43,
+          handX: 44,
+          handY: -58 + anticipation * 10,
+          handRotation: -0.42,
+          hand: 'relaxed',
+        }, strength);
         break;
-      }
-      case 'celebrate': {
-        const dip = anticipation * 13;
-        left = blendTarget(left, { x: -94, y: -75 + dip, rotation: 0.18, hand: 'open' }, action);
-        right = blendTarget(right, { x: 94, y: -75 + dip, rotation: -0.18, hand: 'open' }, action);
+
+      case 'celebrate':
+        left = blendPose(left, {
+          elbowX: -91,
+          elbowY: 28 + anticipation * 12,
+          handX: -104,
+          handY: -78 + anticipation * 14,
+          handRotation: 0.12,
+          hand: 'open',
+        }, strength);
+        right = blendPose(right, {
+          elbowX: 91,
+          elbowY: 28 + anticipation * 12,
+          handX: 104,
+          handY: -78 + anticipation * 14,
+          handRotation: -0.12,
+          hand: 'open',
+        }, strength);
         break;
-      }
-      case 'shrug': {
-        const dip = anticipation * 8;
-        left = blendTarget(left, { x: -130, y: 6 + dip, rotation: -0.06, hand: 'open' }, action);
-        right = blendTarget(right, { x: 130, y: 6 + dip, rotation: 0.06, hand: 'open' }, action);
+
+      case 'shrug':
+        left = blendPose(left, {
+          elbowX: -94,
+          elbowY: 48 + anticipation * 7,
+          handX: -135,
+          handY: 18 + anticipation * 8,
+          handRotation: -0.04,
+          hand: 'open',
+        }, strength);
+        right = blendPose(right, {
+          elbowX: 94,
+          elbowY: 48 + anticipation * 7,
+          handX: 135,
+          handY: 18 + anticipation * 8,
+          handRotation: 0.04,
+          hand: 'open',
+        }, strength);
         break;
-      }
+
       case 'greet':
       case 'goodbye': {
-        const wave = Math.sin(state.gesturePhase * Math.PI * 6) * 0.17 * action;
-        right = blendTarget(
-          right,
-          { x: 108, y: -67 + anticipation * 10, rotation: -0.24 + wave, hand: 'open' },
-          action,
-        );
+        const wave = Math.sin(state.gesturePhase * Math.PI * 6) * 0.18 * strength;
+        right = blendPose(right, {
+          elbowX: 91,
+          elbowY: 38,
+          handX: 108,
+          handY: -70 + anticipation * 10,
+          handRotation: -0.18 + wave,
+          hand: 'open',
+        }, strength);
         break;
       }
+
       case 'agree':
-      case 'disagree': {
-        const target: HandTarget = {
-          x: activeSide * 94,
-          y: 42,
-          rotation: activeSide * -0.06,
+      case 'disagree':
+        setActive({
+          elbowX: activeSide * 84,
+          elbowY: 56,
+          handX: activeSide * 103,
+          handY: 44,
+          handRotation: activeSide * -0.06,
           hand: 'emphasis',
-        };
-        targetFor(activeSide, target);
+        });
         break;
-      }
+
       case 'none':
       default:
         break;
     }
 
-    // After the main semantic gesture, prosodic peaks can create small hand
-    // accents in the same gesture family. This keeps a longer spoken answer alive
-    // without asking Gemini to choreograph individual words.
-    if (state.mode === 'speaking' && state.gestureEnvelope < 0.16 && state.speechBeat > 0.02) {
-      const beatAmount = state.speechBeat * (0.14 + state.intensity * 0.14);
+    // Long spoken turns get occasional small accents in the same gesture family.
+    // The primary pose remains semantic; audio only nudges it on phrase-like peaks.
+    if (state.mode === 'speaking' && state.gestureEnvelope < 0.15 && state.speechBeat > 0.02) {
+      const beat = state.speechBeat * (0.14 + state.intensity * 0.16);
       if (state.gesture === 'explain' || state.gesture === 'emphasize' || state.gesture === 'agree' || state.gesture === 'disagree') {
-        const accent: HandTarget = {
-          x: activeSide * 91,
-          y: 49,
-          rotation: activeSide * -0.05,
+        const accent: JointPose = {
+          elbowX: activeSide * 83,
+          elbowY: 58,
+          handX: activeSide * 99,
+          handY: 49,
+          handRotation: activeSide * -0.05,
           hand: state.gesture === 'explain' ? 'open' : 'emphasis',
         };
-        if (activeSide === -1) left = blendTarget(activeRest, accent, beatAmount);
-        else right = blendTarget(activeRest, accent, beatAmount);
+        if (activeSide === -1) left = blendPose(left, accent, beat);
+        else right = blendPose(right, accent, beat);
       } else if (state.gesture === 'reassure') {
-        left = blendTarget(left, { x: -73, y: 48, rotation: 0.08, hand: 'open' }, beatAmount * 0.65);
-        right = blendTarget(right, { x: 73, y: 48, rotation: -0.08, hand: 'open' }, beatAmount * 0.65);
+        left = blendPose(left, { elbowX: -84, elbowY: 58, handX: -62, handY: 72, handRotation: 0.06, hand: 'open' }, beat * 0.7);
+        right = blendPose(right, { elbowX: 84, elbowY: 58, handX: 62, handY: 72, handRotation: -0.06, hand: 'open' }, beat * 0.7);
       }
     }
 
-    // Keep the non-active arm in front/behind in a way that makes the active
-    // gesture readable. During two-handed gestures both remain equally visible.
     const twoHanded = ['reassure', 'celebrate', 'shrug'].includes(state.gesture);
     this.left.root.zIndex = twoHanded ? 2 : activeSide === -1 ? 4 : 1;
     this.right.root.zIndex = twoHanded ? 3 : activeSide === 1 ? 4 : 1;
-
-    // Keep passive target explicit for type/readability; it also documents that
-    // one-handed gestures intentionally leave the other arm folded.
-    void passiveRest;
 
     this.updateArm(this.left, left, dt);
     this.updateArm(this.right, right, dt);
@@ -206,44 +241,23 @@ export class MiloArmRig {
 
   private makeArm(shoulderX: number, shoulderY: number, side: ArmSide): RigArm {
     const root = new Container();
-    root.position.set(shoulderX, shoulderY);
-
-    const upper = new Graphics()
-      .moveTo(-11, -3)
-      .bezierCurveTo(-14, 15, -13, 40, -10, UPPER_LENGTH - 4)
-      .bezierCurveTo(-4, UPPER_LENGTH + 3, 4, UPPER_LENGTH + 3, 10, UPPER_LENGTH - 4)
-      .bezierCurveTo(13, 39, 14, 15, 11, -3)
-      .closePath()
-      .fill(C.ink)
-      .stroke({ width: 3.1, color: C.paper, alpha: 0.92, join: 'round' });
-    root.addChild(upper);
-
-    const forearm = new Container();
-    forearm.position.set(0, UPPER_LENGTH);
-    const forearmShape = new Graphics()
-      .moveTo(-11, -3)
-      .bezierCurveTo(-13, 24, -12, FOREARM_LENGTH - 25, -9, FOREARM_LENGTH - 6)
-      .bezierCurveTo(-5, FOREARM_LENGTH + 3, 5, FOREARM_LENGTH + 3, 9, FOREARM_LENGTH - 6)
-      .bezierCurveTo(12, FOREARM_LENGTH - 25, 13, 24, 11, -3)
-      .closePath()
-      .fill(C.paper)
-      .stroke({ width: 3.2, color: C.ink, join: 'round' });
-    forearm.addChild(forearmShape);
-
+    const upper = new Graphics();
+    const forearm = new Graphics();
     const hand = new Graphics();
-    hand.position.set(0, FOREARM_LENGTH);
-    forearm.addChild(hand);
-    root.addChild(forearm);
+    root.addChild(upper, forearm, hand);
 
     const arm: RigArm = {
       side,
       shoulderX,
       shoulderY,
       root,
+      upper,
       forearm,
       hand,
-      upperRotation: 0,
-      forearmRotation: 0,
+      elbowX: shoulderX,
+      elbowY: shoulderY + 55,
+      handX: shoulderX,
+      handY: shoulderY + 90,
       handRotation: 0,
       handPose: 'folded',
     };
@@ -251,77 +265,116 @@ export class MiloArmRig {
     return arm;
   }
 
-  private snapToTarget(arm: RigArm, target: HandTarget) {
-    const solved = this.solve(arm, target);
-    arm.upperRotation = solved.upper;
-    arm.forearmRotation = solved.forearm;
-    arm.handRotation = solved.hand;
-    arm.root.rotation = solved.upper;
-    arm.forearm.rotation = solved.forearm;
-    arm.hand.rotation = solved.hand;
+  private snap(arm: RigArm, pose: JointPose) {
+    arm.elbowX = pose.elbowX;
+    arm.elbowY = pose.elbowY;
+    arm.handX = pose.handX;
+    arm.handY = pose.handY;
+    arm.handRotation = pose.handRotation;
+    arm.handPose = pose.hand;
+    this.renderArm(arm);
   }
 
-  private updateArm(arm: RigArm, target: HandTarget, dt: number) {
-    const solved = this.solve(arm, target);
-    arm.upperRotation = dampAngle(arm.upperRotation, solved.upper, 9.4, dt);
-    arm.forearmRotation = dampAngle(arm.forearmRotation, solved.forearm, 10.8, dt);
-    arm.handRotation = dampAngle(arm.handRotation, solved.hand, 12.5, dt);
-
-    arm.root.position.set(arm.shoulderX, arm.shoulderY);
-    arm.root.rotation = arm.upperRotation;
-    arm.forearm.rotation = arm.forearmRotation;
-    arm.hand.rotation = arm.handRotation;
+  private updateArm(arm: RigArm, target: JointPose, dt: number) {
+    arm.elbowX = damp(arm.elbowX, target.elbowX, 9.6, dt);
+    arm.elbowY = damp(arm.elbowY, target.elbowY, 9.6, dt);
+    arm.handX = damp(arm.handX, target.handX, 10.8, dt);
+    arm.handY = damp(arm.handY, target.handY, 10.8, dt);
+    arm.handRotation = dampAngle(arm.handRotation, target.handRotation, 12, dt);
 
     if (arm.handPose !== target.hand) {
       arm.handPose = target.hand;
       this.drawHand(arm, target.hand);
     }
+    this.renderArm(arm);
   }
 
-  private solve(arm: RigArm, target: HandTarget) {
-    let dx = target.x - arm.shoulderX;
-    let dy = target.y - arm.shoulderY;
-    const rawDistance = Math.hypot(dx, dy) || 0.001;
-    const minReach = Math.abs(FOREARM_LENGTH - UPPER_LENGTH) + 1;
-    const maxReach = FOREARM_LENGTH + UPPER_LENGTH - 1;
-    const distance = clamp(rawDistance, minReach, maxReach);
-    const scale = distance / rawDistance;
-    dx *= scale;
-    dy *= scale;
+  private renderArm(arm: RigArm) {
+    arm.upper.clear();
+    arm.forearm.clear();
 
-    const base = Math.atan2(dy, dx);
-    const shoulderCos = clamp(
-      (UPPER_LENGTH ** 2 + distance ** 2 - FOREARM_LENGTH ** 2) / (2 * UPPER_LENGTH * distance),
-      -1,
-      1,
+    this.drawSegment(
+      arm.upper,
+      arm.shoulderX,
+      arm.shoulderY,
+      arm.elbowX,
+      arm.elbowY,
+      11,
+      C.ink,
+      C.paper,
+      3.1,
     );
-    const offset = Math.acos(shoulderCos);
-    const candidates = [base + offset, base - offset];
+    this.drawSegment(
+      arm.forearm,
+      arm.elbowX,
+      arm.elbowY,
+      arm.handX,
+      arm.handY,
+      11,
+      C.paper,
+      C.ink,
+      3.2,
+    );
 
-    // Prefer the elbow solution that sits toward the outside of the body. This
-    // preserves Milo's recognizable silhouette both crossed and opened up.
-    let upperWorld = candidates[0];
-    let bestScore = -Infinity;
-    for (const candidate of candidates) {
-      const elbowX = Math.cos(candidate) * UPPER_LENGTH;
-      const elbowY = Math.sin(candidate) * UPPER_LENGTH;
-      const score = arm.side * elbowX + elbowY * 0.12;
-      if (score > bestScore) {
-        bestScore = score;
-        upperWorld = candidate;
-      }
-    }
+    arm.hand.position.set(arm.handX, arm.handY);
+    arm.hand.rotation = arm.handRotation;
+  }
 
-    const elbowX = Math.cos(upperWorld) * UPPER_LENGTH;
-    const elbowY = Math.sin(upperWorld) * UPPER_LENGTH;
-    const forearmWorld = Math.atan2(dy - elbowY, dx - elbowX);
+  private drawSegment(
+    graphics: Graphics,
+    x1: number,
+    y1: number,
+    x2: number,
+    y2: number,
+    halfWidth: number,
+    fill: number,
+    stroke: number,
+    strokeWidth: number,
+  ) {
+    const dx = x2 - x1;
+    const dy = y2 - y1;
+    const length = Math.max(1, Math.hypot(dx, dy));
+    const px = -dy / length;
+    const py = dx / length;
+    const endWidth = halfWidth * 0.9;
 
-    const upperRotation = normalizeAngle(upperWorld - Math.PI / 2);
-    const forearmRotation = normalizeAngle(forearmWorld - upperWorld);
-    const forearmXAxisWorld = forearmWorld - Math.PI / 2;
-    const handRotation = normalizeAngle(target.rotation - forearmXAxisWorld);
-
-    return { upper: upperRotation, forearm: forearmRotation, hand: handRotation };
+    graphics
+      .moveTo(x1 + px * halfWidth, y1 + py * halfWidth)
+      .bezierCurveTo(
+        x1 + dx * 0.34 + px * halfWidth,
+        y1 + dy * 0.34 + py * halfWidth,
+        x1 + dx * 0.7 + px * endWidth,
+        y1 + dy * 0.7 + py * endWidth,
+        x2 + px * endWidth,
+        y2 + py * endWidth,
+      )
+      .bezierCurveTo(
+        x2 + dx * 0.035,
+        y2 + dy * 0.035,
+        x2 - dx * 0.035,
+        y2 - dy * 0.035,
+        x2 - px * endWidth,
+        y2 - py * endWidth,
+      )
+      .bezierCurveTo(
+        x1 + dx * 0.7 - px * endWidth,
+        y1 + dy * 0.7 - py * endWidth,
+        x1 + dx * 0.34 - px * halfWidth,
+        y1 + dy * 0.34 - py * halfWidth,
+        x1 - px * halfWidth,
+        y1 - py * halfWidth,
+      )
+      .bezierCurveTo(
+        x1 - dx * 0.035,
+        y1 - dy * 0.035,
+        x1 + dx * 0.035,
+        y1 + dy * 0.035,
+        x1 + px * halfWidth,
+        y1 + py * halfWidth,
+      )
+      .closePath()
+      .fill(fill)
+      .stroke({ width: strokeWidth, color: stroke, join: 'round' });
   }
 
   private drawHand(arm: RigArm, pose: HandPose) {
