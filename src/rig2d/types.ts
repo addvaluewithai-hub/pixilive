@@ -49,8 +49,16 @@ export interface TwoBoneIKOptions {
   upper: string;
   lower: string;
   target: Vec2;
+  /** Fallback elbow branch when no continuity/pole hint is available. */
   bend?: -1 | 1;
   pole?: Vec2;
+  /**
+   * Previous or otherwise preferred elbow position. When supplied, Rig2D
+   * evaluates both legal two-bone solutions and chooses the one closest to
+   * this point. This prevents a limb from mirroring through itself while a
+   * target crosses the chain during animation.
+   */
+  preferredElbow?: Vec2;
   weight?: number;
   stretch?: number;
 }
