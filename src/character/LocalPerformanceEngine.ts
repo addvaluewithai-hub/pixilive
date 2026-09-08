@@ -77,11 +77,9 @@ const gestureFor = (affect: CharacterAffect): CharacterGesture => {
 
 /**
  * Provider-independent acting brain.
- *
- * Important separation: transcript meaning may select a *major* gesture, but
- * raw prosodic peaks never do. Prosody already drives CharacterDirector's local
- * speechBeat, which is deliberately a micro accent. This prevents long stories
- * from becoming explain/emphasize spam.
+ * Transcript meaning may select an occasional major gesture; raw prosody only
+ * drives micro movement. Explicit model tools are rare overrides and may arrive
+ * before or during playback, so they are protected briefly from local refinement.
  */
 export class LocalPerformanceEngine {
   private mode: CharacterMode = 'idle';
@@ -91,6 +89,7 @@ export class LocalPerformanceEngine {
   private speechClock = 0;
   private semanticCueCooldown = 0;
   private majorGestureCooldown = 0;
+  private toolOverrideSeconds = 0;
   private energyAverage = 0;
   private started = false;
   private lastGesture: CharacterGesture = 'none';
@@ -104,14 +103,13 @@ export class LocalPerformanceEngine {
       this.started = false;
       this.speechClock = 0;
       this.energyAverage = 0;
+      this.toolOverrideSeconds = 0;
     }
     if (mode === 'listening') this.emitListeningPresence();
   }
 
   pushOutputTranscript(text: string) {
     this.outputText = mergeIncrementalText(this.outputText, text);
-    // Classify the newest semantic window, not the entire turn forever. A question
-    // at the beginning of a 30-second story must not keep the whole story curious.
     const recent = this.outputText.slice(-220);
     const next = classifySemantic(recent);
     if (next.confidence >= 0.44 || this.semantic.confidence < 0.44) this.semantic = next;
@@ -127,11 +125,10 @@ export class LocalPerformanceEngine {
     this.started = true;
     this.semanticCueCooldown = 0.5;
     this.majorGestureCooldown = 1.1;
+    this.toolOverrideSeconds = 0;
 
     if (toolCue) {
-      this.lastGesture = toolCue.gesture;
-      this.majorGestureCooldown = toolCue.gesture === 'none' ? 1.5 : 4.5;
-      this.callbacks.onCue(toolCue, 'tool', 'tool cue synchronized to playback start');
+      this.applyToolCue(toolCue, 'tool cue synchronized to playback start');
       return;
     }
 
@@ -145,6 +142,14 @@ export class LocalPerformanceEngine {
     }, 'local', 'speech-start semantic baseline');
   }
 
+  /** Execute a rare explicit stage direction even if Gemini sends it after audio starts. */
+  applyToolCue(cue: PerformanceCue, reason = 'tool cue arrived during playback') {
+    this.lastGesture = cue.gesture;
+    this.majorGestureCooldown = cue.gesture === 'none' ? 1.5 : 4.5;
+    this.toolOverrideSeconds = cue.gesture === 'none' ? 1.2 : 2.8;
+    this.callbacks.onCue(cue, 'tool', reason);
+  }
+
   endSpeech() {
     this.started = false;
     this.speechClock = 0;
@@ -152,6 +157,7 @@ export class LocalPerformanceEngine {
     this.semantic = { affect: 'neutral', confidence: 0, question: false };
     this.majorGestureCooldown = 0;
     this.semanticCueCooldown = 0;
+    this.toolOverrideSeconds = 0;
   }
 
   updateSpeech(dynamics: SpeechDynamics, deltaSeconds = 0.03) {
@@ -159,7 +165,12 @@ export class LocalPerformanceEngine {
     this.speechClock += deltaSeconds;
     this.semanticCueCooldown = Math.max(0, this.semanticCueCooldown - deltaSeconds);
     this.majorGestureCooldown = Math.max(0, this.majorGestureCooldown - deltaSeconds);
+    this.toolOverrideSeconds = Math.max(0, this.toolOverrideSeconds - deltaSeconds);
     this.energyAverage += (dynamics.energy - this.energyAverage) * 0.12;
+
+    // Do not let an automatic transcript refinement cancel a deliberate tool
+    // gesture halfway through its readable hold/settle phase.
+    if (this.toolOverrideSeconds > 0) return;
 
     if (this.semanticCueCooldown <= 0 && this.semantic.confidence > 0.58) {
       const semanticGesture = this.majorGestureCooldown <= 0 ? gestureFor(this.semantic.affect) : 'none';
@@ -179,8 +190,6 @@ export class LocalPerformanceEngine {
       this.semanticCueCooldown = 1.8;
     }
 
-    // No full-body cue is emitted from raw onset/energy/pitch. Those values are
-    // intentionally consumed only by playback-synchronous micro motion.
     void dynamics;
   }
 
