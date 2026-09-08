@@ -1,5 +1,5 @@
 import { Container, Graphics } from 'pixi.js';
-import { Rig2D, SpringVec2, clamp, drawChainSkin, drawTaperedTube, type Vec2 } from '../rig2d';
+import { Rig2D, SpringVec2, clamp, drawChainSkin, type Vec2 } from '../rig2d';
 import type { CharacterInteractionCapabilities, CharacterInteractionController, ReachOptions } from './runtime';
 import type { CharacterGesture, PerformanceState } from './performance';
 
@@ -19,8 +19,6 @@ interface ManualReach {
   pose: HandPose;
 }
 
-// These are wrist/end-effector targets, not authored elbow coordinates. The
-// elbow is always solved by Rig2D from fixed limb lengths.
 const REST: Record<Side, HandTarget> = {
   left: { position: { x: 42, y: 70 }, rotation: -0.08, pose: 'folded' },
   right: { position: { x: -42, y: 72 }, rotation: 0.08, pose: 'folded' },
@@ -39,13 +37,17 @@ const cloneTarget = (target: HandTarget): HandTarget => ({
 
 const activeSideFor = (state: PerformanceState): Side => state.gestureVariant % 2 === 0 ? 'right' : 'left';
 const lerpPoint = (a: Vec2, b: Vec2, t: number): Vec2 => ({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t });
+const normalize = (v: Vec2): Vec2 => {
+  const l = Math.max(0.0001, Math.hypot(v.x, v.y));
+  return { x: v.x / l, y: v.y / l };
+};
 
 /**
  * Milo's production Rig2D consumer.
  *
- * The skeleton is intentionally invisible. Rig2D solves fixed-length anatomy;
- * PixiChainSkin then draws one continuous shoulder -> elbow -> wrist silhouette.
- * This avoids the puppet look created by rendering each bone as its own capsule.
+ * Rig2D owns invisible fixed-length anatomy. PixiChainSkin owns the visible
+ * continuous shoulder -> elbow -> wrist silhouette. Character-specific clothing
+ * and hand poses are layered on top without exposing bone joints as artwork.
  */
 export class MiloRig2D implements CharacterInteractionController {
   readonly view = new Container();
@@ -89,7 +91,6 @@ export class MiloRig2D implements CharacterInteractionController {
   private forcedAction: CharacterGesture | null = null;
   private forcedActionIntensity = 0;
   private locomotion = 'idle';
-  private activeGesture: CharacterGesture = 'none';
 
   constructor() {
     this.view.sortableChildren = true;
@@ -175,23 +176,21 @@ export class MiloRig2D implements CharacterInteractionController {
       intensity: 0, mode: 'idle', speechBeat: 0,
     } as PerformanceState);
     const gesture = this.forcedAction ?? safeState.gesture;
-    this.activeGesture = gesture;
     const intensity = this.forcedAction ? this.forcedActionIntensity : safeState.intensity;
-    const envelope = this.forcedAction ? 1 : safeState.gestureEnvelope;
+    // Forced interaction actions now use their decaying intensity as an envelope,
+    // so they settle smoothly instead of holding almost full pose then snapping.
+    const envelope = this.forcedAction ? clamp(this.forcedActionIntensity, 0, 1) : safeState.gestureEnvelope;
     const activeSide = activeSideFor(safeState);
     const targets = this.targetsForGesture(gesture, activeSide, envelope, intensity, safeState.gesturePhase);
 
-    // Whichever hand is doing the communicative work should read in front when
-    // silhouettes overlap. The crossed rest pose keeps the right forearm on top.
     if (gesture !== 'none') {
       this.leftGroup.zIndex = activeSide === 'left' ? 3 : 1;
       this.rightGroup.zIndex = activeSide === 'right' ? 3 : 1;
-      this.view.sortChildren();
     } else {
       this.leftGroup.zIndex = 1;
       this.rightGroup.zIndex = 2;
-      this.view.sortChildren();
     }
+    this.view.sortChildren();
 
     for (const side of ['left', 'right'] as const) {
       const manual = this.manual.get(side);
@@ -206,28 +205,24 @@ export class MiloRig2D implements CharacterInteractionController {
 
       const upper = side === 'left' ? 'upperArmL' : 'upperArmR';
       const lower = side === 'left' ? 'forearmL' : 'forearmR';
-      const semanticBend = this.bendFor(side, gesture);
       this.rig.solveTwoBoneIK({
         upper,
         lower,
         target: spring,
-        bend: manual?.options.bend ?? semanticBend,
+        bend: manual?.options.bend ?? this.bendFor(side, gesture),
         weight: manual?.options.weight ?? 1,
       });
     }
 
     if (this.forcedAction) {
-      this.forcedActionIntensity *= Math.exp(-Math.max(0, dt) * 1.45);
-      if (this.forcedActionIntensity < 0.08) this.forcedAction = null;
+      this.forcedActionIntensity *= Math.exp(-Math.max(0, dt) * 1.15);
+      if (this.forcedActionIntensity < 0.055) this.forcedAction = null;
     }
 
     void this.locomotion;
   }
 
   private bendFor(side: Side, gesture: CharacterGesture): -1 | 1 {
-    // Crossed/resting and reassuring poses open the elbows away from the torso;
-    // presentation/celebration poses use the opposite branch so the forearm
-    // travels outward instead of folding through the chest.
     const restFamily = gesture === 'none' || gesture === 'reassure';
     if (restFamily) return side === 'left' ? 1 : -1;
     return side === 'left' ? -1 : 1;
@@ -241,7 +236,7 @@ export class MiloRig2D implements CharacterInteractionController {
     phase: number,
   ): Record<Side, HandTarget> {
     const targets = { left: cloneTarget(REST.left), right: cloneTarget(REST.right) };
-    const strength = clamp(envelope * (0.72 + intensity * 0.38), 0, 1);
+    const strength = clamp(envelope * (0.6 + intensity * 0.4), 0, 1);
     const blend = (side: Side, target: HandTarget, amount = strength) => {
       const from = targets[side];
       const t = clamp(amount, 0, 1);
@@ -251,7 +246,7 @@ export class MiloRig2D implements CharacterInteractionController {
           y: from.position.y + (target.position.y - from.position.y) * t,
         },
         rotation: from.rotation + (target.rotation - from.rotation) * t,
-        pose: t > 0.18 ? target.pose : from.pose,
+        pose: t > 0.16 ? target.pose : from.pose,
       };
     };
 
@@ -270,7 +265,9 @@ export class MiloRig2D implements CharacterInteractionController {
         blend('right', { position: { x: 72, y: 76 }, rotation: -0.08, pose: 'open' });
         break;
       case 'think':
-        blend('right', { position: { x: 42, y: -54 }, rotation: -0.36, pose: 'relaxed' });
+        // Shoulder-space coordinate deliberately reaches the cheek/chin region,
+        // not the chest. The old target was ~60px too low.
+        blend('right', { position: { x: 45, y: -118 }, rotation: -0.32, pose: 'relaxed' });
         break;
       case 'celebrate':
         blend('left', { position: { x: -100, y: -104 }, rotation: 0.12, pose: 'open' });
@@ -283,7 +280,7 @@ export class MiloRig2D implements CharacterInteractionController {
       case 'greet':
       case 'goodbye': {
         const wave = Math.sin(phase * Math.PI * 4.5) * 7;
-        blend('right', { position: { x: 98 + wave, y: -88 }, rotation: -0.2 + wave * 0.006, pose: 'open' });
+        blend('right', { position: { x: 102 + wave, y: -112 }, rotation: -0.18 + wave * 0.006, pose: 'open' });
         break;
       }
       case 'none':
@@ -310,36 +307,76 @@ export class MiloRig2D implements CharacterInteractionController {
     const wrist = lower.end;
 
     drawChainSkin(skin, shoulder, elbow, wrist, {
-      widths: [16.2, 14.5, 10.4],
+      widths: [16.4, 14.7, 10.6],
       fill: C.paper,
       stroke: C.ink,
       strokeWidth: 3.2,
       miterLimit: 1.34,
     });
 
-    // Clothing is an overlay on the continuous arm skin. Its cuff may be visible,
-    // but the elbow joint itself is never exposed as a separate rendered part.
-    const sleeveEnd = lerpPoint(shoulder, elbow, 0.7);
-    drawTaperedTube(sleeve, shoulder, sleeveEnd, {
-      startWidth: 15.2,
-      endWidth: 13.4,
-      fill: C.ink,
-      stroke: C.paper,
-      strokeWidth: 2.35,
-    });
+    // A short shirt sleeve overlays the continuous skin. Its shoulder side is
+    // deliberately open/no cap stroke so it visually merges into the black torso.
+    this.drawSleeve(sleeve, shoulder, lerpPoint(shoulder, elbow, 0.39));
 
     const handRotation = lower.worldRotation + this.handRotation[side];
     this.drawHand(hand, wrist, handRotation, this.handPose[side], side === 'left' ? -1 : 1);
+  }
+
+  private drawSleeve(graphics: Graphics, shoulder: Vec2, cuff: Vec2) {
+    graphics.clear();
+    const direction = normalize({ x: cuff.x - shoulder.x, y: cuff.y - shoulder.y });
+    const normal = { x: -direction.y, y: direction.x };
+    // Extend the fill slightly into the torso; the visible side outlines begin at
+    // the anatomical shoulder and the missing start-cap line removes the box look.
+    const hiddenStart = { x: shoulder.x - direction.x * 7, y: shoulder.y - direction.y * 7 };
+    const startWidth = 17.1;
+    const cuffWidth = 14.2;
+    const a1 = { x: hiddenStart.x + normal.x * startWidth, y: hiddenStart.y + normal.y * startWidth };
+    const a2 = { x: hiddenStart.x - normal.x * startWidth, y: hiddenStart.y - normal.y * startWidth };
+    const b1 = { x: cuff.x + normal.x * cuffWidth, y: cuff.y + normal.y * cuffWidth };
+    const b2 = { x: cuff.x - normal.x * cuffWidth, y: cuff.y - normal.y * cuffWidth };
+    const length = Math.max(1, Math.hypot(cuff.x - hiddenStart.x, cuff.y - hiddenStart.y));
+    const control = length * 0.34;
+
+    graphics
+      .moveTo(a1.x, a1.y)
+      .bezierCurveTo(a1.x + direction.x * control, a1.y + direction.y * control, b1.x - direction.x * control, b1.y - direction.y * control, b1.x, b1.y)
+      .lineTo(b2.x, b2.y)
+      .bezierCurveTo(b2.x - direction.x * control, b2.y - direction.y * control, a2.x + direction.x * control, a2.y + direction.y * control, a2.x, a2.y)
+      .closePath()
+      .fill(C.ink);
+
+    // Only the two sleeve edges and cuff are outlined. No shoulder cap.
+    graphics
+      .moveTo(shoulder.x + normal.x * startWidth, shoulder.y + normal.y * startWidth)
+      .bezierCurveTo(
+        shoulder.x + direction.x * control * 0.55 + normal.x * startWidth,
+        shoulder.y + direction.y * control * 0.55 + normal.y * startWidth,
+        b1.x - direction.x * control * 0.55,
+        b1.y - direction.y * control * 0.55,
+        b1.x,
+        b1.y,
+      )
+      .lineTo(b2.x, b2.y)
+      .bezierCurveTo(
+        b2.x - direction.x * control * 0.55,
+        b2.y - direction.y * control * 0.55,
+        shoulder.x + direction.x * control * 0.55 - normal.x * startWidth,
+        shoulder.y + direction.y * control * 0.55 - normal.y * startWidth,
+        shoulder.x - normal.x * startWidth,
+        shoulder.y - normal.y * startWidth,
+      )
+      .stroke({ width: 2.45, color: C.paper, alpha: 0.94, join: 'round', cap: 'round' });
   }
 
   private drawHand(graphics: Graphics, position: Vec2, rotation: number, pose: HandPose, side: -1 | 1) {
     graphics.clear();
     graphics.position.set(position.x, position.y);
     graphics.rotation = rotation;
+    const handScale = pose === 'open' ? 1.17 : pose === 'point' ? 1.12 : pose === 'emphasis' ? 1.08 : 1.04;
+    graphics.scale.set(handScale);
 
     if (pose === 'point') {
-      // Compact palm + a single unmistakable index finger. This is authored as
-      // a pose, not inferred finger physics.
       graphics
         .moveTo(-2, -7)
         .bezierCurveTo(5, -10, 13, -8, 16, -3)
@@ -397,8 +434,6 @@ export class MiloRig2D implements CharacterInteractionController {
       return;
     }
 
-    // Folded and relaxed hands are still directional mitten shapes instead of
-    // detached circles, so the wrist reads as a continuation of the forearm.
     const relaxed = pose === 'relaxed';
     graphics
       .moveTo(-2, -6.5)
