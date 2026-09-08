@@ -1,6 +1,6 @@
 import type { Container, Ticker } from 'pixi.js';
 import type { Vec2 } from '../rig2d';
-import type { CharacterMode, PerformanceCue } from './performance';
+import type { CharacterMode, PerformanceCue, PerformanceState } from './performance';
 import type { Emotion, MouthPose } from './types';
 
 export interface CharacterInteractionCapabilities {
@@ -31,6 +31,15 @@ export interface CharacterInteractionController {
   detach(effector?: string): void;
   action(name: string, intensity?: number): void;
   setLocomotion(name: string): void;
+}
+
+/**
+ * Required contract for an articulated character. Morphology is deliberately
+ * unspecified: Milo can use two-bone humanoid IK while Nova uses one-bone aim
+ * constraints, but both consume the exact same semantic PerformanceState.
+ */
+export interface CharacterPhysicalRig extends CharacterInteractionController {
+  update(state: PerformanceState, dt: number): void;
 }
 
 export interface CharacterRuntime {
