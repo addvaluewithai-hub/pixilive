@@ -1,9 +1,9 @@
 import { Application, type Ticker } from 'pixi.js';
 import { DirectedMiloCharacter } from '../character/DirectedMiloCharacter';
 import type { CharacterMode, PerformanceCue } from '../character/performance';
-import { Rig2D } from '../rig2d';
+import { Rig2D, type Vec2 } from '../rig2d';
 
-interface HarnessWindow extends Window {
+interface HarnessWindow {
   __pixiliveRigApp?: Application;
 }
 
@@ -14,6 +14,8 @@ const assertNear = (actual: number, expected: number, tolerance: number, label: 
     throw new Error(`${label}: expected ${expected.toFixed(3)}, got ${actual}`);
   }
 };
+
+const distance = (a: Vec2, b: Vec2) => Math.hypot(a.x - b.x, a.y - b.y);
 
 export function validateRig2DInvariants() {
   const rig = new Rig2D([
@@ -57,15 +59,63 @@ export function validateRig2DInvariants() {
   return rig.debugSnapshot();
 }
 
+/**
+ * Regression for the transient bug static screenshots missed: an arm could jump
+ * to the mirror IK solution while moving from crossed rest into a gesture.
+ * Every full path is sampled frame-by-frame; a single elbow teleport fails CI.
+ */
+export function validateMiloMotionContinuity() {
+  const actions = ['touchFace', 'openArms', 'celebrate', 'greet', 'explain'] as const;
+  const report: Record<string, number> = {};
+
+  for (const action of actions) {
+    const character = new DirectedMiloCharacter();
+    character.setEmotion('calm');
+    character.setMode('speaking');
+    character.perform(defaultCue);
+    for (let frame = 0; frame < 8; frame += 1) character.update(fixedTicker);
+
+    let snapshot = character.interaction.debugSnapshot();
+    let previous = {
+      left: snapshot.bones.find((bone) => bone.name === 'upperArmL')!.end,
+      right: snapshot.bones.find((bone) => bone.name === 'upperArmR')!.end,
+    };
+    let maxStep = 0;
+    character.interaction.action(action, 0.9);
+
+    for (let frame = 0; frame < 110; frame += 1) {
+      character.update(fixedTicker);
+      snapshot = character.interaction.debugSnapshot();
+      const current = {
+        left: snapshot.bones.find((bone) => bone.name === 'upperArmL')!.end,
+        right: snapshot.bones.find((bone) => bone.name === 'upperArmR')!.end,
+      };
+      maxStep = Math.max(maxStep, distance(previous.left, current.left), distance(previous.right, current.right));
+      previous = current;
+    }
+
+    // Normal spring motion is single-digit pixels/frame at 60 fps. 24px leaves
+    // generous room for strong acting but catches a mirrored elbow teleport.
+    if (!Number.isFinite(maxStep) || maxStep > 24) {
+      throw new Error(`${action}: elbow continuity broke (${maxStep.toFixed(2)} px in one frame)`);
+    }
+    report[action] = maxStep;
+  }
+
+  return report;
+}
+
 const defaultCue: PerformanceCue = {
   affect: 'neutral', intensity: 0.5, gesture: 'none', posture: 'neutral', gaze: 'user',
 };
 
+type InteractionCase = 'rest' | 'point' | 'reach' | 'touchFace' | 'openArms' | 'celebrate' | 'greet' | 'explain' | 'unreachable';
+
 export async function mountMiloInteractionHarness(
-  interaction: 'rest' | 'point' | 'reach' | 'touchFace' | 'openArms' | 'unreachable',
+  interaction: InteractionCase,
   frames = 90,
 ) {
-  const harnessWindow = window as HarnessWindow;
+  const harnessWindow = window as unknown as HarnessWindow;
   harnessWindow.__pixiliveRigApp?.destroy(true, { children: true });
   document.body.innerHTML = '';
   document.body.style.margin = '0';
@@ -95,8 +145,11 @@ export async function mountMiloInteractionHarness(
 
   if (interaction === 'point') character.interaction.pointAt({ x: 150, y: -32 }, 'rightHand');
   if (interaction === 'reach') character.interaction.reach('leftHand', { x: -145, y: 38 }, { hold: true });
-  if (interaction === 'touchFace') character.interaction.action('touchFace', 0.82);
-  if (interaction === 'openArms') character.interaction.action('openArms', 0.82);
+  if (interaction === 'touchFace') character.interaction.action('touchFace', 0.9);
+  if (interaction === 'openArms') character.interaction.action('openArms', 0.9);
+  if (interaction === 'celebrate') character.interaction.action('celebrate', 0.95);
+  if (interaction === 'greet') character.interaction.action('greet', 0.92);
+  if (interaction === 'explain') character.interaction.action('explain', 0.9);
   if (interaction === 'unreachable') character.interaction.reach('rightHand', { x: 520, y: -330 }, { hold: true });
 
   for (let frame = 0; frame < frames; frame += 1) character.update(fixedTicker);
