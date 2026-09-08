@@ -1,6 +1,7 @@
 import type { Container, Ticker } from 'pixi.js';
 import { CharacterDirector } from './CharacterDirector';
 import { NovaCharacter } from './NovaCharacter';
+import { NovaRig2D } from './NovaRig2D';
 import type { CharacterAffect, CharacterMode, PerformanceCue, PerformanceState } from './performance';
 import type { Emotion, MouthPose } from './types';
 
@@ -30,6 +31,7 @@ export class DirectedNovaCharacter {
   private readonly base = new NovaCharacter();
   private readonly director = new CharacterDirector();
   private readonly layers: NovaLayers;
+  readonly interaction: NovaRig2D;
   private userGaze = { x: 0, y: 0 };
   private time = 0;
   private affectAccent = 0;
@@ -40,6 +42,7 @@ export class DirectedNovaCharacter {
   constructor() {
     this.view = this.base.view;
     this.layers = this.base as unknown as NovaLayers;
+    this.interaction = new NovaRig2D(this.layers.armLeft, this.layers.armRight);
   }
 
   setEmotion(emotion: Emotion) { this.base.setEmotion(emotion); }
@@ -86,6 +89,9 @@ export class DirectedNovaCharacter {
     const gaze = this.resolveGaze(state);
     this.base.lookAt(gaze.x, gaze.y);
     this.base.update(ticker);
+    // Base character owns idle art; the shared Rig2D adapter owns all physical
+    // arm intent after base update so semantic gestures cannot be overwritten.
+    this.interaction.update(state, dt);
     this.applyPerformance(state);
   }
 
@@ -190,9 +196,10 @@ export class DirectedNovaCharacter {
       this.layers.antenna.rotation += (state.gestureVariant % 2 ? -1 : 1) * state.speechBeat * 0.035;
     }
 
+    // Arms are intentionally absent from this switch. NovaRig2D receives the
+    // same PerformanceState and owns limb motion through shared constraints.
     switch (state.gesture) {
       case 'explain':
-        (state.gestureVariant % 2 ? this.layers.armLeft : this.layers.armRight).rotation += (state.gestureVariant % 2 ? -1 : 1) * 0.42 * envelope;
         this.layers.head.rotation += (state.gestureVariant % 2 ? 1 : -1) * 0.025 * envelope;
         this.layers.tail.rotation += 0.06 * envelope;
         break;
@@ -205,8 +212,6 @@ export class DirectedNovaCharacter {
         this.layers.earLeft.rotation -= 0.12 * envelope;
         this.layers.earRight.rotation += 0.12 * envelope;
         this.layers.head.rotation += 0.032 * envelope;
-        this.layers.armLeft.rotation -= 0.08 * envelope;
-        this.layers.armRight.rotation += 0.08 * envelope;
         break;
       case 'agree':
         this.layers.head.y += Math.sin(state.gesturePhase * Math.PI * 2) * 4 * envelope;
@@ -223,22 +228,17 @@ export class DirectedNovaCharacter {
         break;
       case 'celebrate':
         this.layers.character.y -= 12 * envelope;
-        this.layers.armLeft.rotation -= 0.42 * envelope;
-        this.layers.armRight.rotation += 0.42 * envelope;
         this.layers.tail.rotation += 0.3 * envelope;
         this.layers.earLeft.rotation -= 0.08 * envelope;
         this.layers.earRight.rotation += 0.08 * envelope;
         break;
       case 'shrug':
-        this.layers.armLeft.rotation -= 0.27 * envelope;
-        this.layers.armRight.rotation += 0.27 * envelope;
         this.layers.earLeft.rotation += 0.1 * envelope;
         this.layers.earRight.rotation -= 0.1 * envelope;
         this.layers.head.y += 2 * envelope;
         break;
       case 'greet':
       case 'goodbye':
-        this.layers.armRight.rotation += 0.44 * envelope + Math.sin(state.gesturePhase * Math.PI * 7) * 0.1 * envelope;
         this.layers.tail.rotation += 0.08 * envelope;
         break;
       default:
