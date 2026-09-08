@@ -5,6 +5,7 @@ export type LiveStatus = 'idle' | 'connecting' | 'listening' | 'speaking' | 'err
 export interface LiveCallbacks {
   onStatus: (status: LiveStatus) => void;
   onAudio: (base64Pcm16: string) => void;
+  onTurnComplete: () => void;
   onInputTranscript: (text: string) => void;
   onOutputTranscript: (text: string) => void;
   onPerformanceCue: (cue: PerformanceCue) => void;
