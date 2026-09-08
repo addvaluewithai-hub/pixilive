@@ -39,6 +39,7 @@ export class NovaLiveController {
   readonly flight: NovaFlightController;
 
   private app: Application | null = null;
+  private resizeObserver: ResizeObserver | null = null;
   private status: LiveStatus = 'idle';
   private mode: CharacterMode = 'idle';
   private systemPrompt: string;
@@ -141,9 +142,9 @@ export class NovaLiveController {
     this.app = app;
     this.options.container.appendChild(app.canvas);
     app.stage.addChild(this.character.view);
-    const center = { x: width / 2, y: height * 0.52 };
-    this.flight.setHome(center, true);
-    this.character.view.scale.set(Math.min(width, height) / 520);
+    this.layout(true);
+    this.resizeObserver = new ResizeObserver(() => this.layout(false));
+    this.resizeObserver.observe(this.options.container);
     app.ticker.add(this.tick);
     this.events.onReady?.();
   }
@@ -194,6 +195,8 @@ export class NovaLiveController {
   async destroy() {
     if (this.destroyed) return;
     this.destroyed = true;
+    this.resizeObserver?.disconnect();
+    this.resizeObserver = null;
     await this.disconnect();
     await this.playback.close();
     if (this.app) {
@@ -201,6 +204,13 @@ export class NovaLiveController {
       this.app.destroy(true, { children: true });
       this.app = null;
     }
+  }
+
+  private layout(snap: boolean) {
+    const width = this.options.width ?? Math.max(320, this.options.container.clientWidth || 640);
+    const height = this.options.height ?? Math.max(360, this.options.container.clientHeight || 640);
+    this.flight.setHome({ x: width / 2, y: height * 0.52 }, snap);
+    this.character.view.scale.set(Math.min(width, height) / 520);
   }
 
   private readonly tick = (ticker: Ticker) => {
