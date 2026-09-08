@@ -47,6 +47,21 @@ const autonomousCases = {
   arabicWarm: { transcript: 'أكيد، نقدر نحل الموضوع ده مع بعض.', dynamics: { energy: 0.46, pitchHz: 158, pitchNorm: 0.36, pitchDelta: 0.03, brightness: 0.34, voiced: 0.77, onset: 0.28 }, frames: 88 },
 };
 
+const faceCases = {
+  calm: { emotion: 'calm', mode: 'idle', frames: 56 },
+  happy: { emotion: 'happy', mode: 'idle', frames: 56 },
+  curiousEmotion: { emotion: 'curious', mode: 'idle', frames: 56 },
+  excited: { emotion: 'excited', mode: 'idle', frames: 56 },
+  warm: { emotion: 'calm', cue: { affect: 'warm', intensity: 0.9, gesture: 'none', posture: 'engaged', gaze: 'user' }, mode: 'listening', frames: 64 },
+  curious: { emotion: 'calm', cue: { affect: 'curious', intensity: 0.9, gesture: 'none', posture: 'engaged', gaze: 'user' }, mode: 'thinking', frames: 64 },
+  enthusiastic: { emotion: 'calm', cue: { affect: 'enthusiastic', intensity: 0.92, gesture: 'none', posture: 'open', gaze: 'user' }, mode: 'thinking', frames: 64 },
+  reassuring: { emotion: 'calm', cue: { affect: 'reassuring', intensity: 0.9, gesture: 'none', posture: 'lean_in', gaze: 'user' }, mode: 'listening', frames: 64 },
+  concerned: { emotion: 'calm', cue: { affect: 'concerned', intensity: 0.92, gesture: 'none', posture: 'lean_in', gaze: 'user' }, mode: 'thinking', frames: 64 },
+  surprised: { emotion: 'calm', cue: { affect: 'surprised', intensity: 0.94, gesture: 'none', posture: 'neutral', gaze: 'user' }, mode: 'thinking', frames: 64 },
+  thoughtful: { emotion: 'calm', cue: { affect: 'thoughtful', intensity: 0.9, gesture: 'none', posture: 'lean_back', gaze: 'thinking_side' }, mode: 'thinking', frames: 64 },
+  playful: { emotion: 'calm', cue: { affect: 'playful', intensity: 0.92, gesture: 'none', posture: 'engaged', gaze: 'user' }, mode: 'listening', frames: 64 },
+};
+
 const rigInteractionCases = ['rest', 'point', 'reach', 'touchFace', 'openArms', 'unreachable'];
 
 try {
@@ -88,6 +103,17 @@ try {
     await page.waitForTimeout(120);
     const screenshotPath = path.join(outputDir, `milo-performance-${name}.png`);
     await page.locator('#performance-harness').screenshot({ path: screenshotPath });
+  }
+
+  for (const [name, testCase] of Object.entries(faceCases)) {
+    await page.goto(harnessUrl, { waitUntil: 'domcontentloaded' });
+    await page.evaluate(async (input) => {
+      const harness = await import('/src/visual/faceHarness.ts');
+      await harness.mountMiloFaceHarness(input);
+    }, testCase);
+    await page.waitForTimeout(80);
+    const screenshotPath = path.join(outputDir, `milo-face-${name}.png`);
+    await page.locator('#face-harness').screenshot({ path: screenshotPath });
   }
 
   for (const [name, testCase] of Object.entries(autonomousCases)) {
