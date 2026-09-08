@@ -1,4 +1,5 @@
 import { type Container, Graphics, type Ticker } from 'pixi.js';
+import { MiloFaceRig2D, type MiloFaceLayers } from './MiloFaceRig2D';
 import { MiloVisemeCharacter } from './MiloVisemeCharacter';
 import {
   neutralPerformanceCue,
@@ -9,57 +10,30 @@ import {
 } from './performance';
 import type { Emotion, MouthPose } from './types';
 
-const C = { ink: 0x0b0c0e };
 const clamp = (value: number, min = 0, max = 1) => Math.max(min, Math.min(max, value));
 const damp = (from: number, to: number, speed: number, dt: number) =>
   from + (to - from) * (1 - Math.exp(-speed * dt));
 
-interface MiloFaceLayers {
+interface MiloLayers extends MiloFaceLayers {
   root: Container;
   body: Container;
   shoulders: Container;
-  head: Container;
-  mouth: Graphics;
-  browLeft: Graphics;
-  browRight: Graphics;
-  cheekLeft: Graphics;
-  cheekRight: Graphics;
-  eyeLeft: { root: Container };
-  eyeRight: { root: Container };
 }
 
 interface MiloVisemeInternals {
-  layers: MiloFaceLayers;
+  layers: MiloLayers;
   mouth: Graphics;
   speaking: boolean;
 }
 
-interface ExpressionPose {
-  eyeL: number;
-  eyeR: number;
-  browLiftL: number;
-  browLiftR: number;
-  browTiltL: number;
-  browTiltR: number;
-  cheek: number;
-  headTilt: number;
-  headY: number;
+type BodyPose = {
   bodyTilt: number;
   bodyY: number;
   shoulderTilt: number;
   shoulderY: number;
-}
+};
 
-const pose = (values: Partial<ExpressionPose>): ExpressionPose => ({
-  eyeL: 1,
-  eyeR: 1,
-  browLiftL: 0,
-  browLiftR: 0,
-  browTiltL: 0,
-  browTiltR: 0,
-  cheek: 0,
-  headTilt: 0,
-  headY: 0,
+const bodyPose = (values: Partial<BodyPose> = {}): BodyPose => ({
   bodyTilt: 0,
   bodyY: 0,
   shoulderTilt: 0,
@@ -67,56 +41,34 @@ const pose = (values: Partial<ExpressionPose>): ExpressionPose => ({
   ...values,
 });
 
-const expressionPoses: Record<CharacterAffect, ExpressionPose> = {
-  neutral: pose({}),
-  warm: pose({
-    eyeL: 0.92, eyeR: 0.92, browLiftL: -1.2, browLiftR: -1.2,
-    cheek: 0.11, headTilt: -0.018, bodyTilt: -0.004,
-  }),
-  curious: pose({
-    eyeL: 1.06, eyeR: 1.01, browLiftL: -2.5, browLiftR: -7,
-    browTiltL: -0.025, browTiltR: 0.075, headTilt: 0.055, headY: -1.5,
-    bodyTilt: 0.009, shoulderTilt: -0.006,
-  }),
-  enthusiastic: pose({
-    eyeL: 1.11, eyeR: 1.11, browLiftL: -5.5, browLiftR: -5.5,
-    browTiltL: -0.035, browTiltR: 0.035, cheek: 0.18, headY: -2.2,
-    bodyY: -1.4, shoulderY: -1.6,
-  }),
-  reassuring: pose({
-    eyeL: 0.87, eyeR: 0.89, browLiftL: -1.4, browLiftR: -1.7,
-    browTiltL: 0.025, browTiltR: -0.025, cheek: 0.12, headTilt: 0.032,
-    bodyTilt: -0.008, bodyY: -0.6,
-  }),
-  concerned: pose({
-    eyeL: 0.9, eyeR: 0.93, browLiftL: -3.4, browLiftR: -3.4,
-    browTiltL: 0.13, browTiltR: -0.13, headTilt: 0.036, headY: 1,
-    bodyTilt: -0.01, shoulderY: 1.2,
-  }),
-  surprised: pose({
-    eyeL: 1.25, eyeR: 1.25, browLiftL: -9, browLiftR: -9,
-    browTiltL: -0.02, browTiltR: 0.02, headY: -4, bodyY: 1.5,
-    shoulderY: -2.8,
-  }),
-  thoughtful: pose({
-    eyeL: 0.91, eyeR: 0.96, browLiftL: -1.1, browLiftR: -4.4,
-    browTiltL: 0.045, browTiltR: 0.015, headTilt: -0.045, headY: 0.6,
-    bodyTilt: 0.012, shoulderTilt: 0.007,
-  }),
-  playful: pose({
-    eyeL: 0.94, eyeR: 1.04, browLiftL: -1.8, browLiftR: -6.2,
-    browTiltL: -0.015, browTiltR: 0.11, cheek: 0.16, headTilt: -0.045,
-    shoulderTilt: 0.008,
-  }),
+const bodyPoses: Record<CharacterAffect, BodyPose> = {
+  neutral: bodyPose({}),
+  warm: bodyPose({ bodyTilt: -0.004, bodyY: -0.3 }),
+  curious: bodyPose({ bodyTilt: 0.008, shoulderTilt: -0.005 }),
+  enthusiastic: bodyPose({ bodyY: -1.5, shoulderY: -1.7 }),
+  reassuring: bodyPose({ bodyTilt: -0.007, bodyY: -0.7, shoulderY: -0.4 }),
+  concerned: bodyPose({ bodyTilt: -0.009, shoulderY: 1.1 }),
+  surprised: bodyPose({ bodyY: 1.3, shoulderY: -2.6 }),
+  thoughtful: bodyPose({ bodyTilt: 0.01, shoulderTilt: 0.006 }),
+  playful: bodyPose({ bodyTilt: -0.004, shoulderTilt: 0.007 }),
 };
 
-/** Milo-specific facial acting layered over the shared Rig2D physical runtime. */
+/**
+ * Character-specific acting adapter for Milo.
+ *
+ * MiloVisemeCharacter owns speech mouth + Rig2D body articulation.
+ * MiloFaceRig2D owns emotional readability. This class only mixes semantic
+ * performance, speech energy and small torso/shoulder acting without letting
+ * face and body transforms fight each other.
+ */
 export class DirectedMiloCharacter {
   readonly view: Container;
   private readonly base = new MiloVisemeCharacter();
   readonly interaction = this.base.interaction;
   private readonly internals: MiloVisemeInternals;
+  private readonly face: MiloFaceRig2D;
   private cue: PerformanceCue = { ...neutralPerformanceCue };
+  private emotion: Emotion = 'calm';
   private mode: CharacterMode = 'idle';
   private expressionWeight = 0;
   private expressionAccent = 0;
@@ -128,9 +80,15 @@ export class DirectedMiloCharacter {
   constructor() {
     this.view = this.base.view;
     this.internals = this.base as unknown as MiloVisemeInternals;
+    this.face = new MiloFaceRig2D(this.internals.layers);
   }
 
-  setEmotion(emotion: Emotion) { this.base.setEmotion(emotion); }
+  setEmotion(emotion: Emotion) {
+    this.emotion = emotion;
+    this.base.setEmotion(emotion);
+    this.expressionAccent = Math.max(this.expressionAccent, 0.72);
+  }
+
   setMouth(pose: MouthPose, speaking = true) { this.base.setMouth(pose, speaking); }
   settleMouth() { this.base.settleMouth(); }
   lookAt(normalizedX: number, normalizedY: number) { this.base.lookAt(normalizedX, normalizedY); }
@@ -166,110 +124,60 @@ export class DirectedMiloCharacter {
     this.smoothedSpeech = damp(this.smoothedSpeech, this.speechEnergy, 9.5, dt);
     this.expressionAccent = damp(this.expressionAccent, 0, 4.2, dt);
 
-    const modeGain = this.mode === 'idle' ? 0.22 : this.mode === 'listening' ? 0.56 : this.mode === 'thinking' ? 0.82 : 1;
-    const targetWeight = clamp(this.cue.intensity * modeGain + this.expressionAccent * 0.16);
-    this.expressionWeight = damp(this.expressionWeight, targetWeight, this.mode === 'speaking' ? 8.5 : 5.8, dt);
-    this.applyActing();
+    const hasPerformanceExpression = this.cue.affect !== 'neutral';
+    const modeGain = this.mode === 'idle' ? 0.3 : this.mode === 'listening' ? 0.72 : this.mode === 'thinking' ? 0.86 : 1;
+    const targetWeight = hasPerformanceExpression
+      ? clamp(this.cue.intensity * modeGain + this.expressionAccent * 0.14)
+      : 0;
+    this.expressionWeight = damp(this.expressionWeight, targetWeight, this.mode === 'speaking' ? 8.5 : 6.2, dt);
+
+    this.applyBodyActing();
+    this.face.apply({
+      emotion: this.emotion,
+      cue: this.cue,
+      performanceWeight: this.expressionWeight,
+      mode: this.mode,
+      speaking: this.internals.speaking,
+      time: this.time,
+      accent: this.expressionAccent,
+    });
   }
 
-  private applyActing() {
-    const w = this.expressionWeight;
+  private applyBodyActing() {
     const layers = this.internals.layers;
-    const p = expressionPoses[this.cue.affect];
+    const w = this.expressionWeight;
+    const p = bodyPoses[this.cue.affect];
     const speech = this.smoothedSpeech;
 
-    // Explicitly restore properties the base idle layer does not own every frame.
-    // This is the anti-drift invariant that the old body implementation lacked.
+    // Anti-drift: properties not canonically restored by MiloCharacter are
+    // explicitly reset before this acting layer contributes to the frame.
     layers.body.rotation = 0;
     layers.shoulders.y = 7;
 
-    const slowPhase = this.time * 0.72 + this.cueSerial * 1.37;
-    const micro = Math.sin(slowPhase) * 0.5 + Math.sin(slowPhase * 0.43 + 1.8) * 0.5;
-    const microBrow = micro * 0.7 * (0.25 + w * 0.5);
-
-    layers.eyeLeft.root.scale.y *= 1 + (p.eyeL - 1) * w;
-    layers.eyeRight.root.scale.y *= 1 + (p.eyeR - 1) * w;
-    layers.browLeft.y += p.browLiftL * w - microBrow * 0.35;
-    layers.browRight.y += p.browLiftR * w + microBrow * 0.35;
-    layers.browLeft.rotation += p.browTiltL * w - microBrow * 0.004;
-    layers.browRight.rotation += p.browTiltR * w + microBrow * 0.004;
-    layers.cheekLeft.alpha += p.cheek * w;
-    layers.cheekRight.alpha += p.cheek * w;
-    layers.head.rotation += p.headTilt * w;
-    layers.head.y += p.headY * w;
-    layers.body.rotation = p.bodyTilt * w;
+    layers.body.rotation += p.bodyTilt * w;
     layers.body.y += p.bodyY * w;
     layers.shoulders.rotation += p.shoulderTilt * w;
-    layers.shoulders.y = 7 + p.shoulderY * w;
+    layers.shoulders.y += p.shoulderY * w;
 
     if (this.mode === 'listening') {
-      layers.eyeLeft.root.scale.y *= 0.965;
-      layers.eyeRight.root.scale.y *= 0.965;
-      layers.browLeft.y -= 0.7;
-      layers.browRight.y -= 0.7;
-      layers.body.rotation += -0.004;
-      layers.head.y -= 0.7 + Math.sin(this.time * 0.75) * 0.3;
+      layers.body.rotation -= 0.0035;
+      layers.shoulders.y -= 0.35;
     } else if (this.mode === 'thinking') {
-      layers.eyeLeft.root.scale.y *= 0.96;
-      layers.eyeRight.root.scale.y *= 0.98;
-      layers.shoulders.y += 0.6;
-      layers.body.rotation += 0.004;
+      layers.body.rotation += 0.0035;
+      layers.shoulders.y += 0.55;
     } else if (this.mode === 'speaking') {
       const phrasePulse = speech * (0.55 + 0.45 * Math.sin(this.time * 5.2) ** 2);
-      layers.body.y -= phrasePulse * 1.2;
-      layers.body.scale.y *= 1 + phrasePulse * 0.0038;
-      layers.shoulders.y -= phrasePulse * 0.85;
-      layers.shoulders.rotation += Math.sin(this.time * 2.3 + this.cueSerial) * phrasePulse * 0.0028;
-      layers.head.y -= phrasePulse * 0.32;
+      layers.body.y -= phrasePulse * 1.15;
+      layers.body.scale.y *= 1 + phrasePulse * 0.0036;
+      layers.shoulders.y -= phrasePulse * 0.8;
+      layers.shoulders.rotation += Math.sin(this.time * 2.3 + this.cueSerial) * phrasePulse * 0.0026;
     }
 
     if (this.expressionAccent > 0.02) {
-      const accent = this.expressionAccent * (0.45 + this.cue.intensity * 0.55);
-      layers.head.y -= accent * 1.6;
-      layers.shoulders.y -= accent * 1.1;
+      const accent = this.expressionAccent * (0.42 + this.cue.intensity * 0.5);
+      layers.shoulders.y -= accent * 0.9;
     }
 
-    layers.shoulders.y += Math.sin(this.time * 1.85 + 0.4) * 0.32;
-    if (!this.internals.speaking && this.mode !== 'speaking' && w > 0.1) this.drawRestExpression(w);
-  }
-
-  private drawRestExpression(weight: number) {
-    const mouth = this.internals.mouth;
-    if (this.cue.affect === 'surprised') {
-      mouth.clear();
-      mouth.ellipse(0, 1.2, 5.4 + weight * 4.1, 7.2 + weight * 4.8).fill(C.ink);
-      return;
-    }
-    if (this.cue.affect === 'concerned') {
-      mouth.clear();
-      mouth.moveTo(-13, 2.8).bezierCurveTo(-5.5, -3.8 - weight * 1.8, 5.5, -3.8 - weight * 1.8, 13, 2.8)
-        .stroke({ width: 3.2, color: C.ink, cap: 'round' });
-      return;
-    }
-    if (this.cue.affect === 'thoughtful') {
-      mouth.clear();
-      mouth.moveTo(-10.5, 1).bezierCurveTo(-3.5, 2.5, 4.5, 1.7, 10.5, -1.7 - weight)
-        .stroke({ width: 3.05, color: C.ink, cap: 'round' });
-      return;
-    }
-    if (this.cue.affect === 'curious') {
-      mouth.clear();
-      mouth.moveTo(-11.5, 0.6).bezierCurveTo(-4, 3.6, 5, 2.4, 12, -1.4 - weight * 0.7)
-        .stroke({ width: 3.15, color: C.ink, cap: 'round' });
-      return;
-    }
-    if (this.cue.affect === 'enthusiastic' || this.cue.affect === 'playful') {
-      mouth.clear();
-      const asymmetry = this.cue.affect === 'playful' ? 2.2 : 0;
-      mouth.moveTo(-14, -0.4 + asymmetry * 0.15)
-        .bezierCurveTo(-6, 6.3 + weight * 1.8, 6, 5.6 + weight * 1.8, 14, -1.2 - asymmetry)
-        .stroke({ width: 3.35, color: C.ink, cap: 'round' });
-      return;
-    }
-    if (this.cue.affect === 'warm' || this.cue.affect === 'reassuring') {
-      mouth.clear();
-      mouth.moveTo(-12.5, 0).bezierCurveTo(-5, 4.6 + weight, 5, 4.6 + weight, 12.5, 0)
-        .stroke({ width: 3.1, color: C.ink, cap: 'round' });
-    }
+    layers.shoulders.y += Math.sin(this.time * 1.85 + 0.4) * 0.28;
   }
 }
