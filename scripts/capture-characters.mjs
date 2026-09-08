@@ -41,27 +41,13 @@ const performanceCases = {
 };
 
 const autonomousCases = {
-  enthusiastic: {
-    transcript: 'This is absolutely amazing! I love how well this works.',
-    dynamics: { energy: 0.82, pitchHz: 220, pitchNorm: 0.62, pitchDelta: 0.22, brightness: 0.58, voiced: 0.8, onset: 0.44 },
-    frames: 88,
-  },
-  reassuring: {
-    transcript: "Don't worry, we can fix this and it will be okay.",
-    dynamics: { energy: 0.42, pitchHz: 145, pitchNorm: 0.31, pitchDelta: -0.08, brightness: 0.3, voiced: 0.78, onset: 0.2 },
-    frames: 88,
-  },
-  curious: {
-    transcript: 'Interesting — why would that happen?',
-    dynamics: { energy: 0.58, pitchHz: 195, pitchNorm: 0.52, pitchDelta: 0.34, brightness: 0.5, voiced: 0.74, onset: 0.4 },
-    frames: 88,
-  },
-  arabicWarm: {
-    transcript: 'أكيد، نقدر نحل الموضوع ده مع بعض.',
-    dynamics: { energy: 0.46, pitchHz: 158, pitchNorm: 0.36, pitchDelta: 0.03, brightness: 0.34, voiced: 0.77, onset: 0.28 },
-    frames: 88,
-  },
+  enthusiastic: { transcript: 'This is absolutely amazing! I love how well this works.', dynamics: { energy: 0.82, pitchHz: 220, pitchNorm: 0.62, pitchDelta: 0.22, brightness: 0.58, voiced: 0.8, onset: 0.44 }, frames: 88 },
+  reassuring: { transcript: "Don't worry, we can fix this and it will be okay.", dynamics: { energy: 0.42, pitchHz: 145, pitchNorm: 0.31, pitchDelta: -0.08, brightness: 0.3, voiced: 0.78, onset: 0.2 }, frames: 88 },
+  curious: { transcript: 'Interesting — why would that happen?', dynamics: { energy: 0.58, pitchHz: 195, pitchNorm: 0.52, pitchDelta: 0.34, brightness: 0.5, voiced: 0.74, onset: 0.4 }, frames: 88 },
+  arabicWarm: { transcript: 'أكيد، نقدر نحل الموضوع ده مع بعض.', dynamics: { energy: 0.46, pitchHz: 158, pitchNorm: 0.36, pitchDelta: 0.03, brightness: 0.34, voiced: 0.77, onset: 0.28 }, frames: 88 },
 };
+
+const rigInteractionCases = ['rest', 'point', 'reach', 'touchFace', 'openArms', 'unreachable'];
 
 try {
   await page.goto(appUrl, { waitUntil: 'networkidle' });
@@ -91,7 +77,6 @@ try {
     await page.waitForTimeout(120);
     const screenshotPath = path.join(outputDir, `milo-viseme-${name}.png`);
     await page.locator('#viseme-harness').screenshot({ path: screenshotPath });
-    console.log(`Captured Milo ${name.toUpperCase()} viseme -> ${screenshotPath}`);
   }
 
   for (const [name, testCase] of Object.entries(performanceCases)) {
@@ -103,7 +88,6 @@ try {
     await page.waitForTimeout(120);
     const screenshotPath = path.join(outputDir, `milo-performance-${name}.png`);
     await page.locator('#performance-harness').screenshot({ path: screenshotPath });
-    console.log(`Captured Milo ${name} performance -> ${screenshotPath}`);
   }
 
   for (const [name, testCase] of Object.entries(autonomousCases)) {
@@ -115,7 +99,24 @@ try {
     await page.waitForTimeout(120);
     const screenshotPath = path.join(outputDir, `milo-autonomous-${name}.png`);
     await page.locator('#autonomous-performance-harness').screenshot({ path: screenshotPath });
-    console.log(`Captured Milo autonomous ${name} -> ${screenshotPath}`);
+  }
+
+  await page.goto(harnessUrl, { waitUntil: 'domcontentloaded' });
+  const rigValidation = await page.evaluate(async () => {
+    const harness = await import('/src/visual/rig2dHarness.ts');
+    return harness.validateRig2DInvariants();
+  });
+  console.log(`Rig2D invariant validation passed for ${rigValidation.bones.length} bones`);
+
+  for (const interaction of rigInteractionCases) {
+    await page.goto(harnessUrl, { waitUntil: 'domcontentloaded' });
+    await page.evaluate(async (name) => {
+      const harness = await import('/src/visual/rig2dHarness.ts');
+      await harness.mountMiloInteractionHarness(name, 90);
+    }, interaction);
+    await page.waitForTimeout(120);
+    const screenshotPath = path.join(outputDir, `milo-rig2d-${interaction}.png`);
+    await page.locator('#rig2d-harness').screenshot({ path: screenshotPath });
   }
 } finally {
   await browser.close();
