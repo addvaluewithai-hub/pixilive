@@ -37,6 +37,9 @@ jobs:
       - name: Build
         run: npm run build
 
+      - name: Verify stable SDK artifact exists
+        run: test -s dist/sdk/pixilive-nova.js
+
       - name: Install Playwright Chromium
         run: |
           npm install --no-save --no-audit --no-fund playwright@latest
@@ -65,7 +68,7 @@ jobs:
             fi
           done
 
-      - name: Capture characters, faces, visemes, and static performance
+      - name: Capture production character and facial QA
         env:
           PIXILIVE_PREVIEW_URL: http://127.0.0.1:4173
           PIXILIVE_VISUAL_HARNESS_URL: http://127.0.0.1:4174
@@ -76,10 +79,14 @@ jobs:
           PIXILIVE_VISUAL_HARNESS_URL: http://127.0.0.1:4174
         run: node scripts/capture-nova-qa.mjs
 
-      - name: Validate and capture full motion paths
+      - name: Smoke test exported Nova SDK in Chromium
         env:
-          PIXILIVE_VISUAL_HARNESS_URL: http://127.0.0.1:4174
-        run: node scripts/capture-motion-paths.mjs
+          PIXILIVE_PREVIEW_URL: http://127.0.0.1:4173
+        run: node scripts/smoke-sdk.mjs
+
+      # Milo's former humanoid body implementation is intentionally retired.
+      # Its face/viseme research remains covered by the static harnesses above;
+      # body motion QA returns when Milo Body v2 is authored from scratch.
 
       - name: Upload visual artifacts
         if: ${{ always() }}
