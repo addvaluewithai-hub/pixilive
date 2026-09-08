@@ -9,17 +9,17 @@ const SETUP_TIMEOUT_MS = 12_000;
 const PERFORMANCE_TOOL = 'direct_character';
 
 const PERFORMANCE_GUIDANCE = `
-You can direct the on-screen character with the direct_character tool before speaking.
-Use it for semantic acting intent, never low-level animation. Prefer one call before a substantive response when body language helps.
-Keep many casual turns subtle: gesture="none" is valid and desirable. Avoid repeating the same gesture on consecutive turns.
-Choose affect, posture and gaze based on the meaning you are about to communicate. The local character engine handles exact timing, motion and interruption.
+The on-screen character already performs continuously using a local animation brain driven by playback audio, transcript meaning, and conversation state.
+Do NOT call direct_character for ordinary facial expression, conversational emphasis, listening, nodding, or normal body language. Most turns should use no character tool at all.
+Use direct_character only for a rare, deliberate theatrical intention where a specific semantic gesture materially improves the moment, such as greeting, goodbye, celebration, shrugging, a strong reassurance, or an explicit agree/disagree beat.
+If you use it, make at most one call for the turn. Provide meaning-level intent only; never control bones or timing. PixiLive synchronizes and choreographs the action locally with the spoken audio.
 `;
 
 const performanceTool = {
   functionDeclarations: [
     {
       name: PERFORMANCE_TOOL,
-      description: 'Set the semantic acting intention for the on-screen character immediately before the spoken response. Use meaning-level cues only; local animation code chooses exact timing and motion.',
+      description: 'Optional rare theatrical direction for the on-screen character. Normal emotion and body language are automatic locally. Use only when a deliberate semantic gesture materially improves the response.',
       parametersJsonSchema: {
         type: 'object',
         additionalProperties: false,
@@ -93,6 +93,7 @@ export class GeminiLiveClient {
   private audioChunksThisTurn = 0;
   private audioBytesThisTurn = 0;
   private turnNumber = 0;
+  private turnOpen = false;
 
   constructor(private readonly callbacks: LiveCallbacks) {}
 
@@ -142,6 +143,7 @@ export class GeminiLiveClient {
     this.reconnecting = false;
     this.setupComplete = false;
     this.activePerformanceCallIds.clear();
+    this.turnOpen = false;
     this.socket?.close(1000, 'client close');
     this.socket = null;
     this.callbacks.onStatus('idle');
@@ -190,8 +192,10 @@ export class GeminiLiveClient {
 
         emitSessionLog('session', 'setup_sent', {
           model: MODEL,
-          functionCalling: 'synchronous',
+          functionCalling: 'synchronous-optional',
           tool: PERFORMANCE_TOOL,
+          localPerformancePrimary: true,
+          hybridVad: true,
         });
         this.send({
           setup: {
@@ -214,7 +218,7 @@ export class GeminiLiveClient {
                 startOfSpeechSensitivity: 'START_SENSITIVITY_HIGH',
                 endOfSpeechSensitivity: 'END_SENSITIVITY_HIGH',
                 prefixPaddingMs: 120,
-                silenceDurationMs: 420,
+                silenceDurationMs: 760,
               },
               turnCoverage: 'TURN_INCLUDES_ONLY_ACTIVITY',
             },
@@ -277,20 +281,23 @@ export class GeminiLiveClient {
 
         const output = content?.outputTranscription?.text?.trim();
         if (output) {
+          this.ensureTurnStarted('transcript');
           if (!this.firstOutputTranscriptSeen) {
             this.firstOutputTranscriptSeen = true;
             emitSessionLog('gemini', 'first_output_transcript', {
+              turn: this.turnNumber,
               text: output,
               afterToolMs: this.latestToolCallAt === null ? null : Math.round(performance.now() - this.latestToolCallAt),
             });
           } else {
-            emitSessionLog('gemini', 'output_transcript', { text: output });
+            emitSessionLog('gemini', 'output_transcript', { turn: this.turnNumber, text: output });
           }
           this.callbacks.onOutputTranscript(output);
         }
 
         for (const part of content?.modelTurn?.parts ?? []) {
           if (part.inlineData?.data && part.inlineData.mimeType?.startsWith('audio/pcm')) {
+            this.ensureTurnStarted('audio');
             this.audioChunksThisTurn += 1;
             this.audioBytesThisTurn += approxBase64Bytes(part.inlineData.data);
             if (!this.firstAudioSeen) {
@@ -320,6 +327,7 @@ export class GeminiLiveClient {
           this.audioChunksThisTurn = 0;
           this.audioBytesThisTurn = 0;
           this.latestToolCallAt = null;
+          this.turnOpen = false;
         }
 
         if (message.sessionResumptionUpdate?.resumable && message.sessionResumptionUpdate.newHandle) {
@@ -370,11 +378,7 @@ export class GeminiLiveClient {
   private handleToolCalls(functionCalls: FunctionCall[]) {
     const receivedAt = performance.now();
     this.latestToolCallAt = receivedAt;
-    this.turnNumber += 1;
-    this.firstAudioSeen = false;
-    this.firstOutputTranscriptSeen = false;
-    this.audioChunksThisTurn = 0;
-    this.audioBytesThisTurn = 0;
+    this.ensureTurnStarted('tool');
 
     const functionResponses = functionCalls.map((call) => {
       emitSessionLog('tool', 'call_received', {
@@ -392,7 +396,7 @@ export class GeminiLiveClient {
         return {
           id: call.id,
           name: call.name,
-          response: { result: 'Character direction accepted. Local animation timing is active.' },
+          response: { result: 'Character direction accepted. PixiLive will synchronize it with playback.' },
         };
       }
 
@@ -409,6 +413,17 @@ export class GeminiLiveClient {
       names: functionCalls.map((call) => call.name),
       localHandlingMs: Math.round(performance.now() - receivedAt),
     });
+  }
+
+  private ensureTurnStarted(source: 'tool' | 'transcript' | 'audio') {
+    if (this.turnOpen) return;
+    this.turnOpen = true;
+    this.turnNumber += 1;
+    this.firstAudioSeen = false;
+    this.firstOutputTranscriptSeen = false;
+    this.audioChunksThisTurn = 0;
+    this.audioBytesThisTurn = 0;
+    emitSessionLog('gemini', 'turn_started', { turn: this.turnNumber, source });
   }
 
   private async resumeSession() {
