@@ -7,25 +7,15 @@ const clamp = (value: number, min = 0, max = 1) => Math.max(min, Math.min(max, v
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
 
 type FacePose = {
-  eyeL: number;
-  eyeR: number;
-  upperLidL: number;
-  upperLidR: number;
-  lowerLidL: number;
-  lowerLidR: number;
-  browInnerL: number;
-  browInnerR: number;
-  browOuterL: number;
-  browOuterR: number;
-  browArchL: number;
-  browArchR: number;
+  eyeL: number; eyeR: number;
+  upperLidL: number; upperLidR: number;
+  lowerLidL: number; lowerLidR: number;
+  browInnerL: number; browInnerR: number;
+  browOuterL: number; browOuterR: number;
+  browArchL: number; browArchR: number;
   cheek: number;
-  headTilt: number;
-  headY: number;
-  smile: number;
-  mouthOpen: number;
-  mouthRound: number;
-  mouthSkew: number;
+  headTilt: number; headY: number;
+  smile: number; mouthOpen: number; mouthRound: number; mouthSkew: number;
 };
 
 export interface MiloFaceLayers {
@@ -40,25 +30,15 @@ export interface MiloFaceLayers {
 }
 
 const pose = (values: Partial<FacePose> = {}): FacePose => ({
-  eyeL: 1,
-  eyeR: 1,
-  upperLidL: 0,
-  upperLidR: 0,
-  lowerLidL: 0,
-  lowerLidR: 0,
-  browInnerL: 0,
-  browInnerR: 0,
-  browOuterL: 0,
-  browOuterR: 0,
-  browArchL: -2.8,
-  browArchR: -2.8,
+  eyeL: 1, eyeR: 1,
+  upperLidL: 0, upperLidR: 0,
+  lowerLidL: 0, lowerLidR: 0,
+  browInnerL: 0, browInnerR: 0,
+  browOuterL: 0, browOuterR: 0,
+  browArchL: -2.8, browArchR: -2.8,
   cheek: 0,
-  headTilt: 0,
-  headY: 0,
-  smile: 0.16,
-  mouthOpen: 0,
-  mouthRound: 0,
-  mouthSkew: 0,
+  headTilt: 0, headY: 0,
+  smile: 0.16, mouthOpen: 0, mouthRound: 0, mouthSkew: 0,
   ...values,
 });
 
@@ -69,30 +49,21 @@ const emotionPoses: Record<Emotion, FacePose> = {
     browInnerL: -1.2, browInnerR: -1.2,
     browOuterL: -3.3, browOuterR: -3.3,
     browArchL: -5.2, browArchR: -5.2,
-    cheek: 0.34,
-    headTilt: -0.012,
-    headY: -1.2,
-    smile: 1,
+    cheek: 0.34, headTilt: -0.012, headY: -1.2, smile: 1,
   }),
   curious: pose({
     eyeL: 1.08, eyeR: 1.01,
     browInnerL: -1.2, browInnerR: -6.5,
     browOuterL: -0.4, browOuterR: -3.2,
     browArchL: -3.2, browArchR: -5.8,
-    headTilt: 0.052,
-    headY: -1.3,
-    smile: 0.3,
-    mouthSkew: 0.14,
+    headTilt: 0.052, headY: -1.3, smile: 0.3, mouthSkew: 0.14,
   }),
   excited: pose({
-    eyeL: 1.16, eyeR: 1.16,
+    eyeL: 1.1, eyeR: 1.1,
     browInnerL: -6.3, browInnerR: -6.3,
     browOuterL: -8, browOuterR: -8,
     browArchL: -8, browArchR: -8,
-    cheek: 0.34,
-    headY: -2.8,
-    smile: 0.96,
-    mouthOpen: 0.28,
+    cheek: 0.38, headY: -2.8, smile: 1.04, mouthOpen: 0.4,
   }),
 };
 
@@ -103,29 +74,21 @@ const affectPoses: Record<CharacterAffect, FacePose> = {
     browInnerL: -0.5, browInnerR: -0.5,
     browOuterL: -1.8, browOuterR: -1.8,
     browArchL: -3.8, browArchR: -3.8,
-    cheek: 0.19,
-    headTilt: -0.016,
-    smile: 0.58,
+    cheek: 0.19, headTilt: -0.016, smile: 0.58,
   }),
   curious: pose({
     eyeL: 1.09, eyeR: 1.01,
     browInnerL: -1.2, browInnerR: -7,
     browOuterL: -0.4, browOuterR: -3.5,
     browArchL: -3.1, browArchR: -6,
-    headTilt: 0.056,
-    headY: -1.6,
-    smile: 0.28,
-    mouthSkew: 0.16,
+    headTilt: 0.056, headY: -1.6, smile: 0.28, mouthSkew: 0.16,
   }),
   enthusiastic: pose({
-    eyeL: 1.18, eyeR: 1.18,
+    eyeL: 1.11, eyeR: 1.11,
     browInnerL: -6.5, browInnerR: -6.5,
     browOuterL: -8.2, browOuterR: -8.2,
     browArchL: -8.2, browArchR: -8.2,
-    cheek: 0.34,
-    headY: -3,
-    smile: 0.98,
-    mouthOpen: 0.3,
+    cheek: 0.39, headY: -3, smile: 1.05, mouthOpen: 0.42,
   }),
   reassuring: pose({
     eyeL: 0.86, eyeR: 0.88,
@@ -133,10 +96,7 @@ const affectPoses: Record<CharacterAffect, FacePose> = {
     browInnerL: -0.8, browInnerR: -0.8,
     browOuterL: -0.4, browOuterR: -0.4,
     browArchL: -3, browArchR: -3,
-    cheek: 0.2,
-    headTilt: 0.027,
-    headY: 0.3,
-    smile: 0.46,
+    cheek: 0.2, headTilt: 0.027, headY: 0.3, smile: 0.46,
   }),
   concerned: pose({
     eyeL: 0.92, eyeR: 0.94,
@@ -145,41 +105,30 @@ const affectPoses: Record<CharacterAffect, FacePose> = {
     browInnerL: -8.5, browInnerR: -8.5,
     browOuterL: 2.4, browOuterR: 2.4,
     browArchL: -2, browArchR: -2,
-    headTilt: 0.034,
-    headY: 1.2,
-    smile: -0.62,
+    headTilt: 0.034, headY: 1.2, smile: -0.62,
   }),
   surprised: pose({
     eyeL: 1.3, eyeR: 1.3,
     browInnerL: -10, browInnerR: -10,
     browOuterL: -10, browOuterR: -10,
     browArchL: -9.5, browArchR: -9.5,
-    headY: -4.2,
-    smile: 0,
-    mouthOpen: 0.78,
-    mouthRound: 1,
+    headY: -4.2, smile: 0, mouthOpen: 0.78, mouthRound: 1,
   }),
   thoughtful: pose({
-    eyeL: 0.9, eyeR: 0.97,
-    upperLidL: 0.085, upperLidR: 0.025,
-    browInnerL: -0.8, browInnerR: -5.3,
-    browOuterL: 0.6, browOuterR: -1.8,
-    browArchL: -2.5, browArchR: -4.6,
-    headTilt: -0.043,
-    headY: 0.7,
-    smile: 0.02,
-    mouthSkew: 0.34,
+    eyeL: 0.94, eyeR: 0.99,
+    upperLidL: 0.05,
+    browInnerL: 0.4, browInnerR: -4.8,
+    browOuterL: 1.2, browOuterR: -2,
+    browArchL: -1.4, browArchR: -4.4,
+    headTilt: -0.043, headY: 0.7, smile: 0.08, mouthSkew: 0.38,
   }),
   playful: pose({
-    eyeL: 0.82, eyeR: 1.04,
-    upperLidL: 0.12,
-    browInnerL: -0.5, browInnerR: -7.3,
-    browOuterL: 1.6, browOuterR: -5.5,
-    browArchL: -1.8, browArchR: -6.2,
-    cheek: 0.23,
-    headTilt: -0.046,
-    smile: 0.78,
-    mouthSkew: 0.38,
+    eyeL: 0.68, eyeR: 1.04,
+    upperLidL: 0.16,
+    browInnerL: 0.8, browInnerR: -7.5,
+    browOuterL: 2.2, browOuterR: -5.8,
+    browArchL: -1.2, browArchR: -6.4,
+    cheek: 0.25, headTilt: -0.05, smile: 0.86, mouthSkew: 0.48,
   }),
 };
 
@@ -190,7 +139,6 @@ const blendPose = (a: FacePose, b: FacePose, weight: number): FacePose => {
   return result;
 };
 
-/** Expressive code-first facial rig for Milo. */
 export class MiloFaceRig2D {
   private readonly upperLidLeft = new Graphics();
   private readonly upperLidRight = new Graphics();
@@ -201,12 +149,9 @@ export class MiloFaceRig2D {
 
   constructor(private readonly layers: MiloFaceLayers) {
     this.layers.head.addChild(
-      this.upperLidLeft,
-      this.upperLidRight,
-      this.lowerLidLeft,
-      this.lowerLidRight,
-      this.cheekAccentLeft,
-      this.cheekAccentRight,
+      this.upperLidLeft, this.upperLidRight,
+      this.lowerLidLeft, this.lowerLidRight,
+      this.cheekAccentLeft, this.cheekAccentRight,
     );
   }
 
@@ -264,7 +209,6 @@ export class MiloFaceRig2D {
       .moveTo(-16, p.browOuterL)
       .bezierCurveTo(-7, p.browArchL, 7, p.browArchL, 16, p.browInnerL)
       .stroke({ width: 4, color: C.ink, cap: 'round' });
-
     this.layers.browRight.clear()
       .moveTo(-16, p.browInnerR)
       .bezierCurveTo(-7, p.browArchR, 7, p.browArchR, 16, p.browOuterR)
@@ -288,15 +232,11 @@ export class MiloFaceRig2D {
     if (upper) {
       const y = cy - ry + a * ry * 1.7;
       graphics
-        .moveTo(cx - rx - 2, cy - ry - 4)
-        .lineTo(cx + rx + 2, cy - ry - 4)
-        .lineTo(cx + rx + 2, y)
+        .moveTo(cx - rx - 2, cy - ry - 4).lineTo(cx + rx + 2, cy - ry - 4).lineTo(cx + rx + 2, y)
         .bezierCurveTo(cx + rx * 0.42, y + 2.3, cx - rx * 0.42, y + 2.3, cx - rx - 2, y)
-        .closePath()
-        .fill(C.paper);
+        .closePath().fill(C.paper);
       if (a > 0.065) {
-        graphics
-          .moveTo(cx - rx * 0.95, y)
+        graphics.moveTo(cx - rx * 0.95, y)
           .bezierCurveTo(cx - rx * 0.4, y + 1.7, cx + rx * 0.4, y + 1.7, cx + rx * 0.95, y)
           .stroke({ width: 1.2, color: C.ink, alpha: 0.45, cap: 'round' });
       }
@@ -305,15 +245,11 @@ export class MiloFaceRig2D {
 
     const y = cy + ry - a * ry * 1.35;
     graphics
-      .moveTo(cx - rx - 2, cy + ry + 4)
-      .lineTo(cx + rx + 2, cy + ry + 4)
-      .lineTo(cx + rx + 2, y)
+      .moveTo(cx - rx - 2, cy + ry + 4).lineTo(cx + rx + 2, cy + ry + 4).lineTo(cx + rx + 2, y)
       .bezierCurveTo(cx + rx * 0.42, y - 1.6, cx - rx * 0.42, y - 1.6, cx - rx - 2, y)
-      .closePath()
-      .fill(C.paper);
+      .closePath().fill(C.paper);
     if (a > 0.045) {
-      graphics
-        .moveTo(cx - rx * 0.82, y)
+      graphics.moveTo(cx - rx * 0.82, y)
         .bezierCurveTo(cx - rx * 0.32, y - 1.2, cx + rx * 0.32, y - 1.2, cx + rx * 0.82, y)
         .stroke({ width: 1, color: C.ink, alpha: 0.28, cap: 'round' });
     }
@@ -324,11 +260,9 @@ export class MiloFaceRig2D {
     this.cheekAccentRight.clear();
     if (p.cheek < 0.14) return;
     const alpha = Math.min(0.5, 0.14 + p.cheek * 0.75);
-    this.cheekAccentLeft
-      .moveTo(-65, 28).bezierCurveTo(-61, 26, -57, 25.5, -53, 26.5)
+    this.cheekAccentLeft.moveTo(-65, 28).bezierCurveTo(-61, 26, -57, 25.5, -53, 26.5)
       .stroke({ width: 1.5, color: C.ink, alpha, cap: 'round' });
-    this.cheekAccentRight
-      .moveTo(53, 26.5).bezierCurveTo(57, 25.5, 61, 26, 65, 28)
+    this.cheekAccentRight.moveTo(53, 26.5).bezierCurveTo(57, 25.5, 61, 26, 65, 28)
       .stroke({ width: 1.5, color: C.ink, alpha, cap: 'round' });
   }
 
@@ -337,18 +271,15 @@ export class MiloFaceRig2D {
     mouth.clear();
 
     if (p.mouthOpen > 0.18) {
-      const halfWidth = 8 + Math.max(0, p.smile) * 7 + (1 - p.mouthRound) * 3;
-      const halfHeight = 4 + p.mouthOpen * 8;
-      mouth
-        .moveTo(-halfWidth, 0)
+      const halfWidth = 8 + Math.max(0, p.smile) * 8 + (1 - p.mouthRound) * 3;
+      const halfHeight = 4 + p.mouthOpen * 9.5;
+      mouth.moveTo(-halfWidth, 0)
         .bezierCurveTo(-halfWidth * 0.6, -halfHeight, halfWidth * 0.6, -halfHeight, halfWidth, 0)
         .bezierCurveTo(halfWidth * 0.6, halfHeight, -halfWidth * 0.6, halfHeight, -halfWidth, 0)
-        .closePath()
-        .fill(C.ink);
+        .closePath().fill(C.ink);
       if (p.smile > 0.35 && p.mouthRound < 0.7) {
-        mouth
-          .moveTo(-halfWidth * 0.52, -halfHeight * 0.35)
-          .bezierCurveTo(-halfWidth * 0.18, -halfHeight * 0.5, halfWidth * 0.18, -halfHeight * 0.5, halfWidth * 0.52, -halfHeight * 0.35)
+        mouth.moveTo(-halfWidth * 0.52, -halfHeight * 0.34)
+          .bezierCurveTo(-halfWidth * 0.18, -halfHeight * 0.5, halfWidth * 0.18, -halfHeight * 0.5, halfWidth * 0.52, -halfHeight * 0.34)
           .stroke({ width: 1.8, color: C.paper, alpha: 0.9, cap: 'round' });
       }
       return;
@@ -357,8 +288,7 @@ export class MiloFaceRig2D {
     const halfWidth = 12.5 + Math.abs(p.smile) * 3.5;
     const centerY = p.smile * 6.4;
     const skew = p.mouthSkew * 3.2;
-    mouth
-      .moveTo(-halfWidth, skew * 0.35)
+    mouth.moveTo(-halfWidth, skew * 0.35)
       .bezierCurveTo(-halfWidth * 0.44, centerY + skew, halfWidth * 0.42, centerY - skew * 0.45, halfWidth, -skew * 0.35)
       .stroke({ width: 3.25, color: C.ink, cap: 'round' });
   }
