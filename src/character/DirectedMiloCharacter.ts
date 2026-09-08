@@ -53,14 +53,7 @@ const bodyPoses: Record<CharacterAffect, BodyPose> = {
   playful: bodyPose({ bodyTilt: -0.004, shoulderTilt: 0.007 }),
 };
 
-/**
- * Character-specific acting adapter for Milo.
- *
- * MiloVisemeCharacter owns speech mouth + Rig2D body articulation.
- * MiloFaceRig2D owns emotional readability. This class only mixes semantic
- * performance, speech energy and small torso/shoulder acting without letting
- * face and body transforms fight each other.
- */
+/** Character-specific acting adapter for Milo. */
 export class DirectedMiloCharacter {
   readonly view: Container;
   private readonly base = new MiloVisemeCharacter();
@@ -80,7 +73,12 @@ export class DirectedMiloCharacter {
   constructor() {
     this.view = this.base.view;
     this.internals = this.base as unknown as MiloVisemeInternals;
-    this.face = new MiloFaceRig2D(this.internals.layers);
+    // MiloVisemeCharacter hides MiloCharacter's original mouth and adds its own
+    // richer viseme mouth. Face acting must draw into that visible object.
+    this.face = new MiloFaceRig2D({
+      ...this.internals.layers,
+      mouth: this.internals.mouth,
+    });
   }
 
   setEmotion(emotion: Emotion) {
@@ -149,11 +147,8 @@ export class DirectedMiloCharacter {
     const p = bodyPoses[this.cue.affect];
     const speech = this.smoothedSpeech;
 
-    // Anti-drift: properties not canonically restored by MiloCharacter are
-    // explicitly reset before this acting layer contributes to the frame.
     layers.body.rotation = 0;
     layers.shoulders.y = 7;
-
     layers.body.rotation += p.bodyTilt * w;
     layers.body.y += p.bodyY * w;
     layers.shoulders.rotation += p.shoulderTilt * w;
