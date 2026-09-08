@@ -60,6 +60,52 @@ export function validateRig2DInvariants() {
 }
 
 /**
+ * Static pose correctness is not enough for a humanoid arm. These checks ensure
+ * that the elbow is on the anatomically outward side at the readable peak of
+ * every gesture that leaves Milo's crossed rest pose.
+ */
+export function validateMiloAnatomicalBends() {
+  const cases = [
+    { action: 'touchFace', left: false, right: true },
+    { action: 'openArms', left: true, right: true },
+    { action: 'celebrate', left: true, right: true },
+    { action: 'greet', left: false, right: true },
+    { action: 'explain', left: false, right: true },
+  ] as const;
+  const report: Record<string, { left?: number; right?: number }> = {};
+
+  for (const test of cases) {
+    const character = new DirectedMiloCharacter();
+    character.setEmotion('calm');
+    character.setMode('speaking');
+    character.perform(defaultCue);
+    for (let frame = 0; frame < 8; frame += 1) character.update(fixedTicker);
+    character.interaction.action(test.action, 0.94);
+
+    // ~0.4 gesture phase: safely past unfold and inside the readable hold.
+    for (let frame = 0; frame < 60; frame += 1) character.update(fixedTicker);
+    const snapshot = character.interaction.debugSnapshot();
+    const shoulderL = snapshot.bones.find((bone) => bone.name === 'upperArmL')!.start;
+    const elbowL = snapshot.bones.find((bone) => bone.name === 'upperArmL')!.end;
+    const shoulderR = snapshot.bones.find((bone) => bone.name === 'upperArmR')!.start;
+    const elbowR = snapshot.bones.find((bone) => bone.name === 'upperArmR')!.end;
+
+    if (test.left && !(elbowL.x < shoulderL.x - 8)) {
+      throw new Error(`${test.action}: left elbow is mirrored inward (${elbowL.x.toFixed(2)} vs shoulder ${shoulderL.x.toFixed(2)})`);
+    }
+    if (test.right && !(elbowR.x > shoulderR.x + 8)) {
+      throw new Error(`${test.action}: right elbow is mirrored inward (${elbowR.x.toFixed(2)} vs shoulder ${shoulderR.x.toFixed(2)})`);
+    }
+    report[test.action] = {
+      ...(test.left ? { left: elbowL.x - shoulderL.x } : {}),
+      ...(test.right ? { right: elbowR.x - shoulderR.x } : {}),
+    };
+  }
+
+  return report;
+}
+
+/**
  * Regression for the transient bug static screenshots missed: an arm could jump
  * to the mirror IK solution while moving from crossed rest into a gesture.
  * Every full path is sampled frame-by-frame; a single elbow teleport fails CI.
@@ -83,7 +129,7 @@ export function validateMiloMotionContinuity() {
     let maxStep = 0;
     character.interaction.action(action, 0.9);
 
-    for (let frame = 0; frame < 110; frame += 1) {
+    for (let frame = 0; frame < 170; frame += 1) {
       character.update(fixedTicker);
       snapshot = character.interaction.debugSnapshot();
       const current = {
@@ -94,8 +140,6 @@ export function validateMiloMotionContinuity() {
       previous = current;
     }
 
-    // Normal spring motion is single-digit pixels/frame at 60 fps. 24px leaves
-    // generous room for strong acting but catches a mirrored elbow teleport.
     if (!Number.isFinite(maxStep) || maxStep > 24) {
       throw new Error(`${action}: elbow continuity broke (${maxStep.toFixed(2)} px in one frame)`);
     }
