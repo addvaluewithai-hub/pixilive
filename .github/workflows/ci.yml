@@ -18,7 +18,7 @@ jobs:
   build:
     name: Typecheck, build, and visual check
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
 
     steps:
       - name: Checkout
@@ -70,6 +70,11 @@ jobs:
           PIXILIVE_PREVIEW_URL: http://127.0.0.1:4173
           PIXILIVE_VISUAL_HARNESS_URL: http://127.0.0.1:4174
         run: node scripts/capture-characters.mjs
+
+      - name: Capture Nova expression, mouth, and tail QA
+        env:
+          PIXILIVE_VISUAL_HARNESS_URL: http://127.0.0.1:4174
+        run: node scripts/capture-nova-qa.mjs
 
       - name: Validate and capture full motion paths
         env:
