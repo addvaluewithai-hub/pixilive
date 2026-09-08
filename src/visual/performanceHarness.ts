@@ -1,10 +1,12 @@
-import { Application } from 'pixi.js';
+import { Application, type Ticker } from 'pixi.js';
 import { DirectedMiloCharacter } from '../character/DirectedMiloCharacter';
 import type { CharacterMode, PerformanceCue } from '../character/performance';
 
 interface HarnessWindow extends Window {
   __pixilivePerformanceApp?: Application;
 }
+
+const fixedTicker = { deltaMS: 1000 / 60 } as Ticker;
 
 export async function mountMiloPerformanceHarness(cue: PerformanceCue, mode: CharacterMode = 'speaking', frames = 58) {
   const harnessWindow = window as HarnessWindow;
@@ -42,8 +44,10 @@ export async function mountMiloPerformanceHarness(cue: PerformanceCue, mode: Cha
   character.perform(cue);
   character.setSpeechEnergy(mode === 'speaking' ? 0.42 : 0);
 
+  // Deterministic simulation: a slow GitHub runner must not change which point
+  // in the gesture timeline is captured.
   for (let frame = 0; frame < frames; frame += 1) {
-    character.update(app.ticker);
-    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+    character.update(fixedTicker);
   }
+  await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
 }
