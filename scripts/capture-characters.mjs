@@ -29,6 +29,10 @@ const performanceCases = {
     cue: { affect: 'enthusiastic', intensity: 0.68, gesture: 'explain', posture: 'engaged', gaze: 'user' },
     mode: 'speaking', frames: 58,
   },
+  emphasize: {
+    cue: { affect: 'neutral', intensity: 0.7, gesture: 'emphasize', posture: 'engaged', gaze: 'user' },
+    mode: 'speaking', frames: 46,
+  },
   reassure: {
     cue: { affect: 'reassuring', intensity: 0.55, gesture: 'reassure', posture: 'lean_in', gaze: 'user' },
     mode: 'speaking', frames: 58,
@@ -45,13 +49,41 @@ const performanceCases = {
     cue: { affect: 'playful', intensity: 0.65, gesture: 'shrug', posture: 'open', gaze: 'user' },
     mode: 'speaking', frames: 54,
   },
+  agree: {
+    cue: { affect: 'warm', intensity: 0.62, gesture: 'agree', posture: 'engaged', gaze: 'user' },
+    mode: 'speaking', frames: 44,
+  },
+  disagree: {
+    cue: { affect: 'concerned', intensity: 0.62, gesture: 'disagree', posture: 'engaged', gaze: 'user' },
+    mode: 'speaking', frames: 44,
+  },
+  greet: {
+    cue: { affect: 'warm', intensity: 0.72, gesture: 'greet', posture: 'open', gaze: 'user' },
+    mode: 'speaking', frames: 48,
+  },
+  warm: {
+    cue: { affect: 'warm', intensity: 0.7, gesture: 'none', posture: 'engaged', gaze: 'user' },
+    mode: 'listening', frames: 48,
+  },
+  curious: {
+    cue: { affect: 'curious', intensity: 0.72, gesture: 'none', posture: 'engaged', gaze: 'user' },
+    mode: 'thinking', frames: 44,
+  },
+  enthusiastic: {
+    cue: { affect: 'enthusiastic', intensity: 0.78, gesture: 'none', posture: 'open', gaze: 'user' },
+    mode: 'speaking', frames: 38,
+  },
+  playful: {
+    cue: { affect: 'playful', intensity: 0.75, gesture: 'none', posture: 'engaged', gaze: 'user' },
+    mode: 'speaking', frames: 38,
+  },
   concerned: {
     cue: { affect: 'concerned', intensity: 0.72, gesture: 'none', posture: 'lean_in', gaze: 'user' },
-    mode: 'speaking', frames: 24,
+    mode: 'speaking', frames: 38,
   },
   surprised: {
     cue: { affect: 'surprised', intensity: 0.78, gesture: 'none', posture: 'neutral', gaze: 'user' },
-    mode: 'speaking', frames: 24,
+    mode: 'speaking', frames: 38,
   },
   listening: {
     cue: { affect: 'warm', intensity: 0.42, gesture: 'none', posture: 'engaged', gaze: 'user' },
