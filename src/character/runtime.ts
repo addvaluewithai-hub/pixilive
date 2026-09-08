@@ -1,4 +1,5 @@
 import type { Container, Ticker } from 'pixi.js';
+import type { CharacterMode, PerformanceCue } from './performance';
 import type { Emotion, MouthPose } from './types';
 
 export interface CharacterRuntime {
@@ -8,6 +9,10 @@ export interface CharacterRuntime {
   settleMouth(): void;
   lookAt(normalizedX: number, normalizedY: number): void;
   react(): void;
+  setMode(mode: CharacterMode): void;
+  perform(cue: PerformanceCue): void;
+  setSpeechEnergy(energy: number): void;
+  interruptPerformance(): void;
   update(ticker: Ticker): void;
 }
 

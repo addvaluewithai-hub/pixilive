@@ -1,4 +1,5 @@
 export type PcmChunkHandler = (base64Pcm16: string) => void;
+export type PcmLevelHandler = (level: number) => void;
 
 const floatToPcm16Base64 = (input: Float32Array) => {
   const bytes = new Uint8Array(input.length * 2);
@@ -30,13 +31,20 @@ const downsample = (samples: Float32Array, sourceRate: number, targetRate = 16_0
   return output;
 };
 
+const rmsLevel = (samples: Float32Array) => {
+  if (!samples.length) return 0;
+  let energy = 0;
+  for (const sample of samples) energy += sample * sample;
+  return Math.min(1, Math.sqrt(energy / samples.length) * 5.5);
+};
+
 export class MicrophonePcmStream {
   private context: AudioContext | null = null;
   private stream: MediaStream | null = null;
   private source: MediaStreamAudioSourceNode | null = null;
   private worklet: AudioWorkletNode | null = null;
 
-  async start(onChunk: PcmChunkHandler) {
+  async start(onChunk: PcmChunkHandler, onLevel?: PcmLevelHandler) {
     if (this.context) return;
     this.stream = await navigator.mediaDevices.getUserMedia({
       audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 },
@@ -47,7 +55,9 @@ export class MicrophonePcmStream {
     this.worklet = new AudioWorkletNode(this.context, 'pixilive-audio-capture');
     this.worklet.port.onmessage = (event: MessageEvent<Float32Array>) => {
       if (!this.context) return;
-      onChunk(floatToPcm16Base64(downsample(event.data, this.context.sampleRate)));
+      const downsampled = downsample(event.data, this.context.sampleRate);
+      onLevel?.(rmsLevel(downsampled));
+      onChunk(floatToPcm16Base64(downsampled));
     };
     this.source.connect(this.worklet);
     this.worklet.connect(this.context.destination);
