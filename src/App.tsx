@@ -5,6 +5,8 @@ import { characterRegistry, DEFAULT_CHARACTER_ID, getCharacterDefinition } from 
 import type { CharacterMode, PerformanceCue } from './character/performance';
 import type { Emotion, MouthPose } from './character/types';
 import { CharacterStage } from './components/CharacterStage';
+import { SessionLogPanel } from './components/SessionLogPanel';
+import { emitSessionLog, subscribeSessionLog, type SessionLogEvent } from './debug/sessionLog';
 import { GeminiLiveClient } from './live/GeminiLiveClient';
 import type { LiveStatus } from './live/types';
 
@@ -22,6 +24,7 @@ export function App() {
   const [outputTranscript, setOutputTranscript] = useState('');
   const [error, setError] = useState('');
   const [text, setText] = useState('');
+  const [sessionLogs, setSessionLogs] = useState<SessionLogEvent[]>([]);
 
   const microphone = useRef(new MicrophonePcmStream());
   const playback = useRef<PcmPlaybackQueue | null>(null);
@@ -34,8 +37,11 @@ export function App() {
   const character = useMemo(() => getCharacterDefinition(characterId), [characterId]);
 
   const changeCharacterMode = (next: CharacterMode) => {
+    const previous = modeRef.current;
+    if (previous === next) return;
     modeRef.current = next;
     setCharacterMode(next);
+    emitSessionLog('character', 'mode_changed', { from: previous, to: next });
   };
 
   const clearThinkingTimer = () => {
@@ -46,8 +52,10 @@ export function App() {
   };
 
   const updateLiveStatus = (next: LiveStatus) => {
+    const previous = statusRef.current;
     statusRef.current = next;
     setStatus(next);
+    if (previous !== next) emitSessionLog('session', 'status_changed', { from: previous, to: next });
     if (next === 'speaking') changeCharacterMode('speaking');
     else if (next === 'idle' || next === 'error') changeCharacterMode('idle');
     else if (next === 'connecting') changeCharacterMode('thinking');
@@ -61,13 +69,17 @@ export function App() {
 
     if (level >= speakingThreshold) {
       clearThinkingTimer();
-      userActiveRef.current = true;
+      if (!userActiveRef.current) {
+        userActiveRef.current = true;
+        emitSessionLog('user', 'voice_activity_start', { level: Number(level.toFixed(3)) });
+      }
       changeCharacterMode('listening');
       return;
     }
 
     if (userActiveRef.current && level <= silenceThreshold) {
       userActiveRef.current = false;
+      emitSessionLog('user', 'voice_activity_end', { level: Number(level.toFixed(3)) });
       changeCharacterMode('thinking');
       clearThinkingTimer();
       thinkingTimerRef.current = window.setTimeout(() => {
@@ -107,7 +119,10 @@ export function App() {
         playback.current?.interrupt();
         changeCharacterMode('listening');
       },
-      onError: setError,
+      onError: (message) => {
+        emitSessionLog('error', 'ui_error', { message });
+        setError(message);
+      },
     });
   }
 
@@ -118,6 +133,10 @@ export function App() {
     () => ({ idle: 'offline', connecting: 'connecting', listening: 'listening', speaking: 'speaking', error: 'error' })[status],
     [status],
   );
+
+  useEffect(() => subscribeSessionLog((entry) => {
+    setSessionLogs((current) => [...current.slice(-399), entry]);
+  }), []);
 
   useEffect(() => {
     return () => {
@@ -131,6 +150,7 @@ export function App() {
   const selectCharacter = (event: ChangeEvent<HTMLSelectElement>) => {
     if (sessionLocked) return;
     const next = getCharacterDefinition(event.target.value);
+    emitSessionLog('character', 'character_selected', { id: next.id, name: next.name });
     setCharacterId(next.id);
     setEmotion(next.defaultEmotion);
     setMouth(restingMouth);
@@ -144,16 +164,20 @@ export function App() {
   const connect = async () => {
     setError('');
     setPerformanceCue(null);
+    emitSessionLog('session', 'session_start', { character: character.name, characterId: character.id });
     try {
       await live.current?.connect(character.systemPrompt);
       await microphone.current.start(
         (chunk) => live.current?.sendAudio(chunk),
         handleMicLevel,
       );
+      emitSessionLog('user', 'microphone_started');
       changeCharacterMode('listening');
     } catch (reason) {
       updateLiveStatus('error');
-      setError(reason instanceof Error ? reason.message : 'Could not start Gemini Live');
+      const message = reason instanceof Error ? reason.message : 'Could not start Gemini Live';
+      emitSessionLog('error', 'connect_failed', { message });
+      setError(message);
       live.current?.close();
       await microphone.current.stop();
     }
@@ -162,6 +186,7 @@ export function App() {
   const disconnect = async () => {
     clearThinkingTimer();
     userActiveRef.current = false;
+    emitSessionLog('session', 'session_end_requested');
     live.current?.endAudioStream();
     live.current?.close();
     await microphone.current.stop();
@@ -267,6 +292,8 @@ export function App() {
         <div className="meter" aria-hidden="true"><span style={{ width: `${Math.round(mouth.energy * 100)}%` }} /></div>
         <p className="hint">Gemini chooses semantic intent. PixiLive locally handles acting, timing, gesture variation, listening behavior and interruption.</p>
         {error && <p className="error">{error}</p>}
+
+        <SessionLogPanel entries={sessionLogs} onClear={() => setSessionLogs([])} />
       </aside>
     </main>
   );
