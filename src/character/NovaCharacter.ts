@@ -4,6 +4,10 @@ import type { CharacterSignals, Emotion, MouthPose } from './types';
 const clamp = (value: number, min = 0, max = 1) => Math.max(min, Math.min(max, value));
 const lerp = (from: number, to: number, amount: number) => from + (to - from) * amount;
 const damp = (from: number, to: number, speed: number, dt: number) => lerp(from, to, 1 - Math.exp(-speed * dt));
+const smooth = (value: number) => {
+  const t = clamp(value);
+  return t * t * (3 - 2 * t);
+};
 
 const palette = {
   shell: 0xb9a7ff,
@@ -21,9 +25,9 @@ const palette = {
 
 const moods: Record<Emotion, { smile: number; eye: number; brow: number; energy: number; tilt: number; cheek: number }> = {
   calm: { smile: 0.14, eye: 1, brow: 0, energy: 0.2, tilt: 0, cheek: 0.12 },
-  happy: { smile: 0.72, eye: 0.92, brow: 0.08, energy: 0.58, tilt: -0.02, cheek: 0.34 },
-  curious: { smile: 0.24, eye: 1.08, brow: 0.13, energy: 0.38, tilt: 0.045, cheek: 0.15 },
-  excited: { smile: 0.58, eye: 1.12, brow: 0.1, energy: 0.9, tilt: -0.025, cheek: 0.42 },
+  happy: { smile: 0.72, eye: 0.88, brow: 0.045, energy: 0.58, tilt: -0.02, cheek: 0.34 },
+  curious: { smile: 0.24, eye: 1.07, brow: 0.13, energy: 0.38, tilt: 0.045, cheek: 0.15 },
+  excited: { smile: 0.72, eye: 1.08, brow: 0.075, energy: 0.9, tilt: -0.025, cheek: 0.42 },
 };
 
 interface EyeParts {
@@ -73,34 +77,42 @@ export class NovaCharacter {
 
   constructor() {
     this.view.addChild(this.character);
+    this.character.sortableChildren = true;
 
     this.shadow = new Graphics().ellipse(0, 220, 128, 25).fill({ color: 0x000000, alpha: 0.26 });
+    this.shadow.zIndex = 0;
     this.character.addChild(this.shadow);
 
     this.auras = [184, 151, 127].map((radius, index) =>
       new Graphics().circle(0, 4, radius).fill({ color: index === 1 ? palette.aqua : palette.glow, alpha: 0.02 + index * 0.006 }),
     );
+    for (const aura of this.auras) aura.zIndex = -1;
     this.character.addChild(...this.auras);
 
-    this.tail.x = 96;
-    this.tail.y = 120;
+    // Tail starts well inside the torso and is rendered behind it. This removes
+    // the old cut-off attachment line while keeping a clear crescent silhouette.
+    this.tail.position.set(66, 106);
+    this.tail.zIndex = 1;
     this.tail.addChild(
       new Graphics()
-        .moveTo(0, 0)
-        .bezierCurveTo(74, 16, 80, 90, 20, 102)
-        .bezierCurveTo(53, 70, 37, 45, 0, 38)
+        .moveTo(-16, 2)
+        .bezierCurveTo(43, 5, 86, 53, 63, 96)
+        .bezierCurveTo(53, 116, 28, 128, 8, 119)
+        .bezierCurveTo(38, 91, 44, 55, 12, 34)
+        .bezierCurveTo(1, 27, -9, 22, -16, 22)
         .closePath()
         .fill(palette.shellDark),
       new Graphics()
-        .moveTo(20, 39)
-        .bezierCurveTo(54, 53, 51, 75, 28, 91)
-        .bezierCurveTo(59, 82, 60, 47, 15, 25)
+        .moveTo(9, 34)
+        .bezierCurveTo(47, 50, 58, 76, 37, 101)
+        .bezierCurveTo(55, 90, 57, 59, 18, 38)
         .closePath()
         .fill({ color: palette.aqua, alpha: 0.54 }),
     );
     this.character.addChild(this.tail);
 
     this.body.y = 112;
+    this.body.zIndex = 2;
     const torso = new Graphics()
       .moveTo(-72, -34)
       .bezierCurveTo(-97, 22, -91, 119, -50, 155)
@@ -118,11 +130,16 @@ export class NovaCharacter {
     );
     this.character.addChild(this.body);
 
-    this.makeArm(this.armLeft, -71, 0.055);
-    this.makeArm(this.armRight, 71, -0.055);
-    this.body.addChild(this.armLeft, this.armRight);
+    // Arms are siblings of body/head instead of body children. That gives the
+    // performance rig explicit front/behind control for gestures such as think.
+    this.makeArm(this.armLeft, -71, 104, 0.055);
+    this.makeArm(this.armRight, 71, 104, -0.055);
+    this.armLeft.zIndex = 3;
+    this.armRight.zIndex = 3;
+    this.character.addChild(this.armLeft, this.armRight);
 
     this.head.y = -35;
+    this.head.zIndex = 4;
     this.earLeft = this.makeEar(-75, 1);
     this.earRight = this.makeEar(75, -1);
     this.head.addChild(this.earLeft, this.earRight);
@@ -161,6 +178,7 @@ export class NovaCharacter {
     );
     this.head.addChild(this.antenna);
     this.character.addChild(this.head);
+    this.character.sortChildren();
 
     this.drawMouth(this.renderedMouth);
   }
@@ -201,9 +219,11 @@ export class NovaCharacter {
 
     this.gaze.x = damp(this.gaze.x, this.gazeTarget.x, 8, dt);
     this.gaze.y = damp(this.gaze.y, this.gazeTarget.y, 8, dt);
-    this.renderedMouth.open = damp(this.renderedMouth.open, this.signals.mouth.open, 20, dt);
-    this.renderedMouth.width = damp(this.renderedMouth.width, this.signals.mouth.width, 15, dt);
-    this.renderedMouth.round = damp(this.renderedMouth.round, this.signals.mouth.round, 15, dt);
+    // Slightly slower parameter motion plus a topology-free mouth renderer below
+    // removes the old visible snap between the closed line and open capsule.
+    this.renderedMouth.open = damp(this.renderedMouth.open, this.signals.mouth.open, 17, dt);
+    this.renderedMouth.width = damp(this.renderedMouth.width, this.signals.mouth.width, 13.5, dt);
+    this.renderedMouth.round = damp(this.renderedMouth.round, this.signals.mouth.round, 14, dt);
     this.renderedMouth.energy = damp(this.renderedMouth.energy, this.signals.mouth.energy, 15, dt);
     this.reaction = damp(this.reaction, 0, 4.5, dt);
 
@@ -227,14 +247,19 @@ export class NovaCharacter {
 
     this.body.scale.y = 1 + breathe * 0.012;
     this.body.y = 112 + breathe * 1.3;
-    this.armLeft.rotation = 0.055 + Math.sin(this.time * 1.25) * 0.025 + mood.energy * 0.025;
-    this.armRight.rotation = -0.055 - Math.sin(this.time * 1.25) * 0.025 - mood.energy * 0.025;
+    this.armLeft.rotation = 0.055 + Math.sin(this.time * 1.25) * 0.022 + mood.energy * 0.02;
+    this.armRight.rotation = -0.055 - Math.sin(this.time * 1.25) * 0.022 - mood.energy * 0.02;
     if (this.signals.emotion === 'excited') {
-      this.armLeft.rotation = -0.2 + Math.sin(this.time * 8) * 0.08;
-      this.armRight.rotation = 0.2 - Math.sin(this.time * 8) * 0.08;
+      this.armLeft.rotation = -0.16 + Math.sin(this.time * 7) * 0.055;
+      this.armRight.rotation = 0.16 - Math.sin(this.time * 7) * 0.055;
     }
 
-    this.tail.rotation = 0.08 + Math.sin(this.time * 1.55) * 0.14 + this.reaction * 0.16;
+    // The tail base is hidden behind the torso; rotation + a lagging skew gives
+    // it a soft two-stage follow-through without a second authored sprite.
+    this.tail.rotation = 0.045 + Math.sin(this.time * 1.35) * 0.105 + this.reaction * 0.11;
+    this.tail.skew.y = Math.sin(this.time * 1.35 - 0.72) * 0.055 + this.reaction * 0.025;
+    this.tail.scale.y = 1 + Math.sin(this.time * 1.35 - 1.1) * 0.025;
+
     this.head.rotation = Math.sin(this.time * 0.92) * 0.016 + this.gaze.x * 0.025;
     this.head.y = -35 + Math.sin(this.time * 1.7 + 1) * 2.4 - this.reaction * 2;
     this.earLeft.rotation = -0.04 + Math.sin(this.time * 1.15) * 0.045 - this.reaction * 0.12 - mood.energy * 0.025;
@@ -256,6 +281,7 @@ export class NovaCharacter {
 
     this.browLeft.rotation = -mood.brow + this.gaze.y * 0.03;
     this.browRight.rotation = mood.brow - this.gaze.y * 0.03;
+    this.browLeft.y = -42;
     this.browRight.y = this.signals.emotion === 'curious' ? -47 : -42;
     this.cheekLeft.alpha = this.cheekRight.alpha = mood.cheek + this.renderedMouth.energy * 0.08;
     this.drawMouth(this.renderedMouth, mood.smile);
@@ -266,8 +292,8 @@ export class NovaCharacter {
     this.auras[2].scale.set(pulse);
   }
 
-  private makeArm(arm: Container, x: number, rotation: number) {
-    arm.position.set(x, 20);
+  private makeArm(arm: Container, x: number, y: number, rotation: number) {
+    arm.position.set(x, y);
     arm.rotation = rotation;
     arm.addChild(
       new Graphics().roundRect(-13, -2, 27, 98, 14).fill(palette.shellDark),
@@ -313,21 +339,41 @@ export class NovaCharacter {
   private drawMouth(pose: MouthPose, smile = 0.14) {
     this.mouth.clear();
     const width = 25 + pose.width * 34 - pose.round * 8;
-    const height = 5 + pose.open * 36 + pose.round * 9;
+    const open = clamp(pose.open);
+    const opening = smooth(clamp((open - 0.035) / 0.28));
+    const height = 1.6 + open * 35 + pose.round * 8;
     const y = smile > 0 ? -smile * 2 : 0;
 
-    if (pose.open < 0.14) {
+    // Closed smile fades out while the interior grows; there is no hard shape
+    // switch anymore, so REST -> vowel transitions stay continuous.
+    const lineAlpha = 0.92 * (1 - opening * 0.9);
+    if (lineAlpha > 0.03) {
       this.mouth
         .moveTo(-width * 0.48, y)
         .bezierCurveTo(-width * 0.18, y + 4 - smile * 7, width * 0.18, y + 4 - smile * 7, width * 0.48, y)
-        .stroke({ width: 4, color: palette.blush, alpha: 0.92, cap: 'round' });
-      return;
+        .stroke({ width: 4 - opening * 0.8, color: palette.blush, alpha: lineAlpha, cap: 'round' });
     }
 
-    this.mouth.roundRect(-width / 2, y - height / 2, width, height, Math.min(13, height * 0.48)).fill(palette.mouth);
-    this.mouth.ellipse(0, y + height * 0.27, width * 0.28, Math.max(2, height * 0.26)).fill({ color: palette.tongue, alpha: 0.92 });
-    if (pose.open > 0.52) {
-      this.mouth.roundRect(-width * 0.29, y - height * 0.42, width * 0.58, Math.min(7, height * 0.14), 4).fill({ color: palette.white, alpha: 0.92 });
+    if (opening > 0.015) {
+      const rx = width * 0.5;
+      const ry = Math.max(1.2, height * 0.5 * opening);
+      this.mouth
+        .moveTo(-rx, y)
+        .bezierCurveTo(-rx * 0.82, y - ry, rx * 0.82, y - ry, rx, y)
+        .bezierCurveTo(rx * 0.82, y + ry, -rx * 0.82, y + ry, -rx, y)
+        .closePath()
+        .fill({ color: palette.mouth, alpha: 0.96 * opening });
+
+      const tongueAlpha = smooth(clamp((open - 0.16) / 0.32));
+      if (tongueAlpha > 0.02) {
+        this.mouth.ellipse(0, y + ry * 0.48, width * 0.27, Math.max(1.5, ry * 0.42))
+          .fill({ color: palette.tongue, alpha: 0.9 * tongueAlpha });
+      }
+      const teethAlpha = smooth(clamp((open - 0.46) / 0.25));
+      if (teethAlpha > 0.02) {
+        this.mouth.roundRect(-width * 0.28, y - ry * 0.82, width * 0.56, Math.max(2, ry * 0.22), 4)
+          .fill({ color: palette.white, alpha: 0.9 * teethAlpha });
+      }
     }
   }
 }
