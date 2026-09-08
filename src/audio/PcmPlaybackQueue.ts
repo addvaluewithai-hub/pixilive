@@ -35,6 +35,9 @@ export class PcmPlaybackQueue {
   }
 
   async enqueue(base64: string, sampleRate = 24_000) {
+    const startingNewOutput = !this.outputActive;
+    if (startingNewOutput) this.prosody.reset();
+
     const samples = base64ToInt16(base64);
     const poses = this.analyzer.analyze(samples, sampleRate);
     const dynamicsFrames = this.prosody.analyze(samples, sampleRate);
@@ -55,9 +58,8 @@ export class PcmPlaybackQueue {
     // WebAudio clock as the sound instead of reacting when network chunks arrive.
     const startAt = Math.max(now + (this.nextStart === 0 ? 0.075 : 0.012), this.nextStart);
 
-    if (!this.outputActive) {
+    if (startingNewOutput) {
       this.outputActive = true;
-      this.prosody.reset();
       this.schedule(startAt, now, () => this.performance.onSpeechStart?.());
     }
 
@@ -85,6 +87,7 @@ export class PcmPlaybackQueue {
   }
 
   interrupt() {
+    const hadPlayback = this.outputActive || this.active.size > 0;
     for (const timer of this.timers) window.clearTimeout(timer);
     this.timers.clear();
     for (const source of this.active) {
@@ -100,7 +103,7 @@ export class PcmPlaybackQueue {
     this.analyzer.resetTranscript();
     this.prosody.reset();
     this.onIdle();
-    this.performance.onSpeechEnd?.();
+    if (hadPlayback) this.performance.onSpeechEnd?.();
   }
 
   async close() {
