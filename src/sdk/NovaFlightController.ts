@@ -13,6 +13,7 @@ export interface FlyToOptions extends Point2D {
 }
 
 const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
+const distance = (a: Point2D, b: Point2D) => Math.hypot(a.x - b.x, a.y - b.y);
 
 /**
  * World-space locomotion intentionally lives outside Nova's internal character rig.
@@ -31,13 +32,16 @@ export class NovaFlightController {
   constructor(private readonly view: Container) {}
 
   setHome(point: Point2D, snap = false) {
+    const targetWasHome = this.initialized && distance(this.target, this.home) < 1;
     this.home = { ...point };
     if (!this.initialized || snap) {
       this.initialized = true;
       this.target = { ...point };
       this.velocity = { x: 0, y: 0 };
       this.view.position.set(point.x, point.y);
+      return;
     }
+    if (targetWasHome) this.target = { ...point };
   }
 
   flyTo(options: FlyToOptions) {
@@ -63,7 +67,7 @@ export class NovaFlightController {
 
     const dx = this.target.x - this.view.x;
     const dy = this.target.y - this.view.y;
-    const distance = Math.hypot(dx, dy);
+    const distanceToTarget = Math.hypot(dx, dy);
     const omega = 5.2 * this.speed;
     const damping = 0.92;
 
@@ -72,15 +76,17 @@ export class NovaFlightController {
     const substeps = Math.max(1, Math.ceil(step / (1 / 180)));
     const sub = step / substeps;
     for (let index = 0; index < substeps; index += 1) {
-      const ax = dx * omega * omega - 2 * damping * omega * this.velocity.x;
-      const ay = dy * omega * omega - 2 * damping * omega * this.velocity.y;
+      const liveDx = this.target.x - this.view.x;
+      const liveDy = this.target.y - this.view.y;
+      const ax = liveDx * omega * omega - 2 * damping * omega * this.velocity.x;
+      const ay = liveDy * omega * omega - 2 * damping * omega * this.velocity.y;
       this.velocity.x += ax * sub;
       this.velocity.y += ay * sub;
       this.view.x += this.velocity.x * sub;
       this.view.y += this.velocity.y * sub;
     }
 
-    const moving = distance > 3 || Math.hypot(this.velocity.x, this.velocity.y) > 8;
+    const moving = distanceToTarget > 3 || Math.hypot(this.velocity.x, this.velocity.y) > 8;
     const bankTarget = moving ? clamp(this.velocity.x / 900, -0.13, 0.13) : 0;
     const bankGain = 1 - Math.exp(-7.5 * step);
     this.view.rotation += (bankTarget - this.view.rotation) * bankGain;
