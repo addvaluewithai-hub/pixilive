@@ -1,14 +1,17 @@
 import react from '@vitejs/plugin-react';
-import { resolve } from 'node:path';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vite';
+
+const rootDir = dirname(fileURLToPath(import.meta.url));
 
 export default defineConfig({
   plugins: [react()],
   build: {
     rollupOptions: {
       input: {
-        app: resolve(__dirname, 'index.html'),
-        'pixilive-nova': resolve(__dirname, 'src/sdk/embed.ts'),
+        app: resolve(rootDir, 'index.html'),
+        'pixilive-nova': resolve(rootDir, 'src/sdk/embed.ts'),
       },
       output: {
         entryFileNames: (chunk) => chunk.name === 'pixilive-nova'
