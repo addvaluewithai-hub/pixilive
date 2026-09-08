@@ -18,7 +18,7 @@ jobs:
   build:
     name: Typecheck, build, and visual check
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
 
     steps:
       - name: Checkout
@@ -42,7 +42,7 @@ jobs:
           npm install --no-save --no-audit --no-fund playwright@latest
           npx playwright install --with-deps chromium
 
-      - name: Start app and viseme harness servers
+      - name: Start app and visual harness servers
         run: |
           npx vite preview --host 127.0.0.1 --port 4173 > /tmp/pixilive-preview.log 2>&1 &
           npx vite --host 127.0.0.1 --port 4174 > /tmp/pixilive-harness.log 2>&1 &
@@ -65,11 +65,16 @@ jobs:
             fi
           done
 
-      - name: Capture registered characters and visemes
+      - name: Capture characters, faces, visemes, and static performance
         env:
           PIXILIVE_PREVIEW_URL: http://127.0.0.1:4173
           PIXILIVE_VISUAL_HARNESS_URL: http://127.0.0.1:4174
         run: node scripts/capture-characters.mjs
+
+      - name: Validate and capture full motion paths
+        env:
+          PIXILIVE_VISUAL_HARNESS_URL: http://127.0.0.1:4174
+        run: node scripts/capture-motion-paths.mjs
 
       - name: Upload visual artifacts
         uses: actions/upload-artifact@v4
