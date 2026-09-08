@@ -1,5 +1,6 @@
 import { Application, Container, Graphics, type Ticker } from 'pixi.js';
 import { useEffect, useRef } from 'react';
+import type { CharacterMode, PerformanceCue } from '../character/performance';
 import type { CharacterDefinition, CharacterRuntime } from '../character/runtime';
 import type { Emotion, MouthPose } from '../character/types';
 
@@ -8,9 +9,12 @@ interface CharacterStageProps {
   emotion: Emotion;
   mouth: MouthPose;
   speaking: boolean;
+  mode: CharacterMode;
+  performanceCue: PerformanceCue | null;
+  interruptKey: number;
 }
 
-export function CharacterStage({ character, emotion, mouth, speaking }: CharacterStageProps) {
+export function CharacterStage({ character, emotion, mouth, speaking, mode, performanceCue, interruptKey }: CharacterStageProps) {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const runtimeRef = useRef<CharacterRuntime | null>(null);
 
@@ -58,6 +62,9 @@ export function CharacterStage({ character, emotion, mouth, speaking }: Characte
       runtimeRef.current = runtime;
       world.addChild(runtime.view);
       runtime.setEmotion(emotion);
+      runtime.setMode(mode);
+      runtime.setSpeechEnergy(mouth.energy);
+      if (performanceCue) runtime.perform(performanceCue);
       if (speaking) runtime.setMouth(mouth, true);
       else runtime.settleMouth();
 
@@ -117,10 +124,18 @@ export function CharacterStage({ character, emotion, mouth, speaking }: Characte
   }, [character]);
 
   useEffect(() => runtimeRef.current?.setEmotion(emotion), [character, emotion]);
+  useEffect(() => runtimeRef.current?.setMode(mode), [character, mode]);
   useEffect(() => {
+    runtimeRef.current?.setSpeechEnergy(mouth.energy);
     if (speaking) runtimeRef.current?.setMouth(mouth, true);
     else runtimeRef.current?.settleMouth();
   }, [character, mouth, speaking]);
+  useEffect(() => {
+    if (performanceCue) runtimeRef.current?.perform(performanceCue);
+  }, [character, performanceCue]);
+  useEffect(() => {
+    if (interruptKey > 0) runtimeRef.current?.interruptPerformance();
+  }, [character, interruptKey]);
 
   return <div className="character-stage" ref={hostRef} aria-label={`${character.name} animated character`} />;
 }

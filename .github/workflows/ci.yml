@@ -18,7 +18,7 @@ jobs:
   build:
     name: Typecheck, build, and visual check
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 25
 
     steps:
       - name: Checkout
@@ -37,12 +37,15 @@ jobs:
       - name: Build
         run: npm run build
 
+      - name: Verify stable SDK artifact exists
+        run: test -s dist/sdk/pixilive-nova.js
+
       - name: Install Playwright Chromium
         run: |
           npm install --no-save --no-audit --no-fund playwright@latest
           npx playwright install --with-deps chromium
 
-      - name: Start app and viseme harness servers
+      - name: Start app and visual harness servers
         run: |
           npx vite preview --host 127.0.0.1 --port 4173 > /tmp/pixilive-preview.log 2>&1 &
           npx vite --host 127.0.0.1 --port 4174 > /tmp/pixilive-harness.log 2>&1 &
@@ -65,16 +68,31 @@ jobs:
             fi
           done
 
-      - name: Capture registered characters and visemes
+      - name: Capture production character and facial QA
         env:
           PIXILIVE_PREVIEW_URL: http://127.0.0.1:4173
           PIXILIVE_VISUAL_HARNESS_URL: http://127.0.0.1:4174
         run: node scripts/capture-characters.mjs
 
+      - name: Capture Nova expression, mouth, and tail QA
+        env:
+          PIXILIVE_VISUAL_HARNESS_URL: http://127.0.0.1:4174
+        run: node scripts/capture-nova-qa.mjs
+
+      - name: Smoke test exported Nova SDK in Chromium
+        env:
+          PIXILIVE_PREVIEW_URL: http://127.0.0.1:4173
+        run: node scripts/smoke-sdk.mjs
+
+      # Milo's former humanoid body implementation is intentionally retired.
+      # Its face/viseme research remains covered by the static harnesses above;
+      # body motion QA returns when Milo Body v2 is authored from scratch.
+
       - name: Upload visual artifacts
+        if: ${{ always() }}
         uses: actions/upload-artifact@v4
         with:
           name: character-screenshots-${{ github.sha }}
           path: visual-artifacts/*.png
-          if-no-files-found: error
+          if-no-files-found: warn
           retention-days: 14

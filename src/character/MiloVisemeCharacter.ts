@@ -1,5 +1,8 @@
 import { Graphics, type Container, type Ticker } from 'pixi.js';
+import { CharacterDirector } from './CharacterDirector';
 import { MiloCharacter } from './MiloCharacter';
+import { MiloRig2D } from './MiloRig2D';
+import type { CharacterMode, PerformanceCue, PerformanceState } from './performance';
 import type { Emotion, MouthPose, Viseme } from './types';
 
 const C = {
@@ -38,67 +41,117 @@ const completePose = (pose: MouthPose): Required<MouthPose> => ({
   cornerPull: clamp(pose.cornerPull ?? 0),
 });
 
+interface MiloLayers {
+  root: Container;
+  body: Container;
+  shoulders: Container;
+  head: Container;
+  mouth: Graphics;
+  armBack: Container;
+  armFront: Container;
+  browLeft: Graphics;
+  browRight: Graphics;
+  cheekLeft: Graphics;
+  cheekRight: Graphics;
+  eyeLeft: { root: Container };
+  eyeRight: { root: Container };
+}
+
 /**
- * A mouth-rig decorator for Milo.
+ * Viseme + physical layer for Milo.
  *
- * Milo's original procedural body/face remains the source of truth. We hide its
- * legacy mouth layer and add a richer mouth layer that consumes the shared
- * viseme signals. This keeps the character runtime backward-compatible while
- * the shared mouth contract evolves for future characters.
+ * The base illustration owns idle motion and face construction. Rig2D owns the
+ * articulated limbs. Higher-level facial acting lives in DirectedMiloCharacter.
+ * Keeping those layers separate prevents performance transforms from being
+ * accidentally applied twice or accumulated across frames.
  */
 export class MiloVisemeCharacter {
   readonly view: Container;
 
   private readonly base = new MiloCharacter();
   private readonly mouth = new Graphics();
+  private readonly director = new CharacterDirector();
+  private readonly arms = new MiloRig2D();
+  readonly interaction = this.arms;
+  private readonly layers: MiloLayers;
   private target = completePose(restPose);
   private rendered = completePose(restPose);
   private speaking = false;
+  private emotionSmile = 0.18;
   private smile = 0.18;
+  private userGaze = { x: 0, y: 0 };
 
   constructor() {
     this.view = this.base.view;
+    this.layers = this.base as unknown as MiloLayers;
+    this.layers.mouth.visible = false;
+    this.layers.armBack.visible = false;
+    this.layers.armFront.visible = false;
 
-    // TypeScript `private` is compile-time only here; these are stable layers of
-    // our own Milo implementation. Keeping the adapter isolated in this file
-    // prevents the shared character runtime from depending on Milo internals.
-    const layers = this.base as unknown as { head: Container; mouth: Graphics };
-    layers.mouth.visible = false;
     this.mouth.y = 46;
-    layers.head.addChild(this.mouth);
+    this.layers.head.addChild(this.mouth);
+    this.layers.shoulders.addChild(this.arms.view);
     this.drawMouth();
   }
 
   setEmotion(emotion: Emotion) {
     this.base.setEmotion(emotion);
-    this.smile = emotion === 'happy' ? 0.72 : emotion === 'excited' ? 0.58 : emotion === 'curious' ? 0.26 : 0.18;
+    this.emotionSmile = emotion === 'happy' ? 0.72 : emotion === 'excited' ? 0.58 : emotion === 'curious' ? 0.26 : 0.18;
   }
 
   setMouth(pose: MouthPose, speaking = true) {
     this.target = completePose(pose);
     this.speaking = speaking;
+    this.director.setSpeechEnergy(pose.energy);
     this.base.setMouth(pose, speaking);
   }
 
   settleMouth() {
     this.target = completePose(restPose);
     this.speaking = false;
+    this.director.setSpeechEnergy(0);
     this.base.settleMouth();
   }
 
   lookAt(normalizedX: number, normalizedY: number) {
-    this.base.lookAt(normalizedX, normalizedY);
+    this.userGaze.x = clamp(normalizedX, -1, 1);
+    this.userGaze.y = clamp(normalizedY, -1, 1);
   }
 
   react() {
     this.base.react();
   }
 
-  update(ticker: Ticker) {
-    this.base.update(ticker);
-    const dt = Math.min(0.033, ticker.deltaMS / 1000);
-    const speed = this.target.viseme === 'MBP' ? 32 : 24;
+  setMode(mode: CharacterMode) {
+    this.director.setMode(mode);
+  }
 
+  perform(cue: PerformanceCue) {
+    this.director.perform(cue);
+  }
+
+  setSpeechEnergy(energy: number) {
+    this.director.setSpeechEnergy(energy);
+  }
+
+  interruptPerformance() {
+    this.director.interrupt();
+    this.arms.clearReach();
+  }
+
+  update(ticker: Ticker) {
+    const dt = Math.min(0.033, ticker.deltaMS / 1000);
+    const performance = this.director.update(dt);
+    const gaze = this.resolveGaze(performance);
+    this.base.lookAt(gaze.x, gaze.y);
+    this.base.update(ticker);
+
+    // The base character has just restored its canonical transforms for this
+    // frame. From here on we only apply non-accumulating visual values.
+    this.applyPerformance(performance);
+    this.arms.update(performance, dt);
+
+    const speed = this.target.viseme === 'MBP' ? 32 : 24;
     this.rendered.open = damp(this.rendered.open, this.target.open, speed, dt);
     this.rendered.width = damp(this.rendered.width, this.target.width, 20, dt);
     this.rendered.round = damp(this.rendered.round, this.target.round, 22, dt);
@@ -109,8 +162,35 @@ export class MiloVisemeCharacter {
     this.rendered.tongue = damp(this.rendered.tongue, this.target.tongue, 20, dt);
     this.rendered.cornerPull = damp(this.rendered.cornerPull, this.target.cornerPull, 20, dt);
     this.rendered.viseme = this.target.viseme;
-
     this.drawMouth();
+  }
+
+  private resolveGaze(state: PerformanceState) {
+    if (state.gaze === 'thinking_up' || (state.gaze === 'auto' && state.mode === 'thinking')) {
+      return { x: state.gestureVariant % 2 ? -0.28 : 0.3, y: -0.52 };
+    }
+    if (state.gaze === 'thinking_side') return { x: state.gestureVariant % 2 ? -0.68 : 0.68, y: -0.08 };
+    if (state.gaze === 'away') return { x: state.gestureVariant % 2 ? -0.82 : 0.82, y: 0.08 };
+    return this.userGaze;
+  }
+
+  private applyPerformance(state: PerformanceState) {
+    let smileAdd = 0;
+    switch (state.affect) {
+      case 'warm': smileAdd = 0.16; break;
+      case 'curious': smileAdd = 0.05; break;
+      case 'enthusiastic': smileAdd = 0.22; break;
+      case 'reassuring': smileAdd = 0.13; break;
+      case 'concerned': smileAdd = -0.12; break;
+      case 'surprised': smileAdd = -0.04; break;
+      case 'playful': smileAdd = 0.2; break;
+      default: break;
+    }
+    const affectWeight = 0.35 + state.intensity * 0.65;
+    this.smile = clamp(this.emotionSmile + smileAdd * affectWeight, -0.05, 0.92);
+    const cheekBoost = (state.affect === 'warm' || state.affect === 'reassuring' || state.affect === 'playful') ? 0.12 * state.intensity : 0;
+    this.layers.cheekLeft.alpha += cheekBoost;
+    this.layers.cheekRight.alpha += cheekBoost;
   }
 
   private drawMouth() {
@@ -122,17 +202,14 @@ export class MiloVisemeCharacter {
       this.drawRestingMouth();
       return;
     }
-
     if (viseme === 'MBP' || p.lipPress > 0.58) {
       this.drawPressedLips();
       return;
     }
-
     if (viseme === 'FV' || p.lowerLipBite > 0.52) {
       this.drawFvMouth();
       return;
     }
-
     this.drawOpenMouth(viseme);
   }
 
