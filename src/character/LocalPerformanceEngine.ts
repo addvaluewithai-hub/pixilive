@@ -38,7 +38,6 @@ const mergeIncrementalText = (current: string, incoming: string) => {
   if (!current) return text;
   if (text.startsWith(current)) return text;
   if (current.endsWith(text)) return current;
-
   const max = Math.min(current.length, text.length);
   for (let overlap = max; overlap > 0; overlap -= 1) {
     if (current.slice(-overlap) === text.slice(0, overlap)) return current + text.slice(overlap);
@@ -50,7 +49,6 @@ const classifySemantic = (text: string): SemanticSignal => {
   const trimmed = text.trim();
   if (!trimmed) return { affect: 'neutral', confidence: 0, question: false };
   const question = /[?؟]/u.test(trimmed) || /^(why|how|what|when|where|who|ليه|ازاي|إزاي|ايه|إيه)\b/iu.test(trimmed);
-
   for (const item of semanticLexicon) {
     if (item.words.test(trimmed)) return { affect: item.affect, confidence: 0.82, question };
   }
@@ -67,10 +65,23 @@ const postureFor = (affect: CharacterAffect): PerformanceCue['posture'] => {
   return 'neutral';
 };
 
+const gestureFor = (affect: CharacterAffect): CharacterGesture => {
+  if (affect === 'reassuring' || affect === 'concerned') return 'reassure';
+  if (affect === 'thoughtful') return 'think';
+  if (affect === 'enthusiastic') return 'explain';
+  if (affect === 'curious') return 'explain';
+  if (affect === 'playful') return 'emphasize';
+  if (affect === 'surprised') return 'emphasize';
+  return 'none';
+};
+
 /**
- * Character-level acting brain independent of the LLM provider.
- * It combines playback-synchronous prosody, transcript semantics, and turn state.
- * The LLM tool can still override it, but ordinary acting never depends on a tool.
+ * Provider-independent acting brain.
+ *
+ * Important separation: transcript meaning may select a *major* gesture, but
+ * raw prosodic peaks never do. Prosody already drives CharacterDirector's local
+ * speechBeat, which is deliberately a micro accent. This prevents long stories
+ * from becoming explain/emphasize spam.
  */
 export class LocalPerformanceEngine {
   private mode: CharacterMode = 'idle';
@@ -78,11 +89,9 @@ export class LocalPerformanceEngine {
   private inputText = '';
   private semantic: SemanticSignal = { affect: 'neutral', confidence: 0, question: false };
   private speechClock = 0;
-  private cueCooldown = 0;
-  private gestureCooldown = 0;
-  private sequence = 0;
+  private semanticCueCooldown = 0;
+  private majorGestureCooldown = 0;
   private energyAverage = 0;
-  private pitchAverage = 0.35;
   private started = false;
   private lastGesture: CharacterGesture = 'none';
 
@@ -101,7 +110,11 @@ export class LocalPerformanceEngine {
 
   pushOutputTranscript(text: string) {
     this.outputText = mergeIncrementalText(this.outputText, text);
-    this.semantic = classifySemantic(this.outputText);
+    // Classify the newest semantic window, not the entire turn forever. A question
+    // at the beginning of a 30-second story must not keep the whole story curious.
+    const recent = this.outputText.slice(-220);
+    const next = classifySemantic(recent);
+    if (next.confidence >= 0.44 || this.semantic.confidence < 0.44) this.semantic = next;
   }
 
   pushInputTranscript(text: string) {
@@ -112,20 +125,20 @@ export class LocalPerformanceEngine {
     this.mode = 'speaking';
     this.speechClock = 0;
     this.started = true;
-    this.cueCooldown = 0.45;
+    this.semanticCueCooldown = 0.5;
+    this.majorGestureCooldown = 1.1;
 
     if (toolCue) {
       this.lastGesture = toolCue.gesture;
-      this.gestureCooldown = toolCue.gesture === 'none' ? 0.8 : 1.8;
+      this.majorGestureCooldown = toolCue.gesture === 'none' ? 1.5 : 4.5;
       this.callbacks.onCue(toolCue, 'tool', 'tool cue synchronized to playback start');
       return;
     }
 
     const affect = this.semantic.affect;
-    const intensity = clamp(0.34 + this.semantic.confidence * 0.35, 0.3, 0.68);
     this.callbacks.onCue({
       affect,
-      intensity,
+      intensity: clamp(0.32 + this.semantic.confidence * 0.34, 0.28, 0.64),
       gesture: 'none',
       posture: postureFor(affect),
       gaze: affect === 'thoughtful' ? 'thinking_side' : 'user',
@@ -137,80 +150,42 @@ export class LocalPerformanceEngine {
     this.speechClock = 0;
     this.outputText = '';
     this.semantic = { affect: 'neutral', confidence: 0, question: false };
-    this.gestureCooldown = 0;
-    this.cueCooldown = 0;
+    this.majorGestureCooldown = 0;
+    this.semanticCueCooldown = 0;
   }
 
   updateSpeech(dynamics: SpeechDynamics, deltaSeconds = 0.03) {
     if (!this.started) this.beginSpeech();
     this.speechClock += deltaSeconds;
-    this.cueCooldown = Math.max(0, this.cueCooldown - deltaSeconds);
-    this.gestureCooldown = Math.max(0, this.gestureCooldown - deltaSeconds);
-    this.energyAverage += (dynamics.energy - this.energyAverage) * 0.18;
-    this.pitchAverage += (dynamics.pitchNorm - this.pitchAverage) * 0.12;
+    this.semanticCueCooldown = Math.max(0, this.semanticCueCooldown - deltaSeconds);
+    this.majorGestureCooldown = Math.max(0, this.majorGestureCooldown - deltaSeconds);
+    this.energyAverage += (dynamics.energy - this.energyAverage) * 0.12;
 
-    if (this.cueCooldown <= 0 && this.semantic.confidence > 0.58 && this.speechClock < 1.4) {
+    if (this.semanticCueCooldown <= 0 && this.semantic.confidence > 0.58) {
+      const semanticGesture = this.majorGestureCooldown <= 0 ? gestureFor(this.semantic.affect) : 'none';
+      const gesture = semanticGesture === this.lastGesture ? 'none' : semanticGesture;
       this.callbacks.onCue({
         affect: this.semantic.affect,
-        intensity: clamp(0.4 + this.semantic.confidence * 0.42 + this.energyAverage * 0.12),
-        gesture: 'none',
+        intensity: clamp(0.38 + this.semantic.confidence * 0.36 + this.energyAverage * 0.08),
+        gesture,
         posture: postureFor(this.semantic.affect),
         gaze: this.semantic.affect === 'thoughtful' ? 'thinking_side' : 'user',
-      }, 'local', 'transcript affect refinement');
-      this.cueCooldown = 1.5;
+      }, 'local', gesture === 'none' ? 'transcript affect refinement' : 'semantic phrase gesture');
+
+      if (gesture !== 'none') {
+        this.lastGesture = gesture;
+        this.majorGestureCooldown = 4.8;
+      }
+      this.semanticCueCooldown = 1.8;
     }
 
-    const strongBeat = dynamics.onset > 0.34 || (dynamics.energy > 0.63 && dynamics.energy > this.energyAverage + 0.08);
-    if (!strongBeat || this.gestureCooldown > 0 || this.speechClock < 0.32) return;
-
-    const gesture = this.chooseGesture(dynamics);
-    if (gesture === 'none') {
-      this.gestureCooldown = 0.65;
-      return;
-    }
-
-    const affect = this.resolveAffectFromProsody(dynamics);
-    const intensity = clamp(0.42 + dynamics.energy * 0.38 + dynamics.onset * 0.18, 0.42, 0.9);
-    this.callbacks.onCue({
-      affect,
-      intensity,
-      gesture,
-      posture: postureFor(affect),
-      gaze: affect === 'thoughtful' ? 'thinking_side' : 'user',
-    }, 'local', `prosodic beat: energy=${dynamics.energy.toFixed(2)} pitch=${dynamics.pitchNorm.toFixed(2)}`);
-
-    this.lastGesture = gesture;
-    this.gestureCooldown = gesture === 'emphasize' ? 1.1 : 1.8;
-    this.cueCooldown = 1.1;
-  }
-
-  private resolveAffectFromProsody(dynamics: SpeechDynamics): CharacterAffect {
-    if (this.semantic.confidence >= 0.55) return this.semantic.affect;
-    if (dynamics.energy > 0.72 && dynamics.pitchNorm > 0.55) return 'enthusiastic';
-    if (dynamics.pitchDelta > 0.28 && dynamics.pitchNorm > 0.5) return 'curious';
-    if (dynamics.energy < 0.34 && dynamics.voiced > 0.35) return 'thoughtful';
-    if (dynamics.brightness > 0.72 && dynamics.energy > 0.5) return 'playful';
-    return 'neutral';
-  }
-
-  private chooseGesture(dynamics: SpeechDynamics): CharacterGesture {
-    this.sequence += 1;
-    const semantic = this.semantic.affect;
-
-    if (semantic === 'reassuring' || semantic === 'concerned') return this.lastGesture === 'reassure' ? 'emphasize' : 'reassure';
-    if (semantic === 'thoughtful' && this.speechClock < 2.4) return this.lastGesture === 'think' ? 'emphasize' : 'think';
-    if (semantic === 'surprised') return 'emphasize';
-    if (semantic === 'enthusiastic' && dynamics.energy > 0.72 && this.speechClock < 1.6 && this.sequence % 4 === 0) return 'celebrate';
-    if (semantic === 'enthusiastic' || semantic === 'curious') return this.lastGesture === 'explain' ? 'emphasize' : 'explain';
-    if (semantic === 'playful') return this.sequence % 3 === 0 ? 'shrug' : 'emphasize';
-
-    // Neutral speech should often remain still. Gesture only on genuinely strong beats.
-    if (dynamics.onset > 0.58 && dynamics.energy > 0.56 && this.sequence % 2 === 0) return 'emphasize';
-    return 'none';
+    // No full-body cue is emitted from raw onset/energy/pitch. Those values are
+    // intentionally consumed only by playback-synchronous micro motion.
+    void dynamics;
   }
 
   private emitListeningPresence() {
-    const userSemantic = classifySemantic(this.inputText);
+    const userSemantic = classifySemantic(this.inputText.slice(-220));
     const affect = userSemantic.confidence > 0.55 ? userSemantic.affect : 'warm';
     this.callbacks.onCue({
       ...neutralPerformanceCue,
