@@ -10,9 +10,11 @@ interface ManualReach {
   options: ReachOptions;
 }
 
+// Solver coordinates are character-local semantic coordinates. Nova's visible
+// shoulders were raised in NovaCharacter; keep the physical model equally high.
 const SHOULDER: Record<Side, Vec2> = {
-  left: { x: -71, y: 20 },
-  right: { x: 71, y: 20 },
+  left: { x: -71, y: -8 },
+  right: { x: 71, y: -8 },
 };
 
 const REST_ROTATION: Record<Side, number> = {
@@ -21,8 +23,8 @@ const REST_ROTATION: Record<Side, number> = {
 };
 
 const REST_TARGET: Record<Side, Vec2> = {
-  left: { x: -76, y: 118 },
-  right: { x: 76, y: 118 },
+  left: { x: -76, y: 90 },
+  right: { x: 76, y: 90 },
 };
 
 const activeSideFor = (state: PerformanceState): Side => state.gestureVariant % 2 === 0 ? 'right' : 'left';
@@ -109,10 +111,16 @@ export class NovaRig2D implements CharacterInteractionController {
     const intensity = this.forcedAction ? this.forcedIntensity : state.intensity;
     const targets = this.targetsFor(gesture, activeSideFor(state), clamp(envelope * (0.62 + intensity * 0.38), 0, 1), state.gesturePhase);
 
+    // Default limbs sit between torso and head. Thinking explicitly brings the
+    // touching arm in front of the face; the rest stay behind the head.
+    this.armLeft.zIndex = 3;
+    this.armRight.zIndex = gesture === 'think' ? 6 : 3;
+    this.armLeft.parent?.sortChildren();
+
     for (const side of ['left', 'right'] as const) {
       const manual = this.manual.get(side);
       const desired = manual?.target ?? targets[side];
-      const target = this.spring[side].update(desired, dt, manual ? 8.5 : 6.2, 0.86);
+      const target = this.spring[side].update(desired, dt, manual ? 8.5 : 5.7, 0.9);
       const bone = side === 'left' ? 'armL' : 'armR';
       this.rig.solveAim({ bone, target, weight: manual?.options.weight ?? 1 });
       const rotation = this.rig.getBone(bone).worldRotation - Math.PI / 2;
@@ -136,32 +144,33 @@ export class NovaRig2D implements CharacterInteractionController {
 
     switch (gesture) {
       case 'explain':
-        set(activeSide, { x: sign * 145, y: 48 });
+        set(activeSide, { x: sign * 145, y: 22 });
         break;
       case 'emphasize':
       case 'agree':
       case 'disagree':
-        set(activeSide, { x: sign * 126, y: 30 });
+        set(activeSide, { x: sign * 126, y: 8 });
         break;
       case 'reassure':
-        set('left', { x: -142, y: 54 });
-        set('right', { x: 142, y: 54 });
+        set('left', { x: -142, y: 32 });
+        set('right', { x: 142, y: 32 });
         break;
       case 'think':
-        set('right', { x: 36, y: -74 });
+        // The arm is also promoted above the head in z-order while this target is active.
+        set('right', { x: 28, y: -122 });
         break;
       case 'celebrate':
-        set('left', { x: -102, y: -105 });
-        set('right', { x: 102, y: -105 });
+        set('left', { x: -102, y: -116 });
+        set('right', { x: 102, y: -116 });
         break;
       case 'shrug':
-        set('left', { x: -146, y: 12 });
-        set('right', { x: 146, y: 12 });
+        set('left', { x: -146, y: -2 });
+        set('right', { x: 146, y: -2 });
         break;
       case 'greet':
       case 'goodbye': {
         const wave = Math.sin(phase * Math.PI * 5) * 12;
-        set('right', { x: 112 + wave, y: -92 });
+        set('right', { x: 112 + wave, y: -104 });
         break;
       }
       default:
