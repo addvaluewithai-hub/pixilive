@@ -12,13 +12,8 @@ const motions = ['touchFace', 'greet', 'celebrate', 'explain'];
 const checkpoints = [1, 5, 9, 14, 20, 28, 38, 52];
 
 try {
-  await page.goto(harnessUrl, { waitUntil: 'domcontentloaded' });
-  const continuity = await page.evaluate(async () => {
-    const harness = await import('/src/visual/rig2dHarness.ts');
-    return harness.validateMiloMotionContinuity();
-  });
-  console.log('Milo motion continuity:', continuity);
-
+  // Capture the trajectory first. If the numeric invariant later fails we still
+  // want the visual evidence in the artifact instead of losing the bad frames.
   for (const motion of motions) {
     for (const frames of checkpoints) {
       await page.goto(harnessUrl, { waitUntil: 'domcontentloaded' });
@@ -33,6 +28,13 @@ try {
       });
     }
   }
+
+  await page.goto(harnessUrl, { waitUntil: 'domcontentloaded' });
+  const continuity = await page.evaluate(async () => {
+    const harness = await import('/src/visual/rig2dHarness.ts');
+    return harness.validateMiloMotionContinuity();
+  });
+  console.log('Milo motion continuity:', continuity);
 } finally {
   await browser.close();
 }
