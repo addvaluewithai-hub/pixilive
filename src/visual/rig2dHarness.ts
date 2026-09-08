@@ -1,4 +1,4 @@
-import { Application } from 'pixi.js';
+import { Application, type Ticker } from 'pixi.js';
 import { DirectedMiloCharacter } from '../character/DirectedMiloCharacter';
 import type { CharacterMode, PerformanceCue } from '../character/performance';
 import { Rig2D } from '../rig2d';
@@ -6,6 +6,8 @@ import { Rig2D } from '../rig2d';
 interface HarnessWindow extends Window {
   __pixiliveRigApp?: Application;
 }
+
+const fixedTicker = { deltaMS: 1000 / 60 } as Ticker;
 
 const assertNear = (actual: number, expected: number, tolerance: number, label: string) => {
   if (!Number.isFinite(actual) || Math.abs(actual - expected) > tolerance) {
@@ -97,8 +99,6 @@ export async function mountMiloInteractionHarness(
   if (interaction === 'openArms') character.interaction.action('openArms', 0.82);
   if (interaction === 'unreachable') character.interaction.reach('rightHand', { x: 520, y: -330 }, { hold: true });
 
-  for (let frame = 0; frame < frames; frame += 1) {
-    character.update(app.ticker);
-    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
-  }
+  for (let frame = 0; frame < frames; frame += 1) character.update(fixedTicker);
+  await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
 }
