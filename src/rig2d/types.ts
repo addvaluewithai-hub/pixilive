@@ -51,14 +51,22 @@ export interface TwoBoneIKOptions {
   target: Vec2;
   /** Fallback elbow branch when no continuity/pole hint is available. */
   bend?: -1 | 1;
+  /** Anatomical pole. Prefer this over hard-coded bend signs for authored bodies. */
   pole?: Vec2;
   /**
-   * Previous or otherwise preferred elbow position. When supplied, Rig2D
-   * evaluates both legal two-bone solutions and chooses the one closest to
-   * this point. This prevents a limb from mirroring through itself while a
-   * target crosses the chain during animation.
+   * Previous or otherwise preferred elbow position. When supplied for a new
+   * chain, Rig2D evaluates both legal two-bone solutions and chooses the one
+   * closest to this point.
    */
   preferredElbow?: Vec2;
+  /**
+   * Allow a remembered IK branch to change to the branch requested by pole/bend,
+   * but only when the two elbow solutions are already close enough to make the
+   * transition visually safe (normally near a straight/unfolded arm).
+   */
+  allowTopologySwitch?: boolean;
+  /** Maximum distance in pixels between the two legal elbow solutions at switch. */
+  topologySwitchDistance?: number;
   weight?: number;
   stretch?: number;
 }
