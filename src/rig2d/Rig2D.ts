@@ -31,6 +31,11 @@ const transformFrom = (definition: BoneDefinition): Transform2D => ({
 });
 
 const cloneTransform = (value: Transform2D): Transform2D => ({ ...value });
+const distanceSq = (a: Vec2, b: Vec2) => {
+  const dx = a.x - b.x;
+  const dy = a.y - b.y;
+  return dx * dx + dy * dy;
+};
 
 /**
  * Minimal code-first 2D skeleton runtime.
@@ -170,14 +175,21 @@ export class Rig2D {
     const solvedDistance = clamp(targetDistance, minimum, maximum + Math.max(0, targetDistance - maximum) * stretch);
     const targetAngle = angleOf(targetVector);
 
+    const cosShoulder = clamp((l1 * l1 + solvedDistance * solvedDistance - l2 * l2) / (2 * l1 * solvedDistance), -1, 1);
+    const shoulderOffset = Math.acos(cosShoulder);
+
     let bend: -1 | 1 = options.bend ?? 1;
-    if (options.pole) {
+    if (options.preferredElbow) {
+      const plusAngle = targetAngle + shoulderOffset;
+      const minusAngle = targetAngle - shoulderOffset;
+      const plusElbow = add(shoulder, rotate({ x: l1, y: 0 }, plusAngle));
+      const minusElbow = add(shoulder, rotate({ x: l1, y: 0 }, minusAngle));
+      bend = distanceSq(plusElbow, options.preferredElbow) <= distanceSq(minusElbow, options.preferredElbow) ? 1 : -1;
+    } else if (options.pole) {
       const poleVector = sub(options.pole, shoulder);
       bend = cross(targetVector, poleVector) >= 0 ? 1 : -1;
     }
 
-    const cosShoulder = clamp((l1 * l1 + solvedDistance * solvedDistance - l2 * l2) / (2 * l1 * solvedDistance), -1, 1);
-    const shoulderOffset = Math.acos(cosShoulder);
     const upperWorld = targetAngle + bend * shoulderOffset;
     const parentRotation = upper.definition.parent ? this.requireBone(upper.definition.parent).worldRotation : 0;
     const upperLocal = this.limitRotation(upper, normalizeAngle(upperWorld - parentRotation));
