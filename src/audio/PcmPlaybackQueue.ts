@@ -4,8 +4,10 @@ import { VisemeAnalyzer } from './VisemeAnalyzer';
 
 const base64ToInt16 = (base64: string) => {
   const binary = atob(base64);
-  const bytes = new Uint8Array(binary.length);
-  for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
+  const evenLength = binary.length - (binary.length % 2);
+  if (evenLength < 2) return new Int16Array(0);
+  const bytes = new Uint8Array(evenLength);
+  for (let index = 0; index < evenLength; index += 1) bytes[index] = binary.charCodeAt(index);
   return new Int16Array(bytes.buffer);
 };
 
@@ -82,8 +84,6 @@ export class PcmPlaybackQueue {
       if (this.active.size > 0) return;
       if (this.turnCompletePending) this.finishOutput();
       else {
-        // Network chunks occasionally have short gaps. Do not bounce the
-        // character between speaking/listening while Gemini is still in-turn.
         this.starvationTimer = window.setTimeout(() => {
           this.starvationTimer = null;
           if (this.active.size === 0 && this.outputActive) this.finishOutput();
