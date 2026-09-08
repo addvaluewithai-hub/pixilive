@@ -181,21 +181,30 @@ export class Rig2D {
     const shoulderOffset = Math.acos(cosShoulder);
     const chainKey = `${options.upper}>${options.lower}`;
 
+    const plusAngle = targetAngle + shoulderOffset;
+    const minusAngle = targetAngle - shoulderOffset;
+    const plusElbow = add(shoulder, rotate({ x: l1, y: 0 }, plusAngle));
+    const minusElbow = add(shoulder, rotate({ x: l1, y: 0 }, minusAngle));
+
+    let desiredBend: -1 | 1 = options.bend ?? 1;
+    if (options.preferredElbow) {
+      desiredBend = distanceSq(plusElbow, options.preferredElbow) <= distanceSq(minusElbow, options.preferredElbow) ? 1 : -1;
+    } else if (options.pole) {
+      const poleVector = sub(options.pole, shoulder);
+      desiredBend = cross(targetVector, poleVector) >= 0 ? 1 : -1;
+    }
+
     let bend = this.ikBendHistory.get(chainKey);
     if (!bend) {
-      if (options.preferredElbow) {
-        const plusAngle = targetAngle + shoulderOffset;
-        const minusAngle = targetAngle - shoulderOffset;
-        const plusElbow = add(shoulder, rotate({ x: l1, y: 0 }, plusAngle));
-        const minusElbow = add(shoulder, rotate({ x: l1, y: 0 }, minusAngle));
-        bend = distanceSq(plusElbow, options.preferredElbow) <= distanceSq(minusElbow, options.preferredElbow) ? 1 : -1;
-      } else if (options.pole) {
-        const poleVector = sub(options.pole, shoulder);
-        bend = cross(targetVector, poleVector) >= 0 ? 1 : -1;
-      } else {
-        bend = options.bend ?? 1;
-      }
+      bend = desiredBend;
       this.ikBendHistory.set(chainKey, bend);
+    } else if (bend !== desiredBend && options.allowTopologySwitch) {
+      const elbowSeparation = Math.sqrt(distanceSq(plusElbow, minusElbow));
+      const switchDistance = Math.max(2, options.topologySwitchDistance ?? 22);
+      if (elbowSeparation <= switchDistance) {
+        bend = desiredBend;
+        this.ikBendHistory.set(chainKey, bend);
+      }
     }
 
     const upperWorld = targetAngle + bend * shoulderOffset;
@@ -215,7 +224,7 @@ export class Rig2D {
   /**
    * Topology switches are explicit. A caller that genuinely needs the opposite
    * elbow branch must first move through an authored safe/unfolded pose, then
-   * clear continuity before solving the next phase. Never switch implicitly.
+   * clear continuity or enable a safe topology switch before solving the next phase.
    */
   clearIKContinuity(chain?: { upper: string; lower: string }) {
     if (!chain) {
