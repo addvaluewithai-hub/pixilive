@@ -12,7 +12,25 @@ import { GeminiLiveClient } from './live/GeminiLiveClient';
 import type { LiveStatus } from './live/types';
 
 const restingMouth: MouthPose = { open: 0.045, width: 0.37, round: 0.08, energy: 0, viseme: 'REST' };
-type PerformanceSource = PerformanceCueSource | 'tool-prime' | 'autonomous';
+type PerformanceSource = PerformanceCueSource | 'tool-prime' | 'autonomous' | 'manual';
+
+const movementDemos: Array<{ label: string; cue: PerformanceCue }> = [
+  { label: 'greet', cue: { affect: 'warm', intensity: 0.9, gesture: 'greet', posture: 'open', gaze: 'user' } },
+  { label: 'explain', cue: { affect: 'enthusiastic', intensity: 0.9, gesture: 'explain', posture: 'engaged', gaze: 'user' } },
+  { label: 'emphasize', cue: { affect: 'neutral', intensity: 0.92, gesture: 'emphasize', posture: 'engaged', gaze: 'user' } },
+  { label: 'reassure', cue: { affect: 'reassuring', intensity: 0.86, gesture: 'reassure', posture: 'lean_in', gaze: 'user' } },
+  { label: 'think', cue: { affect: 'thoughtful', intensity: 0.86, gesture: 'think', posture: 'lean_back', gaze: 'thinking_up' } },
+  { label: 'celebrate', cue: { affect: 'enthusiastic', intensity: 1, gesture: 'celebrate', posture: 'open', gaze: 'user' } },
+  { label: 'shrug', cue: { affect: 'playful', intensity: 0.92, gesture: 'shrug', posture: 'open', gaze: 'user' } },
+];
+
+const neutralDemoCue: PerformanceCue = {
+  affect: 'neutral',
+  intensity: 0.2,
+  gesture: 'none',
+  posture: 'neutral',
+  gaze: 'user',
+};
 
 export function App() {
   const [characterId, setCharacterId] = useState(DEFAULT_CHARACTER_ID);
@@ -43,6 +61,7 @@ export function App() {
   const pendingToolCueRef = useRef<PerformanceCue | null>(null);
   const pendingToolTimerRef = useRef<number | null>(null);
   const thinkingTimerRef = useRef<number | null>(null);
+  const movementDemoTimerRef = useRef<number | null>(null);
   const lastProsodyLogRef = useRef(0);
 
   const character = useMemo(() => getCharacterDefinition(characterId), [characterId]);
@@ -88,6 +107,36 @@ export function App() {
       window.clearTimeout(pendingToolTimerRef.current);
       pendingToolTimerRef.current = null;
     }
+  };
+
+  const clearMovementDemoTimer = () => {
+    if (movementDemoTimerRef.current !== null) {
+      window.clearTimeout(movementDemoTimerRef.current);
+      movementDemoTimerRef.current = null;
+    }
+  };
+
+  const triggerMovementDemo = (cue: PerformanceCue) => {
+    clearMovementDemoTimer();
+    applyPerformanceCue(cue, 'manual', 'movement lab manual trigger');
+    // Offline testing should still use the full-performance gain so a body-rig
+    // problem cannot hide behind the intentionally subtle idle mode.
+    if (statusRef.current === 'idle') {
+      changeCharacterMode('speaking');
+      movementDemoTimerRef.current = window.setTimeout(() => {
+        movementDemoTimerRef.current = null;
+        if (statusRef.current === 'idle') {
+          applyPerformanceCue(neutralDemoCue, 'manual', 'movement lab settle');
+          changeCharacterMode('idle');
+        }
+      }, 3_200);
+    }
+  };
+
+  const resetMovementDemo = () => {
+    clearMovementDemoTimer();
+    applyPerformanceCue(neutralDemoCue, 'manual', 'movement lab reset');
+    if (statusRef.current === 'idle') changeCharacterMode('idle');
   };
 
   const updateLiveStatus = (next: LiveStatus) => {
@@ -216,6 +265,16 @@ export function App() {
         localPerformance.current?.pushOutputTranscript(transcript);
       },
       onPerformanceCue: (cue) => {
+        // A Gemini 3.1 tool call can arrive after audio playback has already
+        // started. In that case execute it immediately; waiting for another
+        // onSpeechStart would silently lose the real gesture.
+        if (playbackActiveRef.current) {
+          pendingToolCueRef.current = null;
+          clearPendingToolTimer();
+          localPerformance.current?.applyToolCue(cue, 'tool cue arrived during active playback');
+          return;
+        }
+
         pendingToolCueRef.current = { ...cue };
         clearPendingToolTimer();
         pendingToolTimerRef.current = window.setTimeout(() => {
@@ -227,7 +286,7 @@ export function App() {
           gesture: 'none',
           intensity: Math.min(0.26, Math.max(0.14, cue.intensity * 0.32)),
         }, 'tool-prime', 'subtle anticipation while synchronous tool returns');
-        if (!playbackActiveRef.current) changeCharacterMode('thinking');
+        changeCharacterMode('thinking');
       },
       onPerformanceCancelled: () => {
         pendingToolCueRef.current = null;
@@ -265,6 +324,7 @@ export function App() {
     return () => {
       clearThinkingTimer();
       clearPendingToolTimer();
+      clearMovementDemoTimer();
       live.current?.close();
       void microphone.current.stop();
       void playback.current?.close();
@@ -275,6 +335,7 @@ export function App() {
     if (sessionLocked) return;
     const next = getCharacterDefinition(event.target.value);
     emitSessionLog('character', 'character_selected', { id: next.id, name: next.name });
+    clearMovementDemoTimer();
     setCharacterId(next.id);
     setEmotion(next.defaultEmotion);
     setMouth(restingMouth);
@@ -288,6 +349,7 @@ export function App() {
   };
 
   const connect = async () => {
+    clearMovementDemoTimer();
     setError('');
     setPerformanceCue(null);
     setPerformanceSource('autonomous');
@@ -313,6 +375,7 @@ export function App() {
   const disconnect = async () => {
     clearThinkingTimer();
     clearPendingToolTimer();
+    clearMovementDemoTimer();
     userActiveRef.current = false;
     playbackActiveRef.current = false;
     textTurnPendingRef.current = false;
@@ -399,8 +462,17 @@ export function App() {
         <label className="section-label">Emotion</label>
         <div className="emotion-grid">
           {character.emotions.map((item) => (
-            <button key={item} className={emotion === item ? 'active' : ''} onClick={() => setEmotion(item)}>{item}</button>
+            <button type="button" key={item} className={emotion === item ? 'active' : ''} onClick={() => setEmotion(item)}>{item}</button>
           ))}
+        </div>
+
+        <label className="section-label">Movement lab</label>
+        <p className="character-description">Direct rig test — works offline and bypasses Gemini so you can judge the body system itself.</p>
+        <div className="emotion-grid">
+          {movementDemos.map(({ label, cue }) => (
+            <button type="button" key={label} onClick={() => triggerMovementDemo(cue)}>{label}</button>
+          ))}
+          <button type="button" onClick={resetMovementDemo}>reset</button>
         </div>
 
         <div className="performance-readout" aria-live="polite">
