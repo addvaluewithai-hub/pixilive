@@ -33,7 +33,9 @@ export function emitSessionLog(
 
 export function subscribeSessionLog(listener: Listener) {
   listeners.add(listener);
-  return () => listeners.delete(listener);
+  return () => {
+    listeners.delete(listener);
+  };
 }
 
 export function formatSessionLog(entries: SessionLogEvent[]) {
