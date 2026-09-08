@@ -1,4 +1,5 @@
 import { normalizePerformanceCue, type PerformanceCue } from '../character/performance';
+import { emitSessionLog } from '../debug/sessionLog';
 import type { LiveCallbacks } from './types';
 
 const MODEL = 'gemini-3.1-flash-live-preview';
@@ -77,6 +78,8 @@ async function decodeSocketMessage(data: unknown): Promise<string> {
   throw new Error(`Unsupported Gemini Live WebSocket message type: ${Object.prototype.toString.call(data)}`);
 }
 
+const approxBase64Bytes = (value: string) => Math.floor((value.length * 3) / 4);
+
 export class GeminiLiveClient {
   private socket: WebSocket | null = null;
   private setupComplete = false;
@@ -84,6 +87,12 @@ export class GeminiLiveClient {
   private reconnecting = false;
   private systemInstruction = '';
   private activePerformanceCallIds = new Set<string>();
+  private latestToolCallAt: number | null = null;
+  private firstAudioSeen = false;
+  private firstOutputTranscriptSeen = false;
+  private audioChunksThisTurn = 0;
+  private audioBytesThisTurn = 0;
+  private turnNumber = 0;
 
   constructor(private readonly callbacks: LiveCallbacks) {}
 
@@ -94,6 +103,7 @@ export class GeminiLiveClient {
   async connect(systemInstruction: string) {
     if (this.socket && this.socket.readyState <= WebSocket.OPEN) return;
     this.systemInstruction = systemInstruction.trim();
+    emitSessionLog('session', 'connect_requested', { model: MODEL });
     this.callbacks.onStatus('connecting');
 
     const response = await fetch(TOKEN_ENDPOINT, {
@@ -104,6 +114,7 @@ export class GeminiLiveClient {
 
     const { token, model }: TokenResponse = await response.json();
     if (model !== MODEL) throw new Error(`Unexpected Live model: ${model}`);
+    emitSessionLog('session', 'ephemeral_token_received', { model });
     await this.openSocket(token);
   }
 
@@ -113,15 +124,21 @@ export class GeminiLiveClient {
   }
 
   endAudioStream() {
-    if (this.connected) this.send({ realtimeInput: { audioStreamEnd: true } });
+    if (this.connected) {
+      emitSessionLog('user', 'audio_stream_end');
+      this.send({ realtimeInput: { audioStreamEnd: true } });
+    }
   }
 
   sendText(text: string) {
     if (!this.connected || !text.trim()) return;
-    this.send({ realtimeInput: { text: text.trim() } });
+    const value = text.trim();
+    emitSessionLog('user', 'text_sent', { text: value });
+    this.send({ realtimeInput: { text: value } });
   }
 
   close() {
+    emitSessionLog('session', 'client_close');
     this.reconnecting = false;
     this.setupComplete = false;
     this.activePerformanceCallIds.clear();
@@ -161,14 +178,21 @@ export class GeminiLiveClient {
       };
 
       socket.addEventListener('open', () => {
+        emitSessionLog('session', 'websocket_open');
         setupTimer = window.setTimeout(() => {
           const error = new Error('Gemini Live opened the socket but did not complete setup in time');
+          emitSessionLog('error', 'setup_timeout', { message: error.message });
           this.callbacks.onError(error.message);
           this.callbacks.onStatus('error');
           rejectSetup(error);
           socket.close(1000, 'setup timeout');
         }, SETUP_TIMEOUT_MS);
 
+        emitSessionLog('session', 'setup_sent', {
+          model: MODEL,
+          functionCalling: 'synchronous',
+          tool: PERFORMANCE_TOOL,
+        });
         this.send({
           setup: {
             model: `models/${MODEL}`,
@@ -210,6 +234,7 @@ export class GeminiLiveClient {
         } catch (reason) {
           const error = reason instanceof Error ? reason : new Error('Could not decode Gemini Live message');
           console.error('Gemini Live message decode failed', error);
+          emitSessionLog('error', 'message_decode_failed', { message: error.message });
           if (!this.setupComplete) {
             this.callbacks.onError(error.message);
             this.callbacks.onStatus('error');
@@ -220,6 +245,7 @@ export class GeminiLiveClient {
 
         if (message.setupComplete !== undefined) {
           this.setupComplete = true;
+          emitSessionLog('session', 'setup_complete');
           this.callbacks.onStatus('listening');
           resolveSetup();
         }
@@ -230,41 +256,86 @@ export class GeminiLiveClient {
 
         if (message.toolCallCancellation?.ids?.length) {
           const cancelledPerformance = message.toolCallCancellation.ids.some((id) => this.activePerformanceCallIds.has(id));
+          emitSessionLog('tool', 'call_cancelled', { ids: message.toolCallCancellation.ids });
           for (const id of message.toolCallCancellation.ids) this.activePerformanceCallIds.delete(id);
           if (cancelledPerformance) this.callbacks.onPerformanceCancelled();
         }
 
         const content = message.serverContent;
         if (content?.interrupted) {
+          emitSessionLog('gemini', 'interrupted');
           this.callbacks.onInterrupted();
           this.callbacks.onPerformanceCancelled();
           this.callbacks.onStatus('listening');
         }
 
         const input = content?.inputTranscription?.text?.trim();
-        if (input) this.callbacks.onInputTranscript(input);
+        if (input) {
+          emitSessionLog('user', 'transcript', { text: input });
+          this.callbacks.onInputTranscript(input);
+        }
 
         const output = content?.outputTranscription?.text?.trim();
-        if (output) this.callbacks.onOutputTranscript(output);
+        if (output) {
+          if (!this.firstOutputTranscriptSeen) {
+            this.firstOutputTranscriptSeen = true;
+            emitSessionLog('gemini', 'first_output_transcript', {
+              text: output,
+              afterToolMs: this.latestToolCallAt === null ? null : Math.round(performance.now() - this.latestToolCallAt),
+            });
+          } else {
+            emitSessionLog('gemini', 'output_transcript', { text: output });
+          }
+          this.callbacks.onOutputTranscript(output);
+        }
 
         for (const part of content?.modelTurn?.parts ?? []) {
           if (part.inlineData?.data && part.inlineData.mimeType?.startsWith('audio/pcm')) {
+            this.audioChunksThisTurn += 1;
+            this.audioBytesThisTurn += approxBase64Bytes(part.inlineData.data);
+            if (!this.firstAudioSeen) {
+              this.firstAudioSeen = true;
+              emitSessionLog('audio', 'first_output_audio', {
+                turn: this.turnNumber,
+                mimeType: part.inlineData.mimeType,
+                afterToolMs: this.latestToolCallAt === null ? null : Math.round(performance.now() - this.latestToolCallAt),
+                firstChunkBytes: approxBase64Bytes(part.inlineData.data),
+              });
+            }
             this.callbacks.onStatus('speaking');
             this.callbacks.onAudio(part.inlineData.data);
           }
         }
 
-        if (content?.turnComplete) this.callbacks.onStatus('listening');
+        if (content?.turnComplete) {
+          emitSessionLog('gemini', 'turn_complete', {
+            turn: this.turnNumber,
+            audioChunks: this.audioChunksThisTurn,
+            approxAudioBytes: this.audioBytesThisTurn,
+            sinceToolMs: this.latestToolCallAt === null ? null : Math.round(performance.now() - this.latestToolCallAt),
+          });
+          this.callbacks.onStatus('listening');
+          this.firstAudioSeen = false;
+          this.firstOutputTranscriptSeen = false;
+          this.audioChunksThisTurn = 0;
+          this.audioBytesThisTurn = 0;
+          this.latestToolCallAt = null;
+        }
 
         if (message.sessionResumptionUpdate?.resumable && message.sessionResumptionUpdate.newHandle) {
           this.resumptionHandle = message.sessionResumptionUpdate.newHandle;
+          emitSessionLog('session', 'resumption_handle_updated');
         }
 
-        if (message.goAway && !this.reconnecting) void this.resumeSession();
+        if (message.goAway && !this.reconnecting) {
+          emitSessionLog('session', 'go_away', { timeLeft: message.goAway.timeLeft ?? null });
+          void this.resumeSession();
+        }
       });
 
       socket.addEventListener('error', () => {
         const error = new Error('Gemini Live WebSocket error');
+        emitSessionLog('error', 'websocket_error', { message: error.message });
         this.callbacks.onError(error.message);
         if (!this.setupComplete) {
           this.callbacks.onStatus('error');
@@ -276,6 +347,11 @@ export class GeminiLiveClient {
         const wasReady = this.setupComplete;
         this.setupComplete = false;
         clearSetupTimer();
+        emitSessionLog('session', 'websocket_close', {
+          code: event.code,
+          clean: event.wasClean,
+          reason: event.reason || null,
+        });
 
         if (!wasReady) {
           const detail = event.reason ? `: ${event.reason}` : '';
@@ -292,9 +368,25 @@ export class GeminiLiveClient {
   }
 
   private handleToolCalls(functionCalls: FunctionCall[]) {
+    const receivedAt = performance.now();
+    this.latestToolCallAt = receivedAt;
+    this.turnNumber += 1;
+    this.firstAudioSeen = false;
+    this.firstOutputTranscriptSeen = false;
+    this.audioChunksThisTurn = 0;
+    this.audioBytesThisTurn = 0;
+
     const functionResponses = functionCalls.map((call) => {
+      emitSessionLog('tool', 'call_received', {
+        turn: this.turnNumber,
+        id: call.id ?? null,
+        name: call.name,
+        args: call.args ?? {},
+      });
+
       if (call.name === PERFORMANCE_TOOL) {
         const cue = normalizePerformanceCue((call.args ?? {}) as Partial<PerformanceCue>);
+        emitSessionLog('character', 'performance_cue_received', { turn: this.turnNumber, ...cue });
         this.callbacks.onPerformanceCue(cue);
         if (call.id) this.activePerformanceCallIds.add(call.id);
         return {
@@ -312,11 +404,17 @@ export class GeminiLiveClient {
     });
 
     this.send({ toolResponse: { functionResponses } });
+    emitSessionLog('tool', 'response_sent', {
+      turn: this.turnNumber,
+      names: functionCalls.map((call) => call.name),
+      localHandlingMs: Math.round(performance.now() - receivedAt),
+    });
   }
 
   private async resumeSession() {
     if (this.reconnecting || !this.resumptionHandle) return;
     this.reconnecting = true;
+    emitSessionLog('session', 'resume_started');
     try {
       this.socket?.close(1000, 'session resume');
       const response = await fetch(TOKEN_ENDPOINT, {
@@ -326,8 +424,11 @@ export class GeminiLiveClient {
       if (!response.ok) throw new Error(`Token refresh failed (${response.status})`);
       const { token } = (await response.json()) as TokenResponse;
       await this.openSocket(token);
+      emitSessionLog('session', 'resume_complete');
     } catch (error) {
-      this.callbacks.onError(error instanceof Error ? error.message : 'Could not resume Live session');
+      const message = error instanceof Error ? error.message : 'Could not resume Live session';
+      emitSessionLog('error', 'resume_failed', { message });
+      this.callbacks.onError(message);
       this.callbacks.onStatus('error');
     } finally {
       this.reconnecting = false;
