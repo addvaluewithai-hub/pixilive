@@ -4,11 +4,7 @@ import type { PerformanceState } from './performance';
 const C = { paper: 0xf7f5ef, ink: 0x0b0c0e };
 const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
 const lerp = (from: number, to: number, amount: number) => from + (to - from) * amount;
-const damp = (from: number, to: number, speed: number, dt: number) =>
-  from + (to - from) * (1 - Math.exp(-speed * dt));
 const normalizeAngle = (angle: number) => Math.atan2(Math.sin(angle), Math.cos(angle));
-const dampAngle = (from: number, to: number, speed: number, dt: number) =>
-  from + normalizeAngle(to - from) * (1 - Math.exp(-speed * dt));
 
 type HandPose = 'folded' | 'relaxed' | 'open' | 'emphasis';
 type ArmSide = -1 | 1;
@@ -35,8 +31,27 @@ interface RigArm {
   handX: number;
   handY: number;
   handRotation: number;
+  elbowVX: number;
+  elbowVY: number;
+  handVX: number;
+  handVY: number;
+  handRotationVelocity: number;
   handPose: HandPose;
 }
+
+const spring = (value: number, velocity: number, target: number, stiffness: number, damping: number, dt: number) => {
+  velocity += (target - value) * stiffness * dt;
+  velocity *= Math.exp(-damping * dt);
+  value += velocity * dt;
+  return [value, velocity] as const;
+};
+
+const springAngle = (value: number, velocity: number, target: number, stiffness: number, damping: number, dt: number) => {
+  velocity += normalizeAngle(target - value) * stiffness * dt;
+  velocity *= Math.exp(-damping * dt);
+  value += velocity * dt;
+  return [value, velocity] as const;
+};
 
 const restPose = (side: ArmSide): JointPose =>
   side === -1
@@ -53,12 +68,9 @@ const blendPose = (from: JointPose, to: JointPose, amount: number): JointPose =>
 });
 
 /**
- * Art-directed procedural arm rig.
- *
- * The character director gives us meaning. This rig turns that meaning into
- * authored shoulder/elbow/hand silhouettes and smoothly blends the joints.
- * Unlike generic IK, the elbow is intentionally placed by the animator so every
- * gesture reads cleanly in Milo's flat editorial drawing style.
+ * Art-directed procedural arm rig with spring follow-through.
+ * Semantic gestures choose authored silhouettes; joints then travel with inertia
+ * rather than linear tweening, keeping interruption and settling organic.
  */
 export class MiloArmRig {
   readonly view = new Container();
@@ -78,115 +90,115 @@ export class MiloArmRig {
     let left = restPose(-1);
     let right = restPose(1);
     const activeSide: ArmSide = state.gestureVariant % 2 === 0 ? 1 : -1;
-    const strength = clamp(state.gestureEnvelope * (0.78 + state.intensity * 0.32), 0, 1);
+    const strength = clamp(state.gestureEnvelope * (0.8 + state.intensity * 0.3), 0, 1);
     const anticipation = state.gesturePhase < 0.14
       ? Math.sin((state.gesturePhase / 0.14) * Math.PI) * (0.4 + state.intensity * 0.6)
       : 0;
 
-    const setActive = (pose: JointPose) => {
-      if (activeSide === -1) left = blendPose(left, pose, strength);
-      else right = blendPose(right, pose, strength);
+    const setActive = (target: JointPose) => {
+      if (activeSide === -1) left = blendPose(left, target, strength);
+      else right = blendPose(right, target, strength);
     };
 
     switch (state.gesture) {
       case 'explain':
         setActive({
-          elbowX: activeSide * 86,
-          elbowY: 55 + anticipation * 7,
-          handX: activeSide * 132,
-          handY: 34 + anticipation * 9,
-          handRotation: activeSide * -0.12,
+          elbowX: activeSide * 88,
+          elbowY: 53 + anticipation * 7,
+          handX: activeSide * 136,
+          handY: 31 + anticipation * 9,
+          handRotation: activeSide * -0.14,
           hand: 'open',
         });
         break;
 
       case 'emphasize':
         setActive({
-          elbowX: activeSide * 84,
-          elbowY: 57 + anticipation * 6,
-          handX: activeSide * 111,
-          handY: 49 + anticipation * 6,
-          handRotation: activeSide * -0.08,
+          elbowX: activeSide * 85,
+          elbowY: 55 + anticipation * 6,
+          handX: activeSide * 116,
+          handY: 43 + anticipation * 6,
+          handRotation: activeSide * -0.09,
           hand: 'emphasis',
         });
         break;
 
       case 'reassure':
         left = blendPose(left, {
-          elbowX: -87,
-          elbowY: 56 + anticipation * 6,
-          handX: -55,
-          handY: 79 + anticipation * 5,
-          handRotation: 0.08,
+          elbowX: -88,
+          elbowY: 55 + anticipation * 6,
+          handX: -61,
+          handY: 76 + anticipation * 5,
+          handRotation: 0.1,
           hand: 'open',
         }, strength);
         right = blendPose(right, {
-          elbowX: 87,
-          elbowY: 56 + anticipation * 6,
-          handX: 55,
-          handY: 79 + anticipation * 5,
-          handRotation: -0.08,
+          elbowX: 88,
+          elbowY: 55 + anticipation * 6,
+          handX: 61,
+          handY: 76 + anticipation * 5,
+          handRotation: -0.1,
           hand: 'open',
         }, strength);
         break;
 
       case 'think':
         right = blendPose(right, {
-          elbowX: 88,
-          elbowY: 43,
-          handX: 44,
-          handY: -58 + anticipation * 10,
-          handRotation: -0.42,
+          elbowX: 91,
+          elbowY: 42,
+          handX: 46,
+          handY: -61 + anticipation * 10,
+          handRotation: -0.45,
           hand: 'relaxed',
         }, strength);
         break;
 
       case 'celebrate':
         left = blendPose(left, {
-          elbowX: -91,
-          elbowY: 28 + anticipation * 12,
-          handX: -104,
-          handY: -78 + anticipation * 14,
-          handRotation: 0.12,
+          elbowX: -94,
+          elbowY: 24 + anticipation * 12,
+          handX: -108,
+          handY: -84 + anticipation * 14,
+          handRotation: 0.14,
           hand: 'open',
         }, strength);
         right = blendPose(right, {
-          elbowX: 91,
-          elbowY: 28 + anticipation * 12,
-          handX: 104,
-          handY: -78 + anticipation * 14,
-          handRotation: -0.12,
+          elbowX: 94,
+          elbowY: 24 + anticipation * 12,
+          handX: 108,
+          handY: -84 + anticipation * 14,
+          handRotation: -0.14,
           hand: 'open',
         }, strength);
         break;
 
       case 'shrug':
         left = blendPose(left, {
-          elbowX: -94,
-          elbowY: 48 + anticipation * 7,
-          handX: -135,
-          handY: 18 + anticipation * 8,
-          handRotation: -0.04,
+          elbowX: -98,
+          elbowY: 45 + anticipation * 7,
+          handX: -140,
+          handY: 13 + anticipation * 8,
+          handRotation: -0.06,
           hand: 'open',
         }, strength);
         right = blendPose(right, {
-          elbowX: 94,
-          elbowY: 48 + anticipation * 7,
-          handX: 135,
-          handY: 18 + anticipation * 8,
-          handRotation: 0.04,
+          elbowX: 98,
+          elbowY: 45 + anticipation * 7,
+          handX: 140,
+          handY: 13 + anticipation * 8,
+          handRotation: 0.06,
           hand: 'open',
         }, strength);
         break;
 
       case 'greet':
       case 'goodbye': {
-        const wave = Math.sin(state.gesturePhase * Math.PI * 6) * 0.18 * strength;
+        const wave = Math.sin(state.gesturePhase * Math.PI * 5.2) * 0.2 * strength;
         right = blendPose(right, {
-          elbowX: 91,
-          elbowY: 38,
-          handX: 108,
-          handY: -70 + anticipation * 10,
+          elbowX: 93,
+          elbowY: 36,
+          handX: 111,
+          handY: -74 + anticipation * 10,
           handRotation: -0.18 + wave,
           hand: 'open',
         }, strength);
@@ -196,11 +208,11 @@ export class MiloArmRig {
       case 'agree':
       case 'disagree':
         setActive({
-          elbowX: activeSide * 84,
-          elbowY: 56,
-          handX: activeSide * 103,
-          handY: 44,
-          handRotation: activeSide * -0.06,
+          elbowX: activeSide * 85,
+          elbowY: 55,
+          handX: activeSide * 108,
+          handY: 41,
+          handRotation: activeSide * -0.07,
           hand: 'emphasis',
         });
         break;
@@ -210,25 +222,20 @@ export class MiloArmRig {
         break;
     }
 
-    // Long spoken turns get occasional small accents in the same gesture family.
-    // The primary pose remains semantic; audio only nudges it on phrase-like peaks.
+    // Phrase accents stay intentionally small. Major gestures come from semantic
+    // cues; prosody adds follow-through rather than constant waving.
     if (state.mode === 'speaking' && state.gestureEnvelope < 0.15 && state.speechBeat > 0.02) {
-      const beat = state.speechBeat * (0.14 + state.intensity * 0.16);
-      if (state.gesture === 'explain' || state.gesture === 'emphasize' || state.gesture === 'agree' || state.gesture === 'disagree') {
-        const accent: JointPose = {
-          elbowX: activeSide * 83,
-          elbowY: 58,
-          handX: activeSide * 99,
-          handY: 49,
-          handRotation: activeSide * -0.05,
-          hand: state.gesture === 'explain' ? 'open' : 'emphasis',
-        };
-        if (activeSide === -1) left = blendPose(left, accent, beat);
-        else right = blendPose(right, accent, beat);
-      } else if (state.gesture === 'reassure') {
-        left = blendPose(left, { elbowX: -84, elbowY: 58, handX: -62, handY: 72, handRotation: 0.06, hand: 'open' }, beat * 0.7);
-        right = blendPose(right, { elbowX: 84, elbowY: 58, handX: 62, handY: 72, handRotation: -0.06, hand: 'open' }, beat * 0.7);
-      }
+      const beat = state.speechBeat * (0.12 + state.intensity * 0.14);
+      const accent: JointPose = {
+        elbowX: activeSide * 83,
+        elbowY: 57,
+        handX: activeSide * 101,
+        handY: 47,
+        handRotation: activeSide * -0.055,
+        hand: state.gesture === 'explain' ? 'open' : 'emphasis',
+      };
+      if (activeSide === -1) left = blendPose(left, accent, beat);
+      else right = blendPose(right, accent, beat);
     }
 
     const twoHanded = ['reassure', 'celebrate', 'shrug'].includes(state.gesture);
@@ -259,28 +266,41 @@ export class MiloArmRig {
       handX: shoulderX,
       handY: shoulderY + 90,
       handRotation: 0,
+      elbowVX: 0,
+      elbowVY: 0,
+      handVX: 0,
+      handVY: 0,
+      handRotationVelocity: 0,
       handPose: 'folded',
     };
     this.drawHand(arm, 'folded');
     return arm;
   }
 
-  private snap(arm: RigArm, pose: JointPose) {
-    arm.elbowX = pose.elbowX;
-    arm.elbowY = pose.elbowY;
-    arm.handX = pose.handX;
-    arm.handY = pose.handY;
-    arm.handRotation = pose.handRotation;
-    arm.handPose = pose.hand;
+  private snap(arm: RigArm, target: JointPose) {
+    arm.elbowX = target.elbowX;
+    arm.elbowY = target.elbowY;
+    arm.handX = target.handX;
+    arm.handY = target.handY;
+    arm.handRotation = target.handRotation;
+    arm.elbowVX = arm.elbowVY = arm.handVX = arm.handVY = arm.handRotationVelocity = 0;
+    arm.handPose = target.hand;
     this.renderArm(arm);
   }
 
   private updateArm(arm: RigArm, target: JointPose, dt: number) {
-    arm.elbowX = damp(arm.elbowX, target.elbowX, 9.6, dt);
-    arm.elbowY = damp(arm.elbowY, target.elbowY, 9.6, dt);
-    arm.handX = damp(arm.handX, target.handX, 10.8, dt);
-    arm.handY = damp(arm.handY, target.handY, 10.8, dt);
-    arm.handRotation = dampAngle(arm.handRotation, target.handRotation, 12, dt);
+    [arm.elbowX, arm.elbowVX] = spring(arm.elbowX, arm.elbowVX, target.elbowX, 155, 18.5, dt);
+    [arm.elbowY, arm.elbowVY] = spring(arm.elbowY, arm.elbowVY, target.elbowY, 155, 18.5, dt);
+    [arm.handX, arm.handVX] = spring(arm.handX, arm.handVX, target.handX, 185, 20, dt);
+    [arm.handY, arm.handVY] = spring(arm.handY, arm.handVY, target.handY, 185, 20, dt);
+    [arm.handRotation, arm.handRotationVelocity] = springAngle(
+      arm.handRotation,
+      arm.handRotationVelocity,
+      target.handRotation,
+      190,
+      19,
+      dt,
+    );
 
     if (arm.handPose !== target.hand) {
       arm.handPose = target.hand;
@@ -293,31 +313,11 @@ export class MiloArmRig {
     arm.upper.clear();
     arm.forearm.clear();
 
-    this.drawSegment(
-      arm.upper,
-      arm.shoulderX,
-      arm.shoulderY,
-      arm.elbowX,
-      arm.elbowY,
-      11,
-      C.ink,
-      C.paper,
-      3.1,
-    );
-    this.drawSegment(
-      arm.forearm,
-      arm.elbowX,
-      arm.elbowY,
-      arm.handX,
-      arm.handY,
-      11,
-      C.paper,
-      C.ink,
-      3.2,
-    );
+    this.drawSegment(arm.upper, arm.shoulderX, arm.shoulderY, arm.elbowX, arm.elbowY, 11.2, C.ink, C.paper, 3.1);
+    this.drawSegment(arm.forearm, arm.elbowX, arm.elbowY, arm.handX, arm.handY, 10.6, C.paper, C.ink, 3.2);
 
     arm.hand.position.set(arm.handX, arm.handY);
-    arm.hand.rotation = arm.handRotation;
+    arm.hand.rotation = arm.handRotation + clamp(arm.handRotationVelocity * 0.0025, -0.045, 0.045);
   }
 
   private drawSegment(
@@ -336,7 +336,7 @@ export class MiloArmRig {
     const length = Math.max(1, Math.hypot(dx, dy));
     const px = -dy / length;
     const py = dx / length;
-    const endWidth = halfWidth * 0.9;
+    const endWidth = halfWidth * 0.88;
 
     graphics
       .moveTo(x1 + px * halfWidth, y1 + py * halfWidth)
@@ -377,12 +377,12 @@ export class MiloArmRig {
       .stroke({ width: strokeWidth, color: stroke, join: 'round' });
   }
 
-  private drawHand(arm: RigArm, pose: HandPose) {
+  private drawHand(arm: RigArm, handPose: HandPose) {
     const g = arm.hand;
     const s = arm.side;
     g.clear();
 
-    if (pose === 'folded') {
+    if (handPose === 'folded') {
       g.ellipse(0, 1, 11, 8).fill(C.paper).stroke({ width: 2.2, color: C.ink });
       g.moveTo(-7 * s, -2).bezierCurveTo(-3 * s, -8, 2 * s, -8, 6 * s, -2)
         .moveTo(-3 * s, 1).bezierCurveTo(1 * s, -5, 7 * s, -4, 9 * s, 1)
@@ -390,7 +390,7 @@ export class MiloArmRig {
       return;
     }
 
-    if (pose === 'open') {
+    if (handPose === 'open') {
       g.moveTo(-10 * s, -7)
         .bezierCurveTo(-2 * s, -13, 9 * s, -11, 14 * s, -3)
         .bezierCurveTo(18 * s, 4, 10 * s, 13, 0, 11)
@@ -406,7 +406,7 @@ export class MiloArmRig {
       return;
     }
 
-    if (pose === 'emphasis') {
+    if (handPose === 'emphasis') {
       g.ellipse(1 * s, 1, 11, 8).fill(C.paper).stroke({ width: 2.1, color: C.ink });
       g.moveTo(-6 * s, -3).bezierCurveTo(-1 * s, -8, 7 * s, -6, 10 * s, 0)
         .stroke({ width: 1.6, color: C.ink, cap: 'round' });
