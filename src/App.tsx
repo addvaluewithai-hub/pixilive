@@ -1,6 +1,7 @@
 import { type ChangeEvent, type FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { MicrophonePcmStream } from './audio/MicrophonePcmStream';
 import { PcmPlaybackQueue } from './audio/PcmPlaybackQueue';
+import { LocalPerformanceEngine, type PerformanceCueSource } from './character/LocalPerformanceEngine';
 import { characterRegistry, DEFAULT_CHARACTER_ID, getCharacterDefinition } from './character/registry';
 import type { CharacterMode, PerformanceCue } from './character/performance';
 import type { Emotion, MouthPose } from './character/types';
@@ -11,6 +12,7 @@ import { GeminiLiveClient } from './live/GeminiLiveClient';
 import type { LiveStatus } from './live/types';
 
 const restingMouth: MouthPose = { open: 0.045, width: 0.37, round: 0.08, energy: 0, viseme: 'REST' };
+type PerformanceSource = PerformanceCueSource | 'tool-prime' | 'autonomous';
 
 export function App() {
   const [characterId, setCharacterId] = useState(DEFAULT_CHARACTER_ID);
@@ -19,6 +21,8 @@ export function App() {
   const [status, setStatus] = useState<LiveStatus>('idle');
   const [characterMode, setCharacterMode] = useState<CharacterMode>('idle');
   const [performanceCue, setPerformanceCue] = useState<PerformanceCue | null>(null);
+  const [performanceSource, setPerformanceSource] = useState<PerformanceSource>('autonomous');
+  const [playbackSpeaking, setPlaybackSpeaking] = useState(false);
   const [interruptKey, setInterruptKey] = useState(0);
   const [inputTranscript, setInputTranscript] = useState('');
   const [outputTranscript, setOutputTranscript] = useState('');
@@ -29,18 +33,45 @@ export function App() {
   const microphone = useRef(new MicrophonePcmStream());
   const playback = useRef<PcmPlaybackQueue | null>(null);
   const live = useRef<GeminiLiveClient | null>(null);
+  const localPerformance = useRef<LocalPerformanceEngine | null>(null);
   const statusRef = useRef<LiveStatus>('idle');
   const modeRef = useRef<CharacterMode>('idle');
   const userActiveRef = useRef(false);
+  const playbackActiveRef = useRef(false);
+  const silenceStartedRef = useRef<number | null>(null);
+  const pendingToolCueRef = useRef<PerformanceCue | null>(null);
+  const pendingToolTimerRef = useRef<number | null>(null);
   const thinkingTimerRef = useRef<number | null>(null);
+  const lastProsodyLogRef = useRef(0);
 
   const character = useMemo(() => getCharacterDefinition(characterId), [characterId]);
+
+  const applyPerformanceCue = (cue: PerformanceCue, source: PerformanceSource, reason: string) => {
+    setPerformanceCue({ ...cue });
+    setPerformanceSource(source);
+    emitSessionLog('character', 'performance_applied', {
+      source,
+      reason,
+      affect: cue.affect,
+      gesture: cue.gesture,
+      posture: cue.posture,
+      gaze: cue.gaze,
+      intensity: Number(cue.intensity.toFixed(2)),
+    });
+  };
+
+  if (!localPerformance.current) {
+    localPerformance.current = new LocalPerformanceEngine({
+      onCue: (cue, source, reason) => applyPerformanceCue(cue, source, reason),
+    });
+  }
 
   const changeCharacterMode = (next: CharacterMode) => {
     const previous = modeRef.current;
     if (previous === next) return;
     modeRef.current = next;
     setCharacterMode(next);
+    localPerformance.current?.setMode(next);
     emitSessionLog('character', 'mode_changed', { from: previous, to: next });
   };
 
@@ -51,50 +82,116 @@ export function App() {
     }
   };
 
+  const clearPendingToolTimer = () => {
+    if (pendingToolTimerRef.current !== null) {
+      window.clearTimeout(pendingToolTimerRef.current);
+      pendingToolTimerRef.current = null;
+    }
+  };
+
   const updateLiveStatus = (next: LiveStatus) => {
     const previous = statusRef.current;
     statusRef.current = next;
     setStatus(next);
     if (previous !== next) emitSessionLog('session', 'status_changed', { from: previous, to: next });
-    if (next === 'speaking') changeCharacterMode('speaking');
-    else if (next === 'idle' || next === 'error') changeCharacterMode('idle');
+
+    if (next === 'idle' || next === 'error') changeCharacterMode('idle');
     else if (next === 'connecting') changeCharacterMode('thinking');
+    // A network audio event arrives before WebAudio playback. Do not move the
+    // character into speaking mode until PcmPlaybackQueue's playback clock fires.
+    else if (next === 'speaking' && !playbackActiveRef.current) changeCharacterMode('thinking');
+    else if (next === 'listening' && playbackActiveRef.current) return;
     else if (next === 'listening' && userActiveRef.current) changeCharacterMode('listening');
     else if (next === 'listening' && modeRef.current !== 'thinking') changeCharacterMode('listening');
   };
 
   const handleMicLevel = (level: number) => {
-    const speakingThreshold = 0.075;
-    const silenceThreshold = 0.035;
+    // Hybrid VAD: Gemini's automatic VAD still owns speech-start robustness and
+    // prefix buffering. Local RMS only finalizes a turn after sustained silence.
+    const startThreshold = 0.065;
+    const endThreshold = 0.028;
+    const endSilenceMs = 560;
+    const now = performance.now();
 
-    if (level >= speakingThreshold) {
+    if (level >= startThreshold) {
+      silenceStartedRef.current = null;
       clearThinkingTimer();
       if (!userActiveRef.current) {
         userActiveRef.current = true;
         emitSessionLog('user', 'voice_activity_start', { level: Number(level.toFixed(3)) });
       }
-      changeCharacterMode('listening');
+      if (!playbackActiveRef.current) changeCharacterMode('listening');
       return;
     }
 
-    if (userActiveRef.current && level <= silenceThreshold) {
-      userActiveRef.current = false;
-      emitSessionLog('user', 'voice_activity_end', { level: Number(level.toFixed(3)) });
-      changeCharacterMode('thinking');
-      clearThinkingTimer();
-      thinkingTimerRef.current = window.setTimeout(() => {
-        thinkingTimerRef.current = null;
-        if (statusRef.current === 'listening' && !userActiveRef.current && modeRef.current === 'thinking') {
-          changeCharacterMode('listening');
-        }
-      }, 680);
+    if (!userActiveRef.current) return;
+    if (level > endThreshold) {
+      silenceStartedRef.current = null;
+      return;
     }
+
+    if (silenceStartedRef.current === null) {
+      silenceStartedRef.current = now;
+      return;
+    }
+
+    if (now - silenceStartedRef.current < endSilenceMs) return;
+    userActiveRef.current = false;
+    silenceStartedRef.current = null;
+    emitSessionLog('user', 'voice_activity_end', { level: Number(level.toFixed(3)), silenceMs: endSilenceMs });
+
+    // This is the hybrid-VAD latency win: ask Gemini to finalize immediately
+    // while its own server VAD remains enabled as the safety net.
+    live.current?.endAudioStream();
+    emitSessionLog('session', 'hybrid_vad_audio_stream_end', { silenceMs: endSilenceMs });
+    if (!playbackActiveRef.current) changeCharacterMode('thinking');
+
+    clearThinkingTimer();
+    thinkingTimerRef.current = window.setTimeout(() => {
+      thinkingTimerRef.current = null;
+      if (statusRef.current === 'listening' && !userActiveRef.current && !playbackActiveRef.current && modeRef.current === 'thinking') {
+        changeCharacterMode('listening');
+      }
+    }, 900);
   };
 
   if (!playback.current) {
     playback.current = new PcmPlaybackQueue(
       (pose) => setMouth(pose),
       () => setMouth(restingMouth),
+      {
+        onSpeechStart: () => {
+          playbackActiveRef.current = true;
+          setPlaybackSpeaking(true);
+          changeCharacterMode('speaking');
+          const toolCue = pendingToolCueRef.current;
+          pendingToolCueRef.current = null;
+          clearPendingToolTimer();
+          localPerformance.current?.beginSpeech(toolCue);
+          emitSessionLog('audio', 'playback_started', { toolCueApplied: Boolean(toolCue) });
+        },
+        onSpeechDynamics: (dynamics) => {
+          localPerformance.current?.updateSpeech(dynamics);
+          const now = performance.now();
+          if (now - lastProsodyLogRef.current > 650) {
+            lastProsodyLogRef.current = now;
+            emitSessionLog('audio', 'prosody_sample', {
+              energy: Number(dynamics.energy.toFixed(2)),
+              pitchHz: Math.round(dynamics.pitchHz),
+              pitchNorm: Number(dynamics.pitchNorm.toFixed(2)),
+              brightness: Number(dynamics.brightness.toFixed(2)),
+              onset: Number(dynamics.onset.toFixed(2)),
+            });
+          }
+        },
+        onSpeechEnd: () => {
+          playbackActiveRef.current = false;
+          setPlaybackSpeaking(false);
+          localPerformance.current?.endSpeech();
+          emitSessionLog('audio', 'playback_ended');
+          if (statusRef.current === 'listening') changeCharacterMode(userActiveRef.current ? 'listening' : 'listening');
+        },
+      },
     );
   }
 
@@ -102,22 +199,42 @@ export function App() {
     live.current = new GeminiLiveClient({
       onStatus: updateLiveStatus,
       onAudio: (audio) => void playback.current?.enqueue(audio),
-      onInputTranscript: setInputTranscript,
+      onInputTranscript: (transcript) => {
+        setInputTranscript(transcript);
+        localPerformance.current?.pushInputTranscript(transcript);
+      },
       onOutputTranscript: (transcript) => {
         setOutputTranscript(transcript);
         playback.current?.pushTranscript(transcript);
+        localPerformance.current?.pushOutputTranscript(transcript);
       },
       onPerformanceCue: (cue) => {
-        setPerformanceCue({ ...cue });
-        if (statusRef.current !== 'speaking') changeCharacterMode('thinking');
+        // 3.1 tool calls are sequential. Store the actual gesture until playback
+        // begins; before speech, only prime the face/posture very subtly.
+        pendingToolCueRef.current = { ...cue };
+        clearPendingToolTimer();
+        pendingToolTimerRef.current = window.setTimeout(() => {
+          pendingToolTimerRef.current = null;
+          pendingToolCueRef.current = null;
+        }, 5_000);
+        applyPerformanceCue({
+          ...cue,
+          gesture: 'none',
+          intensity: Math.min(0.26, Math.max(0.14, cue.intensity * 0.32)),
+        }, 'tool-prime', 'subtle anticipation while synchronous tool returns');
+        if (!playbackActiveRef.current) changeCharacterMode('thinking');
       },
       onPerformanceCancelled: () => {
+        pendingToolCueRef.current = null;
+        clearPendingToolTimer();
         setInterruptKey((value) => value + 1);
-        if (statusRef.current !== 'idle') changeCharacterMode('listening');
+        if (statusRef.current !== 'idle' && !playbackActiveRef.current) changeCharacterMode('listening');
       },
       onInterrupted: () => {
+        pendingToolCueRef.current = null;
+        clearPendingToolTimer();
         playback.current?.interrupt();
-        changeCharacterMode('listening');
+        if (statusRef.current !== 'idle') changeCharacterMode('listening');
       },
       onError: (message) => {
         emitSessionLog('error', 'ui_error', { message });
@@ -128,7 +245,7 @@ export function App() {
 
   const connected = status === 'listening' || status === 'speaking';
   const sessionLocked = status === 'connecting' || connected;
-  const speaking = status === 'speaking' || mouth.energy > 0.015;
+  const speaking = playbackSpeaking || mouth.energy > 0.015;
   const statusLabel = useMemo(
     () => ({ idle: 'offline', connecting: 'connecting', listening: 'listening', speaking: 'speaking', error: 'error' })[status],
     [status],
@@ -141,6 +258,7 @@ export function App() {
   useEffect(() => {
     return () => {
       clearThinkingTimer();
+      clearPendingToolTimer();
       live.current?.close();
       void microphone.current.stop();
       void playback.current?.close();
@@ -155,6 +273,8 @@ export function App() {
     setEmotion(next.defaultEmotion);
     setMouth(restingMouth);
     setPerformanceCue(null);
+    setPerformanceSource('autonomous');
+    localPerformance.current?.endSpeech();
     changeCharacterMode('idle');
     setInputTranscript('');
     setOutputTranscript('');
@@ -164,6 +284,7 @@ export function App() {
   const connect = async () => {
     setError('');
     setPerformanceCue(null);
+    setPerformanceSource('autonomous');
     emitSessionLog('session', 'session_start', { character: character.name, characterId: character.id });
     try {
       await live.current?.connect(character.systemPrompt);
@@ -185,14 +306,20 @@ export function App() {
 
   const disconnect = async () => {
     clearThinkingTimer();
+    clearPendingToolTimer();
     userActiveRef.current = false;
+    playbackActiveRef.current = false;
+    pendingToolCueRef.current = null;
     emitSessionLog('session', 'session_end_requested');
     live.current?.endAudioStream();
     live.current?.close();
     await microphone.current.stop();
     playback.current?.interrupt();
+    setPlaybackSpeaking(false);
     setInterruptKey((value) => value + 1);
     setPerformanceCue(null);
+    setPerformanceSource('autonomous');
+    localPerformance.current?.endSpeech();
     changeCharacterMode('idle');
     updateLiveStatus('idle');
   };
@@ -202,6 +329,7 @@ export function App() {
     if (!connected || !text.trim()) return;
     live.current?.sendText(text);
     setInputTranscript(text.trim());
+    localPerformance.current?.pushInputTranscript(text.trim());
     changeCharacterMode('thinking');
     setText('');
   };
@@ -267,7 +395,7 @@ export function App() {
         <div className="performance-readout" aria-live="polite">
           <span>Performance</span>
           <strong>{characterMode}</strong>
-          <em>{performanceCue ? `${performanceCue.affect} · ${performanceCue.gesture}` : 'local autonomous acting'}</em>
+          <em>{performanceCue ? `${performanceCue.affect} · ${performanceCue.gesture} · ${performanceSource}` : 'local autonomous acting'}</em>
         </div>
 
         <label className="section-label">Gemini Live</label>
@@ -290,7 +418,7 @@ export function App() {
         </form>
 
         <div className="meter" aria-hidden="true"><span style={{ width: `${Math.round(mouth.energy * 100)}%` }} /></div>
-        <p className="hint">Gemini chooses semantic intent. PixiLive locally handles acting, timing, gesture variation, listening behavior and interruption.</p>
+        <p className="hint">PixiLive now acts locally from playback prosody, transcript meaning and conversation state. Gemini's character tool is an optional high-level override, not a requirement.</p>
         {error && <p className="error">{error}</p>}
 
         <SessionLogPanel entries={sessionLogs} onClear={() => setSessionLogs([])} />
