@@ -25,8 +25,21 @@ const REST: Record<Side, HandTarget> = {
 };
 
 const SHOULDER: Record<Side, Vec2> = {
-  left: { x: -58, y: 3 },
-  right: { x: 58, y: 5 },
+  left: { x: -59, y: 1 },
+  right: { x: 59, y: 2 },
+};
+
+// Crossed arms and open gestures often live on opposite mathematical IK branches.
+// Route through an almost-straight arm so changing topology is visually continuous.
+const UNFOLD: Record<Side, HandTarget> = {
+  left: { position: { x: -68, y: 164 }, rotation: -0.03, pose: 'relaxed' },
+  right: { position: { x: 68, y: 166 }, rotation: 0.03, pose: 'relaxed' },
+};
+
+// Character anatomy is expressed as poles, not gesture-specific bend signs.
+const ANATOMICAL_POLE: Record<Side, Vec2> = {
+  left: { x: -180, y: 36 },
+  right: { x: 180, y: 36 },
 };
 
 const cloneTarget = (target: HandTarget): HandTarget => ({
@@ -37,17 +50,41 @@ const cloneTarget = (target: HandTarget): HandTarget => ({
 
 const activeSideFor = (state: PerformanceState): Side => state.gestureVariant % 2 === 0 ? 'right' : 'left';
 const lerpPoint = (a: Vec2, b: Vec2, t: number): Vec2 => ({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t });
+const smooth = (t: number) => {
+  const x = clamp(t, 0, 1);
+  return x * x * (3 - 2 * x);
+};
 const normalize = (v: Vec2): Vec2 => {
   const l = Math.max(0.0001, Math.hypot(v.x, v.y));
   return { x: v.x / l, y: v.y / l };
+};
+const targetDistance = (a: HandTarget, b: HandTarget) => Math.hypot(a.position.x - b.position.x, a.position.y - b.position.y);
+
+const mixTarget = (a: HandTarget, b: HandTarget, amount: number): HandTarget => {
+  const t = smooth(amount);
+  return {
+    position: lerpPoint(a.position, b.position, t),
+    rotation: a.rotation + (b.rotation - a.rotation) * t,
+    pose: t > 0.2 ? b.pose : a.pose,
+  };
+};
+
+const forcedEnvelope = (phase: number) => {
+  if (phase >= 1) return 0;
+  if (phase < 0.12) return (phase / 0.12) * 0.22;
+  if (phase < 0.32) return 0.22 + ((phase - 0.12) / 0.2) * 0.78;
+  if (phase < 0.74) return 1;
+  const t = (phase - 0.74) / 0.26;
+  return 1 - t * t * (3 - 2 * t);
 };
 
 /**
  * Milo's production Rig2D consumer.
  *
  * Rig2D owns invisible fixed-length anatomy. PixiChainSkin owns the visible
- * continuous shoulder -> elbow -> wrist silhouette. Character-specific clothing
- * and hand poses are layered on top without exposing bone joints as artwork.
+ * continuous shoulder -> elbow -> wrist silhouette. Crossed-rest -> gesture
+ * transitions use an authored safe-unfold path so the elbow can move between
+ * legal IK branches without ever mirroring through the torso.
  */
 export class MiloRig2D implements CharacterInteractionController {
   readonly view = new Container();
@@ -90,6 +127,7 @@ export class MiloRig2D implements CharacterInteractionController {
   private handRotation: Record<Side, number> = { left: REST.left.rotation, right: REST.right.rotation };
   private forcedAction: CharacterGesture | null = null;
   private forcedActionIntensity = 0;
+  private forcedActionPhase = 1;
   private locomotion = 'idle';
 
   constructor() {
@@ -152,7 +190,13 @@ export class MiloRig2D implements CharacterInteractionController {
     };
     this.forcedAction = map[name] ?? null;
     this.forcedActionIntensity = clamp(intensity, 0, 1);
-    if (name === 'crossArms') this.manual.clear();
+    this.forcedActionPhase = this.forcedAction ? 0 : 1;
+    if (name === 'crossArms') {
+      this.manual.clear();
+      this.rig.clearIKContinuity();
+      this.targetSpring.left.snap(REST.left.position);
+      this.targetSpring.right.snap(REST.right.position);
+    }
   }
 
   setLocomotion(name: string) {
@@ -172,17 +216,23 @@ export class MiloRig2D implements CharacterInteractionController {
     this.rig.resetToRest();
 
     const safeState = state?.gesture ? state : ({
-      gesture: 'none', gestureVariant: 0, gestureEnvelope: 0, gesturePhase: 0,
+      gesture: 'none', gestureVariant: 0, gestureEnvelope: 0, gesturePhase: 1,
       intensity: 0, mode: 'idle', speechBeat: 0,
     } as PerformanceState);
+
+    if (this.forcedAction) {
+      this.forcedActionPhase = Math.min(1, this.forcedActionPhase + Math.max(0, dt) / 2.45);
+    }
+
     const gesture = this.forcedAction ?? safeState.gesture;
     const intensity = this.forcedAction ? this.forcedActionIntensity : safeState.intensity;
-    // Forced interaction actions now use their decaying intensity as an envelope,
-    // so they settle smoothly instead of holding almost full pose then snapping.
-    const envelope = this.forcedAction ? clamp(this.forcedActionIntensity, 0, 1) : safeState.gestureEnvelope;
+    const phase = this.forcedAction ? this.forcedActionPhase : safeState.gesturePhase;
+    const envelope = this.forcedAction ? forcedEnvelope(phase) : safeState.gestureEnvelope;
     const activeSide = activeSideFor(safeState);
-    const targets = this.targetsForGesture(gesture, activeSide, envelope, intensity, safeState.gesturePhase);
+    const targets = this.targetsForGesture(gesture, activeSide, envelope, intensity, phase);
 
+    // Active gesturing hand is above the passive hand. This is arm-to-arm order;
+    // shoulder sleeves themselves visually merge into the torso at their root.
     if (gesture !== 'none') {
       this.leftGroup.zIndex = activeSide === 'left' ? 3 : 1;
       this.rightGroup.zIndex = activeSide === 'right' ? 3 : 1;
@@ -199,7 +249,7 @@ export class MiloRig2D implements CharacterInteractionController {
         rotation: targets[side].rotation,
         pose: manual.pose,
       } : targets[side];
-      const spring = this.targetSpring[side].update(desired.position, dt, manual ? 8.4 : 5.8, manual ? 0.9 : 0.86);
+      const spring = this.targetSpring[side].update(desired.position, dt, manual ? 7.2 : 5.1, manual ? 0.92 : 0.9);
       this.handPose[side] = desired.pose;
       this.handRotation[side] = desired.rotation;
 
@@ -209,23 +259,22 @@ export class MiloRig2D implements CharacterInteractionController {
         upper,
         lower,
         target: spring,
-        bend: manual?.options.bend ?? this.bendFor(side, gesture),
+        pole: manual?.options.bend
+          ? undefined
+          : ANATOMICAL_POLE[side],
+        bend: manual?.options.bend,
+        allowTopologySwitch: !manual,
+        topologySwitchDistance: 24,
         weight: manual?.options.weight ?? 1,
       });
     }
 
-    if (this.forcedAction) {
-      this.forcedActionIntensity *= Math.exp(-Math.max(0, dt) * 1.15);
-      if (this.forcedActionIntensity < 0.055) this.forcedAction = null;
+    if (this.forcedAction && this.forcedActionPhase >= 1) {
+      this.forcedAction = null;
+      this.forcedActionPhase = 1;
     }
 
     void this.locomotion;
-  }
-
-  private bendFor(side: Side, gesture: CharacterGesture): -1 | 1 {
-    const restFamily = gesture === 'none' || gesture === 'reassure';
-    if (restFamily) return side === 'left' ? 1 : -1;
-    return side === 'left' ? -1 : 1;
   }
 
   private targetsForGesture(
@@ -235,55 +284,78 @@ export class MiloRig2D implements CharacterInteractionController {
     intensity: number,
     phase: number,
   ): Record<Side, HandTarget> {
-    const targets = { left: cloneTarget(REST.left), right: cloneTarget(REST.right) };
-    const strength = clamp(envelope * (0.6 + intensity * 0.4), 0, 1);
-    const blend = (side: Side, target: HandTarget, amount = strength) => {
-      const from = targets[side];
-      const t = clamp(amount, 0, 1);
-      targets[side] = {
-        position: {
-          x: from.position.x + (target.position.x - from.position.x) * t,
-          y: from.position.y + (target.position.y - from.position.y) * t,
-        },
-        rotation: from.rotation + (target.rotation - from.rotation) * t,
-        pose: t > 0.16 ? target.pose : from.pose,
-      };
-    };
+    if (gesture === 'none') return { left: cloneTarget(REST.left), right: cloneTarget(REST.right) };
 
+    const finals = this.finalTargetsForGesture(gesture, activeSide, phase);
+    const amplitude = clamp(0.6 + intensity * 0.4, 0, 1);
+    const result = { left: cloneTarget(REST.left), right: cloneTarget(REST.right) };
+
+    for (const side of ['left', 'right'] as const) {
+      const final = mixTarget(REST[side], finals[side], amplitude);
+      const moved = targetDistance(REST[side], final) > 7;
+      if (!moved) continue;
+
+      // The Director phase is used as a trajectory, not just a scalar envelope.
+      // Enter and leave every large pose through the same near-straight safe pose.
+      if (phase < 0.14) {
+        result[side] = mixTarget(REST[side], UNFOLD[side], phase / 0.14);
+      } else if (phase < 0.32) {
+        result[side] = mixTarget(UNFOLD[side], final, (phase - 0.14) / 0.18);
+      } else if (phase < 0.74) {
+        result[side] = final;
+      } else if (phase < 0.88) {
+        result[side] = mixTarget(final, UNFOLD[side], (phase - 0.74) / 0.14);
+      } else {
+        result[side] = mixTarget(UNFOLD[side], REST[side], (phase - 0.88) / 0.12);
+      }
+
+      // Very low envelopes still keep pose language subtle without changing topology rules.
+      if (envelope < 0.08 && phase > 0.32 && phase < 0.74) {
+        result[side] = mixTarget(REST[side], result[side], envelope / 0.08);
+      }
+    }
+
+    return result;
+  }
+
+  private finalTargetsForGesture(
+    gesture: CharacterGesture,
+    activeSide: Side,
+    phase: number,
+  ): Record<Side, HandTarget> {
+    const targets = { left: cloneTarget(REST.left), right: cloneTarget(REST.right) };
     const sign = activeSide === 'left' ? -1 : 1;
+
     switch (gesture) {
       case 'explain':
-        blend(activeSide, { position: { x: sign * 132, y: 35 }, rotation: -sign * 0.12, pose: 'open' });
+        targets[activeSide] = { position: { x: sign * 132, y: 34 }, rotation: -sign * 0.12, pose: 'open' };
         break;
       case 'emphasize':
       case 'agree':
       case 'disagree':
-        blend(activeSide, { position: { x: sign * 108, y: 46 }, rotation: -sign * 0.08, pose: 'emphasis' });
+        targets[activeSide] = { position: { x: sign * 110, y: 44 }, rotation: -sign * 0.08, pose: 'emphasis' };
         break;
       case 'reassure':
-        blend('left', { position: { x: -72, y: 76 }, rotation: 0.08, pose: 'open' });
-        blend('right', { position: { x: 72, y: 76 }, rotation: -0.08, pose: 'open' });
+        targets.left = { position: { x: -78, y: 74 }, rotation: 0.08, pose: 'open' };
+        targets.right = { position: { x: 78, y: 74 }, rotation: -0.08, pose: 'open' };
         break;
       case 'think':
-        // Shoulder-space coordinate deliberately reaches the cheek/chin region,
-        // not the chest. The old target was ~60px too low.
-        blend('right', { position: { x: 45, y: -118 }, rotation: -0.32, pose: 'relaxed' });
+        targets.right = { position: { x: 50, y: -116 }, rotation: -0.34, pose: 'relaxed' };
         break;
       case 'celebrate':
-        blend('left', { position: { x: -100, y: -104 }, rotation: 0.12, pose: 'open' });
-        blend('right', { position: { x: 100, y: -104 }, rotation: -0.12, pose: 'open' });
+        targets.left = { position: { x: -102, y: -106 }, rotation: 0.1, pose: 'open' };
+        targets.right = { position: { x: 102, y: -106 }, rotation: -0.1, pose: 'open' };
         break;
       case 'shrug':
-        blend('left', { position: { x: -132, y: 20 }, rotation: -0.04, pose: 'open' });
-        blend('right', { position: { x: 132, y: 20 }, rotation: 0.04, pose: 'open' });
+        targets.left = { position: { x: -134, y: 18 }, rotation: -0.04, pose: 'open' };
+        targets.right = { position: { x: 134, y: 18 }, rotation: 0.04, pose: 'open' };
         break;
       case 'greet':
       case 'goodbye': {
         const wave = Math.sin(phase * Math.PI * 4.5) * 7;
-        blend('right', { position: { x: 102 + wave, y: -112 }, rotation: -0.18 + wave * 0.006, pose: 'open' });
+        targets.right = { position: { x: 104 + wave, y: -112 }, rotation: -0.18 + wave * 0.006, pose: 'open' };
         break;
       }
-      case 'none':
       default:
         break;
     }
@@ -314,9 +386,7 @@ export class MiloRig2D implements CharacterInteractionController {
       miterLimit: 1.34,
     });
 
-    // A short shirt sleeve overlays the continuous skin. Its shoulder side is
-    // deliberately open/no cap stroke so it visually merges into the black torso.
-    this.drawSleeve(sleeve, shoulder, lerpPoint(shoulder, elbow, 0.39));
+    this.drawSleeve(sleeve, shoulder, lerpPoint(shoulder, elbow, 0.36));
 
     const handRotation = lower.worldRotation + this.handRotation[side];
     this.drawHand(hand, wrist, handRotation, this.handPose[side], side === 'left' ? -1 : 1);
@@ -326,11 +396,11 @@ export class MiloRig2D implements CharacterInteractionController {
     graphics.clear();
     const direction = normalize({ x: cuff.x - shoulder.x, y: cuff.y - shoulder.y });
     const normal = { x: -direction.y, y: direction.x };
-    // Extend the fill slightly into the torso; the visible side outlines begin at
-    // the anatomical shoulder and the missing start-cap line removes the box look.
-    const hiddenStart = { x: shoulder.x - direction.x * 7, y: shoulder.y - direction.y * 7 };
-    const startWidth = 17.1;
-    const cuffWidth = 14.2;
+    // Push sleeve fill deeper under the torso silhouette. The visible outline starts
+    // at the shoulder but there is deliberately no shoulder cap, avoiding a cut-out box.
+    const hiddenStart = { x: shoulder.x - direction.x * 10, y: shoulder.y - direction.y * 10 };
+    const startWidth = 17.4;
+    const cuffWidth = 13.7;
     const a1 = { x: hiddenStart.x + normal.x * startWidth, y: hiddenStart.y + normal.y * startWidth };
     const a2 = { x: hiddenStart.x - normal.x * startWidth, y: hiddenStart.y - normal.y * startWidth };
     const b1 = { x: cuff.x + normal.x * cuffWidth, y: cuff.y + normal.y * cuffWidth };
@@ -346,7 +416,6 @@ export class MiloRig2D implements CharacterInteractionController {
       .closePath()
       .fill(C.ink);
 
-    // Only the two sleeve edges and cuff are outlined. No shoulder cap.
     graphics
       .moveTo(shoulder.x + normal.x * startWidth, shoulder.y + normal.y * startWidth)
       .bezierCurveTo(
@@ -366,7 +435,7 @@ export class MiloRig2D implements CharacterInteractionController {
         shoulder.x - normal.x * startWidth,
         shoulder.y - normal.y * startWidth,
       )
-      .stroke({ width: 2.45, color: C.paper, alpha: 0.94, join: 'round', cap: 'round' });
+      .stroke({ width: 2.35, color: C.paper, alpha: 0.9, join: 'round', cap: 'round' });
   }
 
   private drawHand(graphics: Graphics, position: Vec2, rotation: number, pose: HandPose, side: -1 | 1) {
