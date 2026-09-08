@@ -1,4 +1,4 @@
-import { Application } from 'pixi.js';
+import { Application, type Ticker } from 'pixi.js';
 import type { SpeechDynamics } from '../audio/SpeechProsodyAnalyzer';
 import { DirectedMiloCharacter } from '../character/DirectedMiloCharacter';
 import { LocalPerformanceEngine } from '../character/LocalPerformanceEngine';
@@ -12,6 +12,8 @@ export interface AutonomousHarnessInput {
   dynamics: SpeechDynamics;
   frames?: number;
 }
+
+const fixedTicker = { deltaMS: 1000 / 60 } as Ticker;
 
 /** Visual proof that ordinary acting works with no Gemini function call. */
 export async function mountMiloAutonomousPerformanceHarness(input: AutonomousHarnessInput) {
@@ -57,15 +59,13 @@ export async function mountMiloAutonomousPerformanceHarness(input: AutonomousHar
 
   const frames = input.frames ?? 82;
   for (let frame = 0; frame < frames; frame += 1) {
-    // Repeated phrase-level dynamics simulate playback callbacks. Give every
-    // few frames a stronger onset so semantic + prosody fusion can gesture.
     if (frame % 7 === 0) {
       brain.updateSpeech({
         ...input.dynamics,
         onset: frame === 21 || frame === 49 ? Math.max(0.68, input.dynamics.onset) : input.dynamics.onset,
       }, 0.03);
     }
-    character.update(app.ticker);
-    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+    character.update(fixedTicker);
   }
+  await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
 }
