@@ -75,7 +75,9 @@ export class PcmPlaybackQueue {
     this.nextStart = startAt + buffer.duration;
     source.onended = () => {
       this.active.delete(source);
-      if (this.active.size === 0) {
+      // interrupt() marks outputActive=false before stopping sources. Without
+      // this guard, each asynchronous onended callback could emit speechEnd again.
+      if (this.active.size === 0 && this.outputActive) {
         this.nextStart = 0;
         this.analyzer.resetTranscript();
         this.prosody.reset();
@@ -88,6 +90,7 @@ export class PcmPlaybackQueue {
 
   interrupt() {
     const hadPlayback = this.outputActive || this.active.size > 0;
+    this.outputActive = false;
     for (const timer of this.timers) window.clearTimeout(timer);
     this.timers.clear();
     for (const source of this.active) {
@@ -99,7 +102,6 @@ export class PcmPlaybackQueue {
     }
     this.active.clear();
     this.nextStart = 0;
-    this.outputActive = false;
     this.analyzer.resetTranscript();
     this.prosody.reset();
     this.onIdle();
