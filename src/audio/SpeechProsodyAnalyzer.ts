@@ -23,29 +23,41 @@ const estimatePitch = (frame: Float32Array, sampleRate: number) => {
 
   let bestLag = 0;
   let best = 0;
-  let zeroLag = 0;
-  for (let index = 0; index < frame.length; index += 1) zeroLag += frame[index] * frame[index];
-  if (zeroLag < 1e-6) return { hz: 0, confidence: 0 };
-
   for (let lag = minLag; lag <= maxLag; lag += 2) {
-    let correlation = 0;
+    let xy = 0;
+    let xx = 0;
+    let yy = 0;
     for (let index = 0; index < frame.length - lag; index += 1) {
-      correlation += frame[index] * frame[index + lag];
+      const a = frame[index];
+      const b = frame[index + lag];
+      xy += a * b;
+      xx += a * a;
+      yy += b * b;
     }
-    const normalized = correlation / zeroLag;
-    if (normalized > best) {
-      best = normalized;
+    const correlation = xy / Math.max(1e-8, Math.sqrt(xx * yy));
+    if (correlation > best) {
+      best = correlation;
       bestLag = lag;
     }
   }
 
-  if (!bestLag || best < 0.16) return { hz: 0, confidence: clamp(best / 0.45) };
-  return { hz: sampleRate / bestLag, confidence: clamp((best - 0.12) / 0.55) };
+  if (!bestLag || best < 0.28) return { hz: 0, confidence: clamp((best - 0.12) / 0.28) };
+  return {
+    hz: sampleRate / bestLag,
+    confidence: clamp((best - 0.24) / 0.5),
+  };
+};
+
+const energyFromRms = (rms: number) => {
+  if (rms <= 1e-5) return 0;
+  const db = 20 * Math.log10(rms);
+  // Approximately -52 dBFS → silence and -10 dBFS → full expressive energy.
+  return clamp((db + 52) / 42);
 };
 
 const analyzeFrame = (samples: Int16Array, sampleRate: number, previousEnergy: number, previousPitch: number): SpeechDynamics => {
   if (!samples.length) {
-    return { energy: 0, pitchHz: 0, pitchNorm: 0.35, pitchDelta: 0, brightness: 0, voiced: 0, onset: 0 };
+    return { energy: 0, pitchHz: 0, pitchNorm: 0, pitchDelta: 0, brightness: 0, voiced: 0, onset: 0 };
   }
 
   const frame = new Float32Array(samples.length);
@@ -55,7 +67,8 @@ const analyzeFrame = (samples: Int16Array, sampleRate: number, previousEnergy: n
 
   for (let index = 0; index < samples.length; index += 1) {
     const value = samples[index] / 32768;
-    frame[index] = value * (0.54 - 0.46 * Math.cos((2 * Math.PI * index) / Math.max(1, samples.length - 1)));
+    const window = 0.54 - 0.46 * Math.cos((2 * Math.PI * index) / Math.max(1, samples.length - 1));
+    frame[index] = value * window;
     sumSquares += value * value;
     const diff = value - previous;
     diffSquares += diff * diff;
@@ -63,36 +76,26 @@ const analyzeFrame = (samples: Int16Array, sampleRate: number, previousEnergy: n
   }
 
   const rms = Math.sqrt(sumSquares / samples.length);
-  const energy = clamp((rms - 0.0035) * 9.4);
-  const brightness = clamp(Math.sqrt(diffSquares / samples.length) / Math.max(rms, 0.008) * 0.72);
-  const pitch = energy > 0.04 ? estimatePitch(frame, sampleRate) : { hz: 0, confidence: 0 };
-  const pitchNorm = pitch.hz ? clamp((pitch.hz - 85) / 285) : previousPitch || 0.35;
-  const pitchDelta = clamp((pitchNorm - previousPitch) * 2.2, -1, 1);
-  const onset = clamp((energy - previousEnergy - 0.025) * 5.5);
+  const energy = energyFromRms(rms);
+  const brightness = clamp(Math.sqrt(diffSquares / samples.length) / Math.max(rms, 0.008) * 0.4);
+  const pitch = energy > 0.13 ? estimatePitch(frame, sampleRate) : { hz: 0, confidence: 0 };
+  const voiced = pitch.confidence >= 0.28 ? pitch.confidence : 0;
+  const pitchHz = voiced > 0 ? pitch.hz : 0;
+  const pitchNorm = pitchHz > 0 ? clamp((pitchHz - 85) / 285) : 0;
+  const pitchDelta = pitchHz > 0 && previousPitch > 0 ? clamp((pitchNorm - previousPitch) * 2.2, -1, 1) : 0;
+  const onset = clamp((energy - previousEnergy - 0.06) * 3.8);
 
-  return {
-    energy,
-    pitchHz: pitch.hz,
-    pitchNorm,
-    pitchDelta,
-    brightness,
-    voiced: pitch.confidence,
-    onset,
-  };
+  return { energy, pitchHz, pitchNorm, pitchDelta, brightness, voiced, onset };
 };
 
-/**
- * Lightweight playback-side prosody analysis. It does not attempt emotion
- * recognition; it exposes physical speech cues that the local performance brain
- * can combine with transcript meaning and conversation state.
- */
+/** Playback-synchronous physical speech analysis. No emotion labels are inferred here. */
 export class SpeechProsodyAnalyzer {
   private previousEnergy = 0;
-  private previousPitch = 0.35;
+  private previousPitch = 0;
 
   reset() {
     this.previousEnergy = 0;
-    this.previousPitch = 0.35;
+    this.previousPitch = 0;
   }
 
   analyze(samples: Int16Array, sampleRate: number): TimedSpeechDynamics[] {
@@ -104,7 +107,7 @@ export class SpeechProsodyAnalyzer {
       const end = Math.min(samples.length, start + frameSize);
       const dynamics = analyzeFrame(samples.subarray(start, end), sampleRate, this.previousEnergy, this.previousPitch);
       this.previousEnergy = dynamics.energy;
-      if (dynamics.pitchHz > 0) this.previousPitch = dynamics.pitchNorm;
+      if (dynamics.pitchHz > 0 && dynamics.voiced > 0.28) this.previousPitch = dynamics.pitchNorm;
       result.push({ offsetSeconds: start / sampleRate, dynamics });
     }
 
