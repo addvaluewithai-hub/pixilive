@@ -168,11 +168,12 @@ export class LocalPerformanceEngine {
     this.toolOverrideSeconds = Math.max(0, this.toolOverrideSeconds - deltaSeconds);
     this.energyAverage += (dynamics.energy - this.energyAverage) * 0.12;
 
-    // Do not let an automatic transcript refinement cancel a deliberate tool
-    // gesture halfway through its readable hold/settle phase.
     if (this.toolOverrideSeconds > 0) return;
 
-    if (this.semanticCueCooldown <= 0 && this.semantic.confidence > 0.58) {
+    // Moderate but explicit language such as a question is already meaningful
+    // enough to drive one restrained semantic gesture. Long cooldowns keep this
+    // from turning normal conversation into continuous gesticulation.
+    if (this.semanticCueCooldown <= 0 && this.semantic.confidence >= 0.55) {
       const semanticGesture = this.majorGestureCooldown <= 0 ? gestureFor(this.semantic.affect) : 'none';
       const gesture = semanticGesture === this.lastGesture ? 'none' : semanticGesture;
       this.callbacks.onCue({
