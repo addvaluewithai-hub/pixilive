@@ -62,7 +62,21 @@ const faceCases = {
   playful: { emotion: 'calm', cue: { affect: 'playful', intensity: 0.92, gesture: 'none', posture: 'engaged', gaze: 'user' }, mode: 'listening', frames: 64 },
 };
 
-const rigInteractionCases = ['rest', 'point', 'reach', 'touchFace', 'openArms', 'unreachable'];
+const novaCases = {
+  explain: { cue: { affect: 'enthusiastic', intensity: 0.9, gesture: 'explain', posture: 'engaged', gaze: 'user' }, mode: 'speaking', frames: 56 },
+  celebrate: { cue: { affect: 'enthusiastic', intensity: 1, gesture: 'celebrate', posture: 'open', gaze: 'user' }, mode: 'speaking', frames: 54 },
+  greet: { cue: { affect: 'warm', intensity: 0.92, gesture: 'greet', posture: 'open', gaze: 'user' }, mode: 'speaking', frames: 50 },
+  surprised: { cue: { affect: 'surprised', intensity: 0.95, gesture: 'none', posture: 'neutral', gaze: 'user' }, mode: 'thinking', frames: 56 },
+};
+
+const rigInteractionCases = {
+  rest: 60,
+  point: 90,
+  reach: 90,
+  touchFace: 34,
+  openArms: 34,
+  unreachable: 90,
+};
 
 try {
   await page.goto(appUrl, { waitUntil: 'networkidle' });
@@ -90,8 +104,7 @@ try {
       await harness.mountMiloVisemeHarness(mouthPose);
     }, pose);
     await page.waitForTimeout(120);
-    const screenshotPath = path.join(outputDir, `milo-viseme-${name}.png`);
-    await page.locator('#viseme-harness').screenshot({ path: screenshotPath });
+    await page.locator('#viseme-harness').screenshot({ path: path.join(outputDir, `milo-viseme-${name}.png`) });
   }
 
   for (const [name, testCase] of Object.entries(performanceCases)) {
@@ -101,8 +114,7 @@ try {
       await harness.mountMiloPerformanceHarness(cue, mode, frames);
     }, testCase);
     await page.waitForTimeout(120);
-    const screenshotPath = path.join(outputDir, `milo-performance-${name}.png`);
-    await page.locator('#performance-harness').screenshot({ path: screenshotPath });
+    await page.locator('#performance-harness').screenshot({ path: path.join(outputDir, `milo-performance-${name}.png`) });
   }
 
   for (const [name, testCase] of Object.entries(faceCases)) {
@@ -112,8 +124,17 @@ try {
       await harness.mountMiloFaceHarness(input);
     }, testCase);
     await page.waitForTimeout(80);
-    const screenshotPath = path.join(outputDir, `milo-face-${name}.png`);
-    await page.locator('#face-harness').screenshot({ path: screenshotPath });
+    await page.locator('#face-harness').screenshot({ path: path.join(outputDir, `milo-face-${name}.png`) });
+  }
+
+  for (const [name, testCase] of Object.entries(novaCases)) {
+    await page.goto(harnessUrl, { waitUntil: 'domcontentloaded' });
+    await page.evaluate(async ({ cue, mode, frames }) => {
+      const harness = await import('/src/visual/novaPerformanceHarness.ts');
+      await harness.mountNovaPerformanceHarness(cue, mode, frames);
+    }, testCase);
+    await page.waitForTimeout(80);
+    await page.locator('#nova-performance-harness').screenshot({ path: path.join(outputDir, `nova-performance-${name}.png`) });
   }
 
   for (const [name, testCase] of Object.entries(autonomousCases)) {
@@ -123,8 +144,7 @@ try {
       await harness.mountMiloAutonomousPerformanceHarness(input);
     }, testCase);
     await page.waitForTimeout(120);
-    const screenshotPath = path.join(outputDir, `milo-autonomous-${name}.png`);
-    await page.locator('#autonomous-performance-harness').screenshot({ path: screenshotPath });
+    await page.locator('#autonomous-performance-harness').screenshot({ path: path.join(outputDir, `milo-autonomous-${name}.png`) });
   }
 
   await page.goto(harnessUrl, { waitUntil: 'domcontentloaded' });
@@ -134,15 +154,14 @@ try {
   });
   console.log(`Rig2D invariant validation passed for ${rigValidation.bones.length} bones`);
 
-  for (const interaction of rigInteractionCases) {
+  for (const [interaction, frames] of Object.entries(rigInteractionCases)) {
     await page.goto(harnessUrl, { waitUntil: 'domcontentloaded' });
-    await page.evaluate(async (name) => {
+    await page.evaluate(async ({ name, frames }) => {
       const harness = await import('/src/visual/rig2dHarness.ts');
-      await harness.mountMiloInteractionHarness(name, 90);
-    }, interaction);
+      await harness.mountMiloInteractionHarness(name, frames);
+    }, { name: interaction, frames });
     await page.waitForTimeout(120);
-    const screenshotPath = path.join(outputDir, `milo-rig2d-${interaction}.png`);
-    await page.locator('#rig2d-harness').screenshot({ path: screenshotPath });
+    await page.locator('#rig2d-harness').screenshot({ path: path.join(outputDir, `milo-rig2d-${interaction}.png`) });
   }
 } finally {
   await browser.close();
