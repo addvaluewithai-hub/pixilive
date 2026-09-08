@@ -9,10 +9,7 @@ const outputDir = path.resolve('visual-artifacts');
 await mkdir(outputDir, { recursive: true });
 
 const browser = await chromium.launch({ headless: true });
-const page = await browser.newPage({
-  viewport: { width: 1440, height: 900 },
-  deviceScaleFactor: 1,
-});
+const page = await browser.newPage({ viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1 });
 
 const visemePoses = {
   mbp: { open: 0.01, width: 0.4, round: 0.03, energy: 0.65, viseme: 'MBP', lipPress: 1, teeth: 0, tongue: 0, cornerPull: 0.04 },
@@ -25,69 +22,44 @@ const visemePoses = {
 };
 
 const performanceCases = {
-  explain: {
-    cue: { affect: 'enthusiastic', intensity: 0.68, gesture: 'explain', posture: 'engaged', gaze: 'user' },
-    mode: 'speaking', frames: 58,
+  explain: { cue: { affect: 'enthusiastic', intensity: 0.68, gesture: 'explain', posture: 'engaged', gaze: 'user' }, mode: 'speaking', frames: 58 },
+  emphasize: { cue: { affect: 'neutral', intensity: 0.7, gesture: 'emphasize', posture: 'engaged', gaze: 'user' }, mode: 'speaking', frames: 46 },
+  reassure: { cue: { affect: 'reassuring', intensity: 0.55, gesture: 'reassure', posture: 'lean_in', gaze: 'user' }, mode: 'speaking', frames: 58 },
+  think: { cue: { affect: 'thoughtful', intensity: 0.58, gesture: 'think', posture: 'lean_back', gaze: 'thinking_up' }, mode: 'thinking', frames: 60 },
+  celebrate: { cue: { affect: 'enthusiastic', intensity: 0.86, gesture: 'celebrate', posture: 'open', gaze: 'user' }, mode: 'speaking', frames: 54 },
+  shrug: { cue: { affect: 'playful', intensity: 0.65, gesture: 'shrug', posture: 'open', gaze: 'user' }, mode: 'speaking', frames: 54 },
+  agree: { cue: { affect: 'warm', intensity: 0.62, gesture: 'agree', posture: 'engaged', gaze: 'user' }, mode: 'speaking', frames: 44 },
+  disagree: { cue: { affect: 'concerned', intensity: 0.62, gesture: 'disagree', posture: 'engaged', gaze: 'user' }, mode: 'speaking', frames: 44 },
+  greet: { cue: { affect: 'warm', intensity: 0.72, gesture: 'greet', posture: 'open', gaze: 'user' }, mode: 'speaking', frames: 48 },
+  warm: { cue: { affect: 'warm', intensity: 0.7, gesture: 'none', posture: 'engaged', gaze: 'user' }, mode: 'listening', frames: 48 },
+  curious: { cue: { affect: 'curious', intensity: 0.72, gesture: 'none', posture: 'engaged', gaze: 'user' }, mode: 'thinking', frames: 44 },
+  enthusiastic: { cue: { affect: 'enthusiastic', intensity: 0.78, gesture: 'none', posture: 'open', gaze: 'user' }, mode: 'speaking', frames: 38 },
+  playful: { cue: { affect: 'playful', intensity: 0.75, gesture: 'none', posture: 'engaged', gaze: 'user' }, mode: 'speaking', frames: 38 },
+  concerned: { cue: { affect: 'concerned', intensity: 0.72, gesture: 'none', posture: 'lean_in', gaze: 'user' }, mode: 'speaking', frames: 38 },
+  surprised: { cue: { affect: 'surprised', intensity: 0.78, gesture: 'none', posture: 'neutral', gaze: 'user' }, mode: 'speaking', frames: 38 },
+  listening: { cue: { affect: 'warm', intensity: 0.42, gesture: 'none', posture: 'engaged', gaze: 'user' }, mode: 'listening', frames: 150 },
+};
+
+const autonomousCases = {
+  enthusiastic: {
+    transcript: 'This is absolutely amazing! I love how well this works.',
+    dynamics: { energy: 0.82, pitchHz: 220, pitchNorm: 0.62, pitchDelta: 0.22, brightness: 0.58, voiced: 0.8, onset: 0.44 },
+    frames: 88,
   },
-  emphasize: {
-    cue: { affect: 'neutral', intensity: 0.7, gesture: 'emphasize', posture: 'engaged', gaze: 'user' },
-    mode: 'speaking', frames: 46,
-  },
-  reassure: {
-    cue: { affect: 'reassuring', intensity: 0.55, gesture: 'reassure', posture: 'lean_in', gaze: 'user' },
-    mode: 'speaking', frames: 58,
-  },
-  think: {
-    cue: { affect: 'thoughtful', intensity: 0.58, gesture: 'think', posture: 'lean_back', gaze: 'thinking_up' },
-    mode: 'thinking', frames: 60,
-  },
-  celebrate: {
-    cue: { affect: 'enthusiastic', intensity: 0.86, gesture: 'celebrate', posture: 'open', gaze: 'user' },
-    mode: 'speaking', frames: 54,
-  },
-  shrug: {
-    cue: { affect: 'playful', intensity: 0.65, gesture: 'shrug', posture: 'open', gaze: 'user' },
-    mode: 'speaking', frames: 54,
-  },
-  agree: {
-    cue: { affect: 'warm', intensity: 0.62, gesture: 'agree', posture: 'engaged', gaze: 'user' },
-    mode: 'speaking', frames: 44,
-  },
-  disagree: {
-    cue: { affect: 'concerned', intensity: 0.62, gesture: 'disagree', posture: 'engaged', gaze: 'user' },
-    mode: 'speaking', frames: 44,
-  },
-  greet: {
-    cue: { affect: 'warm', intensity: 0.72, gesture: 'greet', posture: 'open', gaze: 'user' },
-    mode: 'speaking', frames: 48,
-  },
-  warm: {
-    cue: { affect: 'warm', intensity: 0.7, gesture: 'none', posture: 'engaged', gaze: 'user' },
-    mode: 'listening', frames: 48,
+  reassuring: {
+    transcript: "Don't worry, we can fix this and it will be okay.",
+    dynamics: { energy: 0.42, pitchHz: 145, pitchNorm: 0.31, pitchDelta: -0.08, brightness: 0.3, voiced: 0.78, onset: 0.2 },
+    frames: 88,
   },
   curious: {
-    cue: { affect: 'curious', intensity: 0.72, gesture: 'none', posture: 'engaged', gaze: 'user' },
-    mode: 'thinking', frames: 44,
+    transcript: 'Interesting — why would that happen?',
+    dynamics: { energy: 0.58, pitchHz: 195, pitchNorm: 0.52, pitchDelta: 0.34, brightness: 0.5, voiced: 0.74, onset: 0.4 },
+    frames: 88,
   },
-  enthusiastic: {
-    cue: { affect: 'enthusiastic', intensity: 0.78, gesture: 'none', posture: 'open', gaze: 'user' },
-    mode: 'speaking', frames: 38,
-  },
-  playful: {
-    cue: { affect: 'playful', intensity: 0.75, gesture: 'none', posture: 'engaged', gaze: 'user' },
-    mode: 'speaking', frames: 38,
-  },
-  concerned: {
-    cue: { affect: 'concerned', intensity: 0.72, gesture: 'none', posture: 'lean_in', gaze: 'user' },
-    mode: 'speaking', frames: 38,
-  },
-  surprised: {
-    cue: { affect: 'surprised', intensity: 0.78, gesture: 'none', posture: 'neutral', gaze: 'user' },
-    mode: 'speaking', frames: 38,
-  },
-  listening: {
-    cue: { affect: 'warm', intensity: 0.42, gesture: 'none', posture: 'engaged', gaze: 'user' },
-    mode: 'listening', frames: 150,
+  arabicWarm: {
+    transcript: 'أكيد، نقدر نحل الموضوع ده مع بعض.',
+    dynamics: { energy: 0.46, pitchHz: 158, pitchNorm: 0.36, pitchDelta: 0.03, brightness: 0.34, voiced: 0.77, onset: 0.28 },
+    frames: 88,
   },
 };
 
@@ -96,13 +68,7 @@ try {
   await page.locator('.character-stage canvas').waitFor({ state: 'visible' });
 
   const characterSelect = page.locator('#character-select');
-  const options = await characterSelect.locator('option').evaluateAll((nodes) =>
-    nodes.map((node) => ({
-      value: node.value,
-      label: node.textContent?.trim() || node.value,
-    })),
-  );
-
+  const options = await characterSelect.locator('option').evaluateAll((nodes) => nodes.map((node) => ({ value: node.value, label: node.textContent?.trim() || node.value })));
   if (options.length === 0) throw new Error('No characters found in #character-select');
 
   for (const option of options) {
@@ -110,7 +76,6 @@ try {
     await page.waitForTimeout(700);
     await page.mouse.move(720, 410);
     await page.waitForTimeout(250);
-
     const safeName = option.value.replace(/[^a-z0-9-_]/gi, '-').toLowerCase();
     const screenshotPath = path.join(outputDir, `${safeName}.png`);
     await page.screenshot({ path: screenshotPath, fullPage: true });
@@ -139,6 +104,18 @@ try {
     const screenshotPath = path.join(outputDir, `milo-performance-${name}.png`);
     await page.locator('#performance-harness').screenshot({ path: screenshotPath });
     console.log(`Captured Milo ${name} performance -> ${screenshotPath}`);
+  }
+
+  for (const [name, testCase] of Object.entries(autonomousCases)) {
+    await page.goto(harnessUrl, { waitUntil: 'domcontentloaded' });
+    await page.evaluate(async (input) => {
+      const harness = await import('/src/visual/autonomousPerformanceHarness.ts');
+      await harness.mountMiloAutonomousPerformanceHarness(input);
+    }, testCase);
+    await page.waitForTimeout(120);
+    const screenshotPath = path.join(outputDir, `milo-autonomous-${name}.png`);
+    await page.locator('#autonomous-performance-harness').screenshot({ path: screenshotPath });
+    console.log(`Captured Milo autonomous ${name} -> ${screenshotPath}`);
   }
 } finally {
   await browser.close();
