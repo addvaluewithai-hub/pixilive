@@ -42,13 +42,15 @@ const distanceSq = (a: Vec2, b: Vec2) => {
  *
  * Invariant: callers start every animation frame with resetToRest(), then layer
  * poses/constraints. No modifier is allowed to accumulate transforms from the
- * previous frame. This makes long-running agents stable and keeps authored poses
- * deterministic.
+ * previous frame. IK continuity is the intentional exception: only the previous
+ * elbow position is remembered so a two-bone chain cannot mirror through itself
+ * while its target moves.
  */
 export class Rig2D {
   private readonly bones = new Map<string, BoneRuntime>();
   private readonly orderedBones: BoneRuntime[] = [];
   private readonly attachments = new Map<string, RigAttachmentDefinition>();
+  private readonly ikElbowHistory = new Map<string, Vec2>();
 
   constructor(definitions: BoneDefinition[], attachments: RigAttachmentDefinition[] = []) {
     if (!definitions.length) throw new Error('Rig2D requires at least one bone');
@@ -177,14 +179,16 @@ export class Rig2D {
 
     const cosShoulder = clamp((l1 * l1 + solvedDistance * solvedDistance - l2 * l2) / (2 * l1 * solvedDistance), -1, 1);
     const shoulderOffset = Math.acos(cosShoulder);
+    const chainKey = `${options.upper}>${options.lower}`;
+    const continuityElbow = options.preferredElbow ?? this.ikElbowHistory.get(chainKey);
 
     let bend: -1 | 1 = options.bend ?? 1;
-    if (options.preferredElbow) {
+    if (continuityElbow) {
       const plusAngle = targetAngle + shoulderOffset;
       const minusAngle = targetAngle - shoulderOffset;
       const plusElbow = add(shoulder, rotate({ x: l1, y: 0 }, plusAngle));
       const minusElbow = add(shoulder, rotate({ x: l1, y: 0 }, minusAngle));
-      bend = distanceSq(plusElbow, options.preferredElbow) <= distanceSq(minusElbow, options.preferredElbow) ? 1 : -1;
+      bend = distanceSq(plusElbow, continuityElbow) <= distanceSq(minusElbow, continuityElbow) ? 1 : -1;
     } else if (options.pole) {
       const poleVector = sub(options.pole, shoulder);
       bend = cross(targetVector, poleVector) >= 0 ? 1 : -1;
@@ -202,6 +206,15 @@ export class Rig2D {
     const lowerLocal = this.limitRotation(lower, normalizeAngle(lowerWorld - upper.worldRotation));
     lower.local.rotation = lerpAngle(lower.local.rotation, lowerLocal, weight);
     this.updateWorld();
+    this.ikElbowHistory.set(chainKey, { ...upper.end });
+  }
+
+  clearIKContinuity(chain?: { upper: string; lower: string }) {
+    if (!chain) {
+      this.ikElbowHistory.clear();
+      return;
+    }
+    this.ikElbowHistory.delete(`${chain.upper}>${chain.lower}`);
   }
 
   distanceBetween(a: string, b: string) {
