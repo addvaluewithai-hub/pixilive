@@ -88,6 +88,7 @@ export class GeminiLiveClient {
   private systemInstruction = '';
   private activePerformanceCallIds = new Set<string>();
   private latestToolCallAt: number | null = null;
+  private performanceCueUsedThisTurn = false;
   private firstAudioSeen = false;
   private firstOutputTranscriptSeen = false;
   private audioChunksThisTurn = 0;
@@ -143,6 +144,7 @@ export class GeminiLiveClient {
     this.reconnecting = false;
     this.setupComplete = false;
     this.activePerformanceCallIds.clear();
+    this.performanceCueUsedThisTurn = false;
     this.turnOpen = false;
     this.socket?.close(1000, 'client close');
     this.socket = null;
@@ -327,6 +329,7 @@ export class GeminiLiveClient {
           this.audioChunksThisTurn = 0;
           this.audioBytesThisTurn = 0;
           this.latestToolCallAt = null;
+          this.performanceCueUsedThisTurn = false;
           this.turnOpen = false;
         }
 
@@ -389,6 +392,19 @@ export class GeminiLiveClient {
       });
 
       if (call.name === PERFORMANCE_TOOL) {
+        if (this.performanceCueUsedThisTurn) {
+          emitSessionLog('tool', 'duplicate_character_direction_ignored', {
+            turn: this.turnNumber,
+            id: call.id ?? null,
+          });
+          return {
+            id: call.id,
+            name: call.name,
+            response: { result: 'Additional character direction ignored; PixiLive honors one explicit stage direction per turn.' },
+          };
+        }
+
+        this.performanceCueUsedThisTurn = true;
         const cue = normalizePerformanceCue((call.args ?? {}) as Partial<PerformanceCue>);
         emitSessionLog('character', 'performance_cue_received', { turn: this.turnNumber, ...cue });
         this.callbacks.onPerformanceCue(cue);
@@ -419,6 +435,7 @@ export class GeminiLiveClient {
     if (this.turnOpen) return;
     this.turnOpen = true;
     this.turnNumber += 1;
+    this.performanceCueUsedThisTurn = false;
     this.firstAudioSeen = false;
     this.firstOutputTranscriptSeen = false;
     this.audioChunksThisTurn = 0;
