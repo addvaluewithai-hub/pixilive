@@ -23,6 +23,8 @@ export class PcmPlaybackQueue {
   private readonly analyzer = new VisemeAnalyzer();
   private readonly prosody = new SpeechProsodyAnalyzer();
   private outputActive = false;
+  private turnCompletePending = false;
+  private starvationTimer: number | null = null;
 
   constructor(
     private readonly onMouthPose: (pose: MouthPose) => void,
@@ -35,10 +37,15 @@ export class PcmPlaybackQueue {
   }
 
   async enqueue(base64: string, sampleRate = 24_000) {
+    this.clearStarvationTimer();
     const startingNewOutput = !this.outputActive;
-    if (startingNewOutput) this.prosody.reset();
+    if (startingNewOutput) {
+      this.prosody.reset();
+      this.turnCompletePending = false;
+    }
 
     const samples = base64ToInt16(base64);
+    if (!samples.length) return;
     const poses = this.analyzer.analyze(samples, sampleRate);
     const dynamicsFrames = this.prosody.analyze(samples, sampleRate);
     if (!this.context) this.context = new AudioContext({ sampleRate, latencyHint: 'interactive' });
@@ -54,8 +61,6 @@ export class PcmPlaybackQueue {
     this.active.add(source);
 
     const now = this.context.currentTime;
-    // Small look-ahead keeps visemes/prosody scheduled against the exact same
-    // WebAudio clock as the sound instead of reacting when network chunks arrive.
     const startAt = Math.max(now + (this.nextStart === 0 ? 0.075 : 0.012), this.nextStart);
 
     if (startingNewOutput) {
@@ -66,7 +71,6 @@ export class PcmPlaybackQueue {
     for (const { offsetSeconds, pose } of poses) {
       this.schedule(startAt + offsetSeconds, now, () => this.onMouthPose(pose));
     }
-
     for (const { offsetSeconds, dynamics } of dynamicsFrames) {
       this.schedule(startAt + offsetSeconds, now, () => this.performance.onSpeechDynamics?.(dynamics));
     }
@@ -75,25 +79,31 @@ export class PcmPlaybackQueue {
     this.nextStart = startAt + buffer.duration;
     source.onended = () => {
       this.active.delete(source);
-      // interrupt() marks outputActive=false before stopping sources. Without
-      // this guard, each asynchronous onended callback could emit speechEnd again.
-      if (this.active.size === 0 && this.outputActive) {
-        this.nextStart = 0;
-        this.analyzer.resetTranscript();
-        this.prosody.reset();
-        this.outputActive = false;
-        this.onIdle();
-        this.performance.onSpeechEnd?.();
+      if (this.active.size > 0) return;
+      if (this.turnCompletePending) this.finishOutput();
+      else {
+        // Network chunks occasionally have short gaps. Do not bounce the
+        // character between speaking/listening while Gemini is still in-turn.
+        this.starvationTimer = window.setTimeout(() => {
+          this.starvationTimer = null;
+          if (this.active.size === 0 && this.outputActive) this.finishOutput();
+        }, 900);
       }
     };
   }
 
+  markTurnComplete() {
+    this.turnCompletePending = true;
+    if (this.outputActive && this.active.size === 0) this.finishOutput();
+  }
+
   interrupt() {
     const hadPlayback = this.outputActive || this.active.size > 0;
-    this.outputActive = false;
+    this.clearStarvationTimer();
     for (const timer of this.timers) window.clearTimeout(timer);
     this.timers.clear();
     for (const source of this.active) {
+      source.onended = null;
       try {
         source.stop();
       } catch {
@@ -102,6 +112,8 @@ export class PcmPlaybackQueue {
     }
     this.active.clear();
     this.nextStart = 0;
+    this.outputActive = false;
+    this.turnCompletePending = false;
     this.analyzer.resetTranscript();
     this.prosody.reset();
     this.onIdle();
@@ -112,6 +124,25 @@ export class PcmPlaybackQueue {
     this.interrupt();
     await this.context?.close();
     this.context = null;
+  }
+
+  private finishOutput() {
+    if (!this.outputActive) return;
+    this.clearStarvationTimer();
+    this.nextStart = 0;
+    this.analyzer.resetTranscript();
+    this.prosody.reset();
+    this.outputActive = false;
+    this.turnCompletePending = false;
+    this.onIdle();
+    this.performance.onSpeechEnd?.();
+  }
+
+  private clearStarvationTimer() {
+    if (this.starvationTimer !== null) {
+      window.clearTimeout(this.starvationTimer);
+      this.starvationTimer = null;
+    }
   }
 
   private schedule(at: number, now: number, callback: () => void) {
