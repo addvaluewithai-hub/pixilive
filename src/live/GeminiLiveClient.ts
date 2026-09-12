@@ -60,7 +60,14 @@ interface ServerMessage {
     turnComplete?: boolean;
     inputTranscription?: { text?: string };
     outputTranscription?: { text?: string };
-    modelTurn?: { parts?: Array<{ inlineData?: { data?: string; mimeType?: string }; text?: string }> };
+    modelTurn?: {
+      parts?: Array<{
+        inlineData?: { data?: string; mimeType?: string };
+        text?: string;
+        executableCode?: { code?: string };
+        codeExecutionResult?: { output?: string };
+      }>;
+    };
   };
   toolCall?: { functionCalls?: FunctionCall[] };
   toolCallCancellation?: { ids?: string[] };
@@ -202,6 +209,8 @@ export class GeminiLiveClient {
 
         emitSessionLog('session', 'setup_sent', {
           model: MODEL,
+          thinkingLevel: 'HIGH',
+          googleSearch: true,
           functionCalling: 'synchronous-optional',
           tools: functionDeclarations.map((tool) => tool.name),
           localPerformancePrimary: true,
@@ -212,6 +221,9 @@ export class GeminiLiveClient {
             model: `models/${MODEL}`,
             generationConfig: {
               responseModalities: ['AUDIO'],
+              thinkingConfig: {
+                thinkingLevel: 'HIGH',
+              },
             },
             systemInstruction: {
               parts: [
@@ -220,7 +232,10 @@ export class GeminiLiveClient {
                 },
               ],
             },
-            tools: [{ functionDeclarations }],
+            tools: [
+              { googleSearch: {} },
+              { functionDeclarations },
+            ],
             realtimeInputConfig: {
               activityHandling: 'START_OF_ACTIVITY_INTERRUPTS',
               automaticActivityDetection: {
@@ -306,6 +321,20 @@ export class GeminiLiveClient {
         }
 
         for (const part of content?.modelTurn?.parts ?? []) {
+          if (part.executableCode?.code) {
+            emitSessionLog('tool', 'google_search_activity', {
+              turn: this.turnNumber,
+              phase: 'query',
+              code: part.executableCode.code,
+            });
+          }
+          if (part.codeExecutionResult?.output) {
+            emitSessionLog('tool', 'google_search_activity', {
+              turn: this.turnNumber,
+              phase: 'result',
+              output: part.codeExecutionResult.output,
+            });
+          }
           if (part.inlineData?.data && part.inlineData.mimeType?.startsWith('audio/pcm')) {
             this.ensureTurnStarted('audio');
             this.audioChunksThisTurn += 1;
