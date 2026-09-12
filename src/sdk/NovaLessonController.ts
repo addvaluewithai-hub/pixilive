@@ -32,8 +32,13 @@ export class NovaLessonController {
       },
     }));
 
+    const externalInputTranscript = novaOptions.onInputTranscript;
     this.nova = new NovaLiveController({
       ...novaOptions,
+      onInputTranscript: (text) => {
+        this.tutor.observeLearnerTurn(text);
+        externalInputTranscript?.(text);
+      },
       systemPrompt: this.tutor.systemPrompt,
       tools: diagnosticTools,
     });
@@ -55,6 +60,7 @@ export class NovaLessonController {
   }
 
   sendText(text: string) {
+    this.tutor.observeLearnerTurn(text);
     this.nova.sendText(text);
   }
 
