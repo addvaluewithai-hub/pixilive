@@ -1,12 +1,11 @@
 import { type FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { subscribeSessionLog, type SessionLogEvent } from './debug/sessionLog';
-import { earthLesson } from './lesson/earthLesson';
-import type { LessonState } from './lesson/types';
+import { findLesson, lessonCatalog } from './lesson/catalog';
+import type { LessonBeat, LessonBoard, LessonDefinition, LessonState } from './lesson/types';
 import type { LiveStatus } from './live/types';
 import { NovaLessonController } from './sdk/NovaLessonController';
 import './lesson-demo.css';
 
-type EarthBeat = (typeof earthLesson.beats)[number];
 type DrawerMode = 'closed' | 'conversation' | 'diagnostics';
 
 type ReviewItem =
@@ -25,21 +24,22 @@ const statusLabel: Record<LiveStatus, string> = {
   error: 'حصلت مشكلة',
 };
 
-const sectionTitles: Record<string, string> = {
-  '01': 'اللغز',
-  '02': 'تحت أقدامنا',
-  '03': 'الدليل',
-  '04': 'جرّب الفكرة',
-  '05': 'الزمن والمحرك',
-  '06': 'فسّر بنفسك',
-};
-
 const understandingLabel = {
   unknown: 'لسه بنبدأ',
   struggling: 'محتاج تبسيط',
   partial: 'قربنا',
   understood: 'اتثبتت',
 } as const;
+
+const imageSceneIcon: Record<string, string> = {
+  fossil: '🦴',
+  pangaea: '🌍',
+  mountains: '⛰️',
+  gps: '🛰️',
+  recipe: '🥣',
+  map: '🗺️',
+  satellite: '🌊',
+};
 
 async function copyText(value: string) {
   if (navigator.clipboard?.writeText) {
@@ -131,11 +131,18 @@ function buildReviewItems(entries: SessionLogEvent[]) {
   return items;
 }
 
-function formatReviewLog(entries: SessionLogEvent[], activeBeat: EarthBeat | undefined, understood: number) {
+function formatReviewLog(
+  entries: SessionLogEvent[],
+  lesson: LessonDefinition,
+  activeBeat: LessonBeat | undefined,
+  understood: number,
+) {
   const items = buildReviewItems(entries);
   const lines = [
     '# Nova lesson review log',
-    `Progress: ${understood}/${earthLesson.beats.length} understood`,
+    `Lesson: ${lesson.title}`,
+    `Curriculum: ${lesson.curriculumTitle}`,
+    `Progress: ${understood}/${lesson.beats.length} understood`,
     `Active beat: ${activeBeat ? `${activeBeat.id} — ${activeBeat.title}` : 'unknown'}`,
     '',
   ];
@@ -161,64 +168,267 @@ function formatReviewLog(entries: SessionLogEvent[], activeBeat: EarthBeat | und
   return lines.join('\n').trim();
 }
 
-function BoardVisual({ sectionId }: { sectionId?: string }) {
-  switch (sectionId) {
-    case '02':
-      return (
-        <div className="board-visual visual-layers" aria-label="الصفيحة والوشاح">
-          <div className="earth-layer crust"><span>القشرة</span></div>
-          <div className="earth-layer lithosphere"><strong>الصفيحة</strong><span>القشرة + الجزء العلوي الصلب من الوشاح</span></div>
-          <div className="earth-layer mantle"><strong>الوشاح</strong><span>صلب في معظمه · يتشوه ببطء شديد</span></div>
+function CanvasSketch({ board }: { board: Extract<LessonBoard, { type: 'canvas' }> }) {
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    const width = 1000;
+    const height = 420;
+    canvas.width = width;
+    canvas.height = height;
+    ctx.clearRect(0, 0, width, height);
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+
+    const fillRoundRect = (x: number, y: number, w: number, h: number, r: number, fill: string) => {
+      ctx.beginPath();
+      ctx.roundRect(x, y, w, h, r);
+      ctx.fillStyle = fill;
+      ctx.fill();
+    };
+
+    if (board.variant === 'coasts') {
+      ctx.fillStyle = '#6d78c8';
+      ctx.beginPath();
+      ctx.moveTo(190, 105);
+      ctx.bezierCurveTo(95, 130, 95, 275, 245, 310);
+      ctx.bezierCurveTo(325, 328, 362, 245, 332, 175);
+      ctx.bezierCurveTo(304, 112, 244, 92, 190, 105);
+      ctx.fill();
+
+      ctx.fillStyle = '#617eae';
+      ctx.beginPath();
+      ctx.moveTo(790, 110);
+      ctx.bezierCurveTo(684, 92, 620, 155, 640, 235);
+      ctx.bezierCurveTo(655, 306, 760, 329, 842, 272);
+      ctx.bezierCurveTo(925, 214, 898, 130, 790, 110);
+      ctx.fill();
+
+      ctx.strokeStyle = '#9a8cff';
+      ctx.lineWidth = 7;
+      ctx.setLineDash([16, 18]);
+      ctx.beginPath();
+      ctx.moveTo(398, 210);
+      ctx.lineTo(600, 210);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = '#514d7a';
+      ctx.font = '700 60px system-ui';
+      ctx.textAlign = 'center';
+      ctx.fillText('؟', 500, 232);
+    }
+
+    if (board.variant === 'ridge') {
+      ctx.fillStyle = '#dbe8ef';
+      ctx.fillRect(0, 0, width, 200);
+      ctx.fillStyle = '#91a6b8';
+      ctx.fillRect(0, 200, width, 220);
+      ctx.fillStyle = '#606e98';
+      ctx.beginPath();
+      ctx.moveTo(420, 330);
+      ctx.lineTo(500, 150);
+      ctx.lineTo(580, 330);
+      ctx.closePath();
+      ctx.fill();
+      ctx.strokeStyle = '#4f5d80';
+      ctx.lineWidth = 12;
+      ctx.beginPath();
+      ctx.moveTo(450, 350);
+      ctx.lineTo(205, 350);
+      ctx.moveTo(550, 350);
+      ctx.lineTo(795, 350);
+      ctx.stroke();
+      ctx.font = '700 54px system-ui';
+      ctx.fillStyle = '#526086';
+      ctx.fillText('←', 240, 315);
+      ctx.fillText('→', 760, 315);
+    }
+
+    if (board.variant === 'plates') {
+      fillRoundRect(85, 140, 360, 120, 24, '#7688b8');
+      fillRoundRect(555, 140, 360, 120, 24, '#6677a5');
+      ctx.fillStyle = '#4f5a78';
+      ctx.font = '700 58px system-ui';
+      ctx.textAlign = 'center';
+      ctx.fillText('→', 465, 218);
+      ctx.fillText('→', 535, 218);
+      ctx.strokeStyle = '#d0b087';
+      ctx.lineWidth = 20;
+      ctx.beginPath();
+      ctx.moveTo(110, 130);
+      ctx.lineTo(420, 130);
+      ctx.moveTo(580, 130);
+      ctx.lineTo(890, 130);
+      ctx.stroke();
+    }
+
+    if (board.variant === 'ratio-bars') {
+      for (let i = 0; i < 2; i += 1) fillRoundRect(160 + i * 120, 120, 92, 92, 22, '#6476dd');
+      for (let i = 0; i < 3; i += 1) fillRoundRect(520 + i * 120, 120, 92, 92, 22, '#9a78d8');
+      ctx.fillStyle = '#525a74';
+      ctx.font = '700 34px system-ui';
+      ctx.textAlign = 'center';
+      ctx.fillText('2', 260, 280);
+      ctx.fillText(':', 500, 280);
+      ctx.fillText('3', 640, 280);
+    }
+
+    if (board.variant === 'fraction-circle') {
+      const drawCircle = (cx: number, filled: number, total: number) => {
+        const radius = 105;
+        for (let i = 0; i < total; i += 1) {
+          const start = -Math.PI / 2 + (i / total) * Math.PI * 2;
+          const end = -Math.PI / 2 + ((i + 1) / total) * Math.PI * 2;
+          ctx.beginPath();
+          ctx.moveTo(cx, 200);
+          ctx.arc(cx, 200, radius, start, end);
+          ctx.closePath();
+          ctx.fillStyle = i < filled ? '#7569d8' : '#d7dbea';
+          ctx.fill();
+          ctx.strokeStyle = '#f4f5f9';
+          ctx.lineWidth = 5;
+          ctx.stroke();
+        }
+      };
+      drawCircle(320, 1, 2);
+      drawCircle(680, 2, 4);
+      ctx.fillStyle = '#525a74';
+      ctx.font = '700 30px system-ui';
+      ctx.textAlign = 'center';
+      ctx.fillText('1 / 2', 320, 355);
+      ctx.fillText('2 / 4', 680, 355);
+    }
+  }, [board.variant]);
+
+  return (
+    <div className="board-canvas-experience">
+      <canvas ref={canvasRef} aria-label={board.title ?? 'رسم توضيحي'} />
+      {(board.title || board.caption) && (
+        <div className="canvas-note">
+          {board.title && <strong>{board.title}</strong>}
+          {board.caption && <span>{board.caption}</span>}
         </div>
-      );
-    case '03':
-      return (
-        <div className="board-visual visual-ridge" aria-label="حيد وسط المحيط">
-          <span className="age old">أقدم</span>
-          <div className="seafloor left"><i /></div>
-          <div className="ridge-core"><b>حيد</b><small>قشرة جديدة</small></div>
-          <div className="seafloor right"><i /></div>
-          <span className="age old">أقدم</span>
-          <div className="ridge-arrows"><span>←</span><span>→</span></div>
-        </div>
-      );
-    case '04':
-      return (
-        <div className="board-visual visual-boundaries" aria-label="أنواع حدود الصفائح">
-          <div><b>← →</b><span>تباعد</span></div>
-          <div><b>→ ←</b><span>تقارب</span></div>
-          <div><b>⇄</b><span>تحويلي</span></div>
-        </div>
-      );
-    case '05':
-      return (
-        <div className="board-visual visual-time" aria-label="تراكم الحركة عبر الزمن">
-          <div><strong>3 سم</strong><span>كل سنة</span></div>
-          <b>×</b>
-          <div><strong>1,000,000</strong><span>سنة</span></div>
-          <b>=</b>
-          <div className="time-answer"><strong>30 كم</strong><span>في المثال</span></div>
-        </div>
-      );
-    case '06':
-      return (
-        <div className="board-visual visual-samples" aria-label="عينات حول حيد نشط">
-          <span>أقدم</span><i /><strong>أحدث<small>عند الحيد</small></strong><i /><span>أقدم</span>
-        </div>
-      );
-    case '01':
-    default:
-      return (
-        <div className="board-visual visual-coasts" aria-label="مقارنة أفريقيا وأمريكا الجنوبية">
-          <div className="coast america"><i /><span>أمريكا الجنوبية</span></div>
-          <div className="coast-question"><b>؟</b><span>تشابه يفتح سؤالًا، مش إثبات لوحده</span></div>
-          <div className="coast africa"><i /><span>أفريقيا</span></div>
-        </div>
-      );
+      )}
+    </div>
+  );
+}
+
+function BoardExperience({ board }: { board: LessonBoard }) {
+  if (board.type === 'canvas') return <CanvasSketch board={board} />;
+
+  if (board.type === 'text') {
+    return (
+      <div className="board-text-experience">
+        {board.eyebrow && <small>{board.eyebrow}</small>}
+        <h2>{board.headline}</h2>
+        {board.body && <p>{board.body}</p>}
+        {board.chips?.length ? <div className="board-chips">{board.chips.map((chip) => <span key={chip}>{chip}</span>)}</div> : null}
+      </div>
+    );
   }
+
+  if (board.type === 'timeline') {
+    return (
+      <div className="board-timeline-experience">
+        {board.title && <h2>{board.title}</h2>}
+        <div className="timeline-line">
+          {board.items.map((item, index) => (
+            <div key={`${item.value}-${index}`} className="timeline-stop">
+              <i />
+              <strong>{item.value}</strong>
+              <span>{item.label}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  if (board.type === 'image') {
+    return (
+      <div className={`board-image-experience scene-${board.scene}`}>
+        <div className="image-art" aria-hidden="true"><span>{imageSceneIcon[board.scene] ?? '✦'}</span></div>
+        <div className="image-copy"><h2>{board.title}</h2><p>{board.caption}</p></div>
+      </div>
+    );
+  }
+
+  if (board.type === 'compare') {
+    return (
+      <div className="board-compare-experience">
+        <article><small>01</small><h2>{board.left.title}</h2><p>{board.left.body}</p></article>
+        {board.center && <b>{board.center}</b>}
+        <article><small>02</small><h2>{board.right.title}</h2><p>{board.right.body}</p></article>
+      </div>
+    );
+  }
+
+  if (board.type === 'equation') {
+    return (
+      <div className="board-equation-experience">
+        <div className="equation-row">{board.parts.map((part, index) => <span key={`${part}-${index}`}>{part}</span>)}</div>
+        <i>↓</i>
+        <strong>{board.result}</strong>
+        {board.caption && <p>{board.caption}</p>}
+      </div>
+    );
+  }
+
+  if (board.type === 'choices') {
+    return (
+      <div className="board-choices-experience">
+        {board.prompt && <h2>{board.prompt}</h2>}
+        <div>{board.choices.map((choice, index) => <span key={choice}><b>{index + 1}</b>{choice}</span>)}</div>
+        {board.hint && <p>تلميح: {board.hint}</p>}
+      </div>
+    );
+  }
+
+  if (board.type === 'diagram') {
+    return (
+      <div className="board-diagram-experience">
+        {board.title && <h2>{board.title}</h2>}
+        <div className="diagram-flow">
+          {board.nodes.map((node, index) => (
+            <div key={`${node.title}-${index}`} className="diagram-node">
+              <strong>{node.title}</strong>{node.subtitle && <span>{node.subtitle}</span>}
+            </div>
+          ))}
+        </div>
+        {board.arrows?.length ? <div className="diagram-notes">{board.arrows.map((arrow) => <span key={arrow}>{arrow}</span>)}</div> : null}
+      </div>
+    );
+  }
+
+  if (board.type === 'meter') {
+    return (
+      <div className="board-meter-experience">
+        <small>{board.label}</small>
+        <strong>{board.value}</strong>
+        <div className="meter-track"><i /></div>
+        {board.secondary && <p>{board.secondary}</p>}
+      </div>
+    );
+  }
+
+  return (
+    <div className="board-cards-experience">
+      {board.title && <h2>{board.title}</h2>}
+      <div>{board.items.map((item) => <article key={item.title}><strong>{item.title}</strong><p>{item.body}</p></article>)}</div>
+    </div>
+  );
 }
 
 export function LessonDemo() {
+  const initialLesson = findLesson(new URLSearchParams(window.location.search).get('lessonId'));
+  const [lessonId, setLessonId] = useState(initialLesson.id);
+  const lesson = findLesson(lessonId);
+
   const stageRef = useRef<HTMLDivElement | null>(null);
   const controllerRef = useRef<NovaLessonController | null>(null);
   const [status, setStatus] = useState<LiveStatus>('idle');
@@ -230,12 +440,20 @@ export function LessonDemo() {
   const [reviewLogs, setReviewLogs] = useState<SessionLogEvent[]>([]);
   const [copiedLog, setCopiedLog] = useState(false);
   const [drawer, setDrawer] = useState<DrawerMode>('closed');
+  const [libraryOpen, setLibraryOpen] = useState(false);
 
   const connected = status === 'listening' || status === 'speaking';
 
   useEffect(() => {
     const container = stageRef.current;
     if (!container) return;
+
+    setStatus('idle');
+    setLessonState(null);
+    setInputTranscript('');
+    setOutputTranscript('');
+    setReviewLogs([]);
+    setError('');
 
     let disposed = false;
     const unsubscribeLogs = subscribeSessionLog((entry) => {
@@ -245,7 +463,7 @@ export function LessonDemo() {
 
     const controller = new NovaLessonController({
       container,
-      lesson: earthLesson,
+      lesson,
       transparent: true,
       onStatus: setStatus,
       onInputTranscript: setInputTranscript,
@@ -268,17 +486,12 @@ export function LessonDemo() {
       if (controllerRef.current === controller) controllerRef.current = null;
       void controller.destroy();
     };
-  }, []);
+  }, [lesson]);
 
-  const sections = useMemo(() => {
-    const grouped = new Map<string, EarthBeat[]>();
-    for (const beat of earthLesson.beats) {
-      const current = grouped.get(beat.sectionId) ?? [];
-      current.push(beat);
-      grouped.set(beat.sectionId, current);
-    }
-    return [...grouped.entries()];
-  }, []);
+  const sections = useMemo(() => lesson.sections.map((section) => ({
+    ...section,
+    beats: lesson.beats.filter((beat) => beat.sectionId === section.id),
+  })), [lesson]);
 
   const reviewItems = useMemo(() => buildReviewItems(reviewLogs), [reviewLogs]);
   const conversationItems = reviewItems.filter((item): item is ConversationItem => item.kind !== 'tool').slice(-12);
@@ -287,11 +500,11 @@ export function LessonDemo() {
   const understood = lessonState
     ? Object.values(lessonState.beats).filter((beat) => beat.understanding === 'understood').length
     : 0;
-  const percent = Math.round((understood / earthLesson.beats.length) * 100);
-  const activeBeat = earthLesson.beats.find((beat) => beat.id === lessonState?.currentBeatId) ?? earthLesson.beats[0];
-  const activeBeatIndex = earthLesson.beats.findIndex((beat) => beat.id === activeBeat?.id);
+  const percent = Math.round((understood / lesson.beats.length) * 100);
+  const activeBeat = lesson.beats.find((beat) => beat.id === lessonState?.currentBeatId) ?? lesson.beats[0];
+  const activeBeatIndex = lesson.beats.findIndex((beat) => beat.id === activeBeat?.id);
   const activeBeatState = activeBeat ? lessonState?.beats[activeBeat.id] : undefined;
-  const activeSectionId = activeBeat?.sectionId ?? '01';
+  const activeSection = lesson.sections.find((section) => section.id === activeBeat?.sectionId) ?? lesson.sections[0];
 
   const connect = async () => {
     const controller = controllerRef.current;
@@ -338,9 +551,24 @@ export function LessonDemo() {
     setError('');
   };
 
+  const chooseLesson = (nextLessonId: string) => {
+    if (connected || status === 'connecting' || nextLessonId === lesson.id) {
+      setLibraryOpen(false);
+      return;
+    }
+    const next = findLesson(nextLessonId);
+    const params = new URLSearchParams(window.location.search);
+    params.set('lesson', '1');
+    params.set('lessonId', next.id);
+    window.history.replaceState(null, '', `${window.location.pathname}?${params.toString()}`);
+    setLessonId(next.id);
+    setDrawer('closed');
+    setLibraryOpen(false);
+  };
+
   const copyLessonLog = async () => {
     try {
-      await copyText(formatReviewLog(reviewLogs, activeBeat, understood));
+      await copyText(formatReviewLog(reviewLogs, lesson, activeBeat, understood));
       setCopiedLog(true);
       window.setTimeout(() => setCopiedLog(false), 1800);
     } catch (reason) {
@@ -354,41 +582,29 @@ export function LessonDemo() {
 
   return (
     <main className="lesson-shell" dir="rtl">
-      <header className="lesson-topbar">
-        <div className="topbar-lesson">
-          <span className="nova-wordmark">Nova</span>
-          <div><small>الدرس</small><strong>{earthLesson.title}</strong></div>
-        </div>
-
-        <div className="topbar-progress">
-          <div><span>{percent}%</span><small>{understood} من {earthLesson.beats.length} فكرة</small></div>
-          <div className="progress-track"><i style={{ width: `${percent}%` }} /></div>
-        </div>
-
-        <div className="topbar-tools">
-          <button className={drawer === 'conversation' ? 'active' : ''} type="button" onClick={() => toggleDrawer('conversation')}>المحادثة</button>
-          <button className={drawer === 'diagnostics' ? 'active' : ''} type="button" onClick={() => toggleDrawer('diagnostics')}>التشخيص</button>
-          <button className="reset-icon" type="button" onClick={resetLesson} disabled={connected || status === 'connecting'} title="ابدأ من الأول">↺</button>
+      <header className="product-bar">
+        <div className="product-brand" dir="ltr"><strong>PixiLive</strong><span>Learn Smarter</span></div>
+        <div className="product-actions">
+          <button type="button" onClick={() => setLibraryOpen(true)}>المكتبة · {lesson.subject}</button>
+          <button type="button" onClick={() => toggleDrawer('conversation')} className={drawer === 'conversation' ? 'active' : ''}>المحادثة</button>
+          <button type="button" onClick={() => toggleDrawer('diagnostics')} className={drawer === 'diagnostics' ? 'active' : ''}>التشخيص</button>
         </div>
       </header>
 
       <div className="lesson-workspace">
         <aside className="nova-dock">
           <div className="nova-dock-head">
-            <strong>Nova</strong>
-            <span className={`live-status live-${status}`}><i />{statusLabel[status]}</span>
+            <div><i /><strong>Nova</strong><small>{statusLabel[status]}</small></div>
           </div>
-
           <div ref={stageRef} className="nova-stage" />
-
           <div className="nova-live-caption" aria-live="polite">
-            <p>{outputTranscript || 'جاهزة نبدأ لما تكون جاهز.'}</p>
+            <small>{status === 'speaking' ? 'Nova بتقول' : 'آخر كلام'}</small>
+            <p>{outputTranscript || 'أنا هنا جنبك — اسأل، جرّب، وقاطعني وقت ما تحب.'}</p>
           </div>
-
           <div className="nova-session-control">
             {!connected ? (
               <button className="start-lesson" type="button" onClick={() => void connect()} disabled={status === 'connecting'}>
-                {status === 'connecting' ? 'بنوصّل…' : understood > 0 ? 'كمّل الدرس' : 'ابدأ الدرس'}
+                {status === 'connecting' ? 'بنجهّز Nova…' : understood > 0 ? 'كمّل الدرس' : 'ابدأ الدرس'}
               </button>
             ) : (
               <button className="end-lesson" type="button" onClick={() => void disconnect()}>إنهاء الجلسة</button>
@@ -400,7 +616,7 @@ export function LessonDemo() {
         <section className="learning-board">
           <div className="board-heading-row">
             <div>
-              <span className="board-eyebrow">{sectionTitles[activeSectionId]} · {activeBeatIndex + 1}/{earthLesson.beats.length}</span>
+              <span className="board-eyebrow">{activeSection?.title} · خطوة {activeBeatIndex + 1} من {lesson.beats.length}</span>
               <h1>{activeBeat?.title}</h1>
               <p>{activeBeat?.objective}</p>
             </div>
@@ -409,59 +625,57 @@ export function LessonDemo() {
             </span>
           </div>
 
-          <div className="learning-canvas">
-            <BoardVisual sectionId={activeSectionId} />
+          {activeBeat && <div className="learning-canvas"><BoardExperience board={activeBeat.board} /></div>}
+
+          <div className="board-question-strip">
+            <small>دورك</small>
+            <strong>{activeBeat?.check}</strong>
+            <span>جاوب بطريقتك — Nova هتحدد إذا نكمّل أو نبسّط نفس الفكرة.</span>
           </div>
 
-          <div className="current-question">
-            <span>سؤال Nova</span>
-            <h2>{activeBeat?.check}</h2>
-          </div>
-
-          <div className="board-bottom">
-            <form className="lesson-composer" onSubmit={submit}>
-              <input
-                value={text}
-                onChange={(event) => setText(event.target.value)}
-                placeholder={connected ? 'اسأل، جاوب، أو قول اللي مش واضح…' : 'ابدأ الجلسة عشان تتكلم مع Nova'}
-                disabled={!connected}
-              />
-              <button type="submit" disabled={!connected || !text.trim()}>إرسال</button>
-            </form>
-
-            <div className="board-actions">
-              <button type="button" disabled={!connected} onClick={() => sendTurn('بسّطلي الفكرة الحالية أكتر.')}>بسّطها</button>
-              <button type="button" disabled={!connected} onClick={() => sendTurn('اديني مثال بسيط على الفكرة الحالية.')}>مثال</button>
-              <button type="button" disabled={!connected} onClick={() => sendTurn('اختبرني بسؤال قصير في الفكرة الحالية.')}>اختبرني</button>
-              {inputTranscript && <span>آخر رد: {inputTranscript}</span>}
-            </div>
+          <div className="board-quick-actions">
+            <button type="button" disabled={!connected} onClick={() => sendTurn('بسّطلي الفكرة الحالية أكتر، وخليك في نفس الخطوة.')}>بسّطها</button>
+            <button type="button" disabled={!connected} onClick={() => sendTurn('اديني مثال بسيط على الفكرة الحالية.')}>مثال</button>
+            <button type="button" disabled={!connected} onClick={() => sendTurn('اختبرني بسؤال قصير في الفكرة الحالية.')}>اختبرني</button>
           </div>
         </section>
 
         <aside className="lesson-rail">
-          <div className="rail-title"><small>المسار</small><strong>{understood}/{earthLesson.beats.length}</strong></div>
-          <nav className="rail-nav" aria-label="أقسام الدرس">
-            {sections.map(([sectionId, beats]) => {
-              const completed = beats.filter((beat) => lessonState?.beats[beat.id]?.understanding === 'understood').length;
-              const complete = completed === beats.length;
-              const active = sectionId === activeSectionId;
+          <div className="rail-lesson-head">
+            <small>{lesson.curriculumTitle}</small>
+            <h2>{lesson.title}</h2>
+            {lesson.subtitle && <p>{lesson.subtitle}</p>}
+          </div>
+
+          <div className="rail-progress-line">
+            <div><span>{understood} / {lesson.beats.length}</span><b>{percent}%</b></div>
+            <div className="progress-track"><i style={{ width: `${percent}%` }} /></div>
+          </div>
+
+          <div className="rail-current-card">
+            <small>الخطوة الحالية</small>
+            <strong>{activeBeat?.title}</strong>
+            <p>{activeBeat?.objective}</p>
+          </div>
+
+          <div className="rail-sections">
+            {sections.map((section) => {
+              const completed = section.beats.filter((beat) => lessonState?.beats[beat.id]?.understanding === 'understood').length;
+              const isActive = section.id === activeBeat?.sectionId;
+              const isDone = completed === section.beats.length;
               return (
-                <div key={sectionId} className={`rail-item ${complete ? 'done' : ''} ${active ? 'active' : ''}`}>
-                  <span className="rail-dot">{complete ? '✓' : sectionId}</span>
-                  <div><strong>{sectionTitles[sectionId]}</strong><small>{completed}/{beats.length}</small></div>
-                  {active && (
-                    <div className="rail-current-beats">
-                      {beats.map((beat) => {
-                        const state = lessonState?.beats[beat.id]?.understanding ?? 'unknown';
-                        const current = beat.id === activeBeat?.id;
-                        return <span key={beat.id} className={`${current ? 'current' : ''} ${state === 'understood' ? 'done' : ''}`}>{beat.title}</span>;
-                      })}
-                    </div>
-                  )}
+                <div key={section.id} className={`rail-section ${isActive ? 'active' : ''} ${isDone ? 'done' : ''}`}>
+                  <i>{isDone ? '✓' : section.id}</i>
+                  <div><strong>{section.title}</strong><span>{completed}/{section.beats.length}</span></div>
                 </div>
               );
             })}
-          </nav>
+          </div>
+
+          <div className="rail-footer-actions">
+            <button type="button" onClick={() => setLibraryOpen(true)}>تغيير الدرس</button>
+            <button type="button" onClick={resetLesson} disabled={connected || status === 'connecting'}>إعادة من البداية</button>
+          </div>
         </aside>
       </div>
 
@@ -472,18 +686,19 @@ export function LessonDemo() {
             <button type="button" onClick={() => setDrawer('closed')}>إغلاق</button>
           </div>
 
-          {drawer === 'conversation' ? (
+          {drawer === 'conversation' && (
             <div className="conversation-history">
               {conversationItems.length ? conversationItems.map((item, index) => (
-                <article key={`${item.kind}-${index}`} className={`history-turn ${item.kind}`}>
-                  <b>{item.kind === 'student' ? 'أنت' : 'Nova'}</b>
-                  <p>{item.text}</p>
+                <article key={`${item.kind}-${index}`} className={item.kind}>
+                  <b>{item.kind === 'student' ? 'أنت' : 'Nova'}</b><p>{item.text}</p>
                 </article>
-              )) : <p className="drawer-empty">المحادثة هتظهر هنا بعد ما تبدأ.</p>}
+              )) : <p className="drawer-empty">المحادثة هتظهر هنا بعد البداية.</p>}
             </div>
-          ) : (
-            <div className="diagnostics-view">
-              <div className="diagnostic-actions">
+          )}
+
+          {drawer === 'diagnostics' && (
+            <div className="diagnostics-content">
+              <div className="diagnostics-actions">
                 <button type="button" onClick={() => void copyLessonLog()} disabled={!reviewLogs.length}>
                   {copiedLog ? '✓ اتنسخ — ابعتهولي' : 'نسخ المحادثة + tool calls'}
                 </button>
@@ -491,15 +706,61 @@ export function LessonDemo() {
               </div>
               <div className="tool-stream">
                 {toolItems.length ? toolItems.map((item, index) => (
-                  <article key={`${item.name}-${index}`}>
-                    <strong>{item.name}</strong>
-                    <code>{JSON.stringify(item.args)}</code>
-                  </article>
-                )) : <p className="drawer-empty">لسه مفيش tool calls في الجلسة.</p>}
+                  <article key={`${item.name}-${index}`}><strong>{item.name}</strong><code>{JSON.stringify(item.args)}</code></article>
+                )) : <p className="drawer-empty">لسه مفيش tool calls.</p>}
               </div>
             </div>
           )}
         </section>
+      )}
+
+      <form className="lesson-composer" onSubmit={submit}>
+        <button className="composer-mic" type="button" aria-label="الميكروفون" disabled={!connected}>●</button>
+        <input
+          value={text}
+          onChange={(event) => setText(event.target.value)}
+          placeholder={connected ? 'اكتب سؤالك هنا…' : 'ابدأ الجلسة الأول…'}
+          disabled={!connected}
+        />
+        <button className="composer-send" type="submit" disabled={!connected || !text.trim()}>إرسال</button>
+      </form>
+
+      {libraryOpen && (
+        <div className="lesson-library-backdrop" role="presentation" onMouseDown={() => setLibraryOpen(false)}>
+          <section className="lesson-library" role="dialog" aria-modal="true" aria-label="مكتبة الدروس" onMouseDown={(event) => event.stopPropagation()}>
+            <div className="library-head">
+              <div><small>PixiLive Library</small><h2>اختار المنهج والدرس</h2></div>
+              <button type="button" onClick={() => setLibraryOpen(false)}>×</button>
+            </div>
+            <div className="curriculum-groups">
+              {lessonCatalog.map((curriculum) => (
+                <section key={curriculum.id} className="curriculum-group">
+                  <div className="curriculum-title"><div><h3>{curriculum.title}</h3><p>{curriculum.subtitle}</p></div><span>{curriculum.lessons.length} درس</span></div>
+                  <div className="lesson-library-grid">
+                    {curriculum.lessons.map((candidate) => {
+                      const selected = candidate.id === lesson.id;
+                      return (
+                        <button
+                          key={candidate.id}
+                          type="button"
+                          className={selected ? 'selected' : ''}
+                          onClick={() => chooseLesson(candidate.id)}
+                          disabled={(connected || status === 'connecting') && !selected}
+                        >
+                          <small>{candidate.subject} · {candidate.beats.length} خطوة</small>
+                          <strong>{candidate.title}</strong>
+                          <span>{candidate.subtitle}</span>
+                          <i>{selected ? 'الدرس الحالي' : 'فتح الدرس ←'}</i>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </section>
+              ))}
+            </div>
+            {connected && <p className="library-session-note">اقفل الجلسة الحالية الأول قبل ما تبدّل لدرس تاني.</p>}
+          </section>
+        </div>
       )}
     </main>
   );
