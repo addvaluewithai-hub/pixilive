@@ -564,15 +564,12 @@ export function LessonDemo() {
 
         {drawer === 'conversation' && (
           <div className="drawer-content conversation-history">
-            {conversationItems.length ? conversationItems.map((item, index) => {
-              if (item.kind === 'tool') return null;
-              return (
-                <article key={`${item.kind}-${index}`} className={`history-turn ${item.kind}`}>
-                  <b>{item.kind === 'student' ? 'أنت' : 'Nova'}</b>
-                  <p>{item.text}</p>
-                </article>
-              );
-            }) : <p className="drawer-empty">المحادثة هتظهر هنا بعد ما تبدأ.</p>}
+            {conversationItems.length ? conversationItems.map((item, index) => (
+              <article key={`${item.kind}-${index}`} className={`history-turn ${item.kind}`}>
+                <b>{item.kind === 'student' ? 'أنت' : 'Nova'}</b>
+                <p>{item.text}</p>
+              </article>
+            )) : <p className="drawer-empty">المحادثة هتظهر هنا بعد ما تبدأ.</p>}
           </div>
         )}
 
@@ -589,15 +586,12 @@ export function LessonDemo() {
             </div>
 
             <div className="tool-stream">
-              {toolItems.length ? toolItems.map((item, index) => {
-                if (item.kind !== 'tool') return null;
-                return (
-                  <article key={`${item.name}-${index}`}>
-                    <strong>{item.name}</strong>
-                    <code>{JSON.stringify(item.args)}</code>
-                  </article>
-                );
-              }) : <p className="drawer-empty">لسه مفيش tool calls في الجلسة.</p>}
+              {toolItems.length ? toolItems.map((item, index) => (
+                <article key={`${item.name}-${index}`}>
+                  <strong>{item.name}</strong>
+                  <code>{JSON.stringify(item.args)}</code>
+                </article>
+              )) : <p className="drawer-empty">لسه مفيش tool calls في الجلسة.</p>}
             </div>
           </div>
         )}
