@@ -9,7 +9,8 @@ import './lesson-demo.css';
 type EarthBeat = (typeof earthLesson.beats)[number];
 
 type ReviewItem =
-  | { kind: 'student' | 'nova'; text: string }
+  | { kind: 'student'; text: string }
+  | { kind: 'nova'; text: string }
   | { kind: 'tool'; name: string; args: Record<string, unknown>; response?: unknown };
 
 const statusLabel: Record<LiveStatus, string> = {
