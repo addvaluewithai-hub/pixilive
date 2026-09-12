@@ -57,6 +57,7 @@ interface ServerMessage {
   setupComplete?: Record<string, never>;
   serverContent?: {
     interrupted?: boolean;
+    generationComplete?: boolean;
     turnComplete?: boolean;
     inputTranscription?: { text?: string };
     outputTranscription?: { text?: string };
@@ -74,6 +75,20 @@ interface ServerMessage {
   sessionResumptionUpdate?: { newHandle?: string; resumable?: boolean };
   goAway?: { timeLeft?: string };
 }
+
+export interface LiveOutputGateOptions {
+  /**
+   * When configured, each model turn starts muted. If one of these tools is called,
+   * output generated before the call is discarded and only the post-tool continuation
+   * is delivered. If no control tool is called, buffered output is released once
+   * generation completes. This keeps control/state transitions atomic to the listener.
+   */
+  controlToolNames: readonly string[];
+}
+
+type BufferedOutputEvent =
+  | { kind: 'transcript'; text: string }
+  | { kind: 'audio'; data: string; mimeType: string };
 
 async function decodeSocketMessage(data: unknown): Promise<string> {
   if (typeof data === 'string') return data;
@@ -102,11 +117,17 @@ export class GeminiLiveClient {
   private audioBytesThisTurn = 0;
   private turnNumber = 0;
   private turnOpen = false;
+  private gateOutputThisTurn = false;
+  private bufferedOutput: BufferedOutputEvent[] = [];
+  private readonly outputGateControlTools: ReadonlySet<string>;
 
   constructor(
     private readonly callbacks: LiveCallbacks,
     private readonly customTools: readonly LiveClientTool[] = [],
-  ) {}
+    outputGate?: LiveOutputGateOptions,
+  ) {
+    this.outputGateControlTools = new Set(outputGate?.controlToolNames ?? []);
+  }
 
   get connected() {
     return this.socket?.readyState === WebSocket.OPEN && this.setupComplete;
@@ -156,6 +177,8 @@ export class GeminiLiveClient {
     this.activePerformanceCallIds.clear();
     this.performanceCueUsedThisTurn = false;
     this.turnOpen = false;
+    this.gateOutputThisTurn = false;
+    this.bufferedOutput = [];
     this.socket?.close(1000, 'client close');
     this.socket = null;
     this.callbacks.onStatus('idle');
@@ -213,6 +236,7 @@ export class GeminiLiveClient {
           googleSearch: false,
           functionCalling: 'synchronous-optional',
           tools: functionDeclarations.map((tool) => tool.name),
+          outputGateControlTools: [...this.outputGateControlTools],
           localPerformancePrimary: true,
           hybridVad: true,
         });
@@ -289,6 +313,7 @@ export class GeminiLiveClient {
 
         const content = message.serverContent;
         if (content?.interrupted) {
+          this.discardBufferedOutput('interrupted');
           emitSessionLog('gemini', 'interrupted');
           this.callbacks.onInterrupted();
           this.callbacks.onPerformanceCancelled();
@@ -304,17 +329,8 @@ export class GeminiLiveClient {
         const output = content?.outputTranscription?.text?.trim();
         if (output) {
           this.ensureTurnStarted('transcript');
-          if (!this.firstOutputTranscriptSeen) {
-            this.firstOutputTranscriptSeen = true;
-            emitSessionLog('gemini', 'first_output_transcript', {
-              turn: this.turnNumber,
-              text: output,
-              afterToolMs: this.latestToolCallAt === null ? null : Math.round(performance.now() - this.latestToolCallAt),
-            });
-          } else {
-            emitSessionLog('gemini', 'output_transcript', { turn: this.turnNumber, text: output });
-          }
-          this.callbacks.onOutputTranscript(output);
+          if (this.gateOutputThisTurn) this.bufferedOutput.push({ kind: 'transcript', text: output });
+          else this.deliverOutputTranscript(output);
         }
 
         for (const part of content?.modelTurn?.parts ?? []) {
@@ -334,23 +350,20 @@ export class GeminiLiveClient {
           }
           if (part.inlineData?.data && part.inlineData.mimeType?.startsWith('audio/pcm')) {
             this.ensureTurnStarted('audio');
-            this.audioChunksThisTurn += 1;
-            this.audioBytesThisTurn += approxBase64Bytes(part.inlineData.data);
-            if (!this.firstAudioSeen) {
-              this.firstAudioSeen = true;
-              emitSessionLog('audio', 'first_output_audio', {
-                turn: this.turnNumber,
-                mimeType: part.inlineData.mimeType,
-                afterToolMs: this.latestToolCallAt === null ? null : Math.round(performance.now() - this.latestToolCallAt),
-                firstChunkBytes: approxBase64Bytes(part.inlineData.data),
-              });
+            if (this.gateOutputThisTurn) {
+              this.bufferedOutput.push({ kind: 'audio', data: part.inlineData.data, mimeType: part.inlineData.mimeType });
+            } else {
+              this.deliverAudio(part.inlineData.data, part.inlineData.mimeType);
             }
-            this.callbacks.onStatus('speaking');
-            this.callbacks.onAudio(part.inlineData.data);
           }
         }
 
+        if (content?.generationComplete && this.gateOutputThisTurn) {
+          this.flushBufferedOutput('generation_complete_without_control_tool');
+        }
+
         if (content?.turnComplete) {
+          if (this.gateOutputThisTurn) this.flushBufferedOutput('turn_complete_fallback');
           emitSessionLog('gemini', 'turn_complete', {
             turn: this.turnNumber,
             audioChunks: this.audioChunksThisTurn,
@@ -365,6 +378,8 @@ export class GeminiLiveClient {
           this.latestToolCallAt = null;
           this.performanceCueUsedThisTurn = false;
           this.turnOpen = false;
+          this.gateOutputThisTurn = false;
+          this.bufferedOutput = [];
         }
 
         if (message.sessionResumptionUpdate?.resumable && message.sessionResumptionUpdate.newHandle) {
@@ -392,6 +407,7 @@ export class GeminiLiveClient {
         const wasReady = this.setupComplete;
         this.setupComplete = false;
         clearSetupTimer();
+        this.discardBufferedOutput('socket_close');
         emitSessionLog('session', 'websocket_close', {
           code: event.code,
           clean: event.wasClean,
@@ -416,6 +432,16 @@ export class GeminiLiveClient {
     const receivedAt = performance.now();
     this.latestToolCallAt = receivedAt;
     this.ensureTurnStarted('tool');
+
+    const controlCalls = functionCalls.filter((call) => this.outputGateControlTools.has(call.name));
+    if (controlCalls.length && this.gateOutputThisTurn) {
+      this.discardBufferedOutput('control_tool_called');
+      this.gateOutputThisTurn = false;
+      emitSessionLog('gemini', 'output_gate_opened', {
+        turn: this.turnNumber,
+        tools: controlCalls.map((call) => call.name),
+      });
+    }
 
     const functionResponses = functionCalls.map((call) => {
       emitSessionLog('tool', 'call_received', {
@@ -485,6 +511,70 @@ export class GeminiLiveClient {
     });
   }
 
+  private deliverOutputTranscript(text: string) {
+    if (!this.firstOutputTranscriptSeen) {
+      this.firstOutputTranscriptSeen = true;
+      emitSessionLog('gemini', 'first_output_transcript', {
+        turn: this.turnNumber,
+        text,
+        afterToolMs: this.latestToolCallAt === null ? null : Math.round(performance.now() - this.latestToolCallAt),
+      });
+    } else {
+      emitSessionLog('gemini', 'output_transcript', { turn: this.turnNumber, text });
+    }
+    this.callbacks.onOutputTranscript(text);
+  }
+
+  private deliverAudio(data: string, mimeType: string) {
+    this.audioChunksThisTurn += 1;
+    this.audioBytesThisTurn += approxBase64Bytes(data);
+    if (!this.firstAudioSeen) {
+      this.firstAudioSeen = true;
+      emitSessionLog('audio', 'first_output_audio', {
+        turn: this.turnNumber,
+        mimeType,
+        afterToolMs: this.latestToolCallAt === null ? null : Math.round(performance.now() - this.latestToolCallAt),
+        firstChunkBytes: approxBase64Bytes(data),
+      });
+    }
+    this.callbacks.onStatus('speaking');
+    this.callbacks.onAudio(data);
+  }
+
+  private flushBufferedOutput(reason: string) {
+    if (!this.bufferedOutput.length) {
+      this.gateOutputThisTurn = false;
+      return;
+    }
+
+    const pending = this.bufferedOutput;
+    this.bufferedOutput = [];
+    this.gateOutputThisTurn = false;
+    emitSessionLog('gemini', 'output_gate_flushed', {
+      turn: this.turnNumber,
+      reason,
+      events: pending.length,
+    });
+
+    for (const event of pending) {
+      if (event.kind === 'transcript') this.deliverOutputTranscript(event.text);
+      else this.deliverAudio(event.data, event.mimeType);
+    }
+  }
+
+  private discardBufferedOutput(reason: string) {
+    if (!this.bufferedOutput.length) return;
+    const transcripts = this.bufferedOutput.filter((event) => event.kind === 'transcript').length;
+    const audioChunks = this.bufferedOutput.filter((event) => event.kind === 'audio').length;
+    this.bufferedOutput = [];
+    emitSessionLog('gemini', 'output_gate_discarded', {
+      turn: this.turnNumber,
+      reason,
+      transcripts,
+      audioChunks,
+    });
+  }
+
   private ensureTurnStarted(source: 'tool' | 'transcript' | 'audio') {
     if (this.turnOpen) return;
     this.turnOpen = true;
@@ -494,7 +584,13 @@ export class GeminiLiveClient {
     this.firstOutputTranscriptSeen = false;
     this.audioChunksThisTurn = 0;
     this.audioBytesThisTurn = 0;
-    emitSessionLog('gemini', 'turn_started', { turn: this.turnNumber, source });
+    this.gateOutputThisTurn = this.outputGateControlTools.size > 0;
+    this.bufferedOutput = [];
+    emitSessionLog('gemini', 'turn_started', {
+      turn: this.turnNumber,
+      source,
+      outputGated: this.gateOutputThisTurn,
+    });
   }
 
   private async resumeSession() {
