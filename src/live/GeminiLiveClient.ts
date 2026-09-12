@@ -1,6 +1,6 @@
 import { normalizePerformanceCue, type PerformanceCue } from '../character/performance';
 import { emitSessionLog } from '../debug/sessionLog';
-import type { LiveCallbacks } from './types';
+import type { LiveCallbacks, LiveClientTool } from './types';
 
 const MODEL = 'gemini-3.1-flash-live-preview';
 const TOKEN_ENDPOINT = '/api/gemini-token';
@@ -96,7 +96,10 @@ export class GeminiLiveClient {
   private turnNumber = 0;
   private turnOpen = false;
 
-  constructor(private readonly callbacks: LiveCallbacks) {}
+  constructor(
+    private readonly callbacks: LiveCallbacks,
+    private readonly customTools: readonly LiveClientTool[] = [],
+  ) {}
 
   get connected() {
     return this.socket?.readyState === WebSocket.OPEN && this.setupComplete;
@@ -192,10 +195,15 @@ export class GeminiLiveClient {
           socket.close(1000, 'setup timeout');
         }, SETUP_TIMEOUT_MS);
 
+        const functionDeclarations = [
+          ...performanceTool.functionDeclarations,
+          ...this.customTools.map((tool) => tool.declaration),
+        ];
+
         emitSessionLog('session', 'setup_sent', {
           model: MODEL,
           functionCalling: 'synchronous-optional',
-          tool: PERFORMANCE_TOOL,
+          tools: functionDeclarations.map((tool) => tool.name),
           localPerformancePrimary: true,
           hybridVad: true,
         });
@@ -212,7 +220,7 @@ export class GeminiLiveClient {
                 },
               ],
             },
-            tools: [performanceTool],
+            tools: [{ functionDeclarations }],
             realtimeInputConfig: {
               activityHandling: 'START_OF_ACTIVITY_INTERRUPTS',
               automaticActivityDetection: {
@@ -414,6 +422,26 @@ export class GeminiLiveClient {
           name: call.name,
           response: { result: 'Character direction accepted. PixiLive will synchronize it with playback.' },
         };
+      }
+
+      const customTool = this.customTools.find((tool) => tool.declaration.name === call.name);
+      if (customTool) {
+        try {
+          const response = customTool.handle(call.args ?? {});
+          emitSessionLog('tool', 'custom_tool_completed', {
+            turn: this.turnNumber,
+            name: call.name,
+          });
+          return { id: call.id, name: call.name, response };
+        } catch (reason) {
+          const message = reason instanceof Error ? reason.message : `Custom tool ${call.name} failed`;
+          emitSessionLog('error', 'custom_tool_failed', {
+            turn: this.turnNumber,
+            name: call.name,
+            message,
+          });
+          return { id: call.id, name: call.name, response: { error: message } };
+        }
       }
 
       return {
