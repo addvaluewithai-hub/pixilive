@@ -7,15 +7,22 @@ export type { FlyToOptions, Point2D } from './NovaFlightController';
 export { PixiLiveNovaElement, definePixiLiveNovaElement } from './PixiLiveNovaElement';
 export { LessonTutorRuntime } from '../lesson/LessonTutorRuntime';
 export { earthLesson } from '../lesson/earthLesson';
+export { ratioLesson } from '../lesson/ratioLesson';
+export { lessonCatalog, allLessons, defaultLesson, findLesson } from '../lesson/catalog';
+export type { CurriculumGroup } from '../lesson/catalog';
 export type {
   LessonDefinition,
   LessonBeat,
+  LessonBoard,
+  LessonSection,
   LessonState,
   LessonBeatState,
   LessonCoverage,
   LessonUnderstanding,
   LessonDetour,
   LessonTutorRuntimeOptions,
+  BoardCanvasVariant,
+  BoardImageScene,
 } from '../lesson/types';
 export type { LiveClientTool, LiveClientToolDeclaration } from '../live/types';
 export type { PerformanceCue, CharacterAffect, CharacterGesture, CharacterMode } from '../character/performance';
