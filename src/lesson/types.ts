@@ -73,9 +73,9 @@ export interface LessonBeat {
   sourceAnchor: string;
   /** Canonical Egyptian-Arabic teaching copy for the normal path. */
   script: string;
-  /** Canonical content-bearing check that follows the base script. */
+  /** Main content-bearing check for this beat; Nova may adapt naturally when needed. */
   check: string;
-  /** What learner evidence is sufficient to pass this beat. */
+  /** Guidance for what solid understanding looks like across the conversation, not an exact checklist or required quote. */
   passEvidence: string;
   /** What the learner sees on the board while this beat is active. */
   board: LessonBoard;
