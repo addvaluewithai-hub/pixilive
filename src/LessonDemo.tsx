@@ -5,6 +5,8 @@ import type { LiveStatus } from './live/types';
 import { NovaLessonController } from './sdk/NovaLessonController';
 import './lesson-demo.css';
 
+type EarthBeat = (typeof earthLesson.beats)[number];
+
 const statusLabel: Record<LiveStatus, string> = {
   idle: 'جاهزة',
   connecting: 'بتوصل…',
@@ -57,7 +59,7 @@ export function LessonDemo() {
   }, []);
 
   const sections = useMemo(() => {
-    const grouped = new Map<string, typeof earthLesson.beats[number][]>();
+    const grouped = new Map<string, EarthBeat[]>();
     for (const beat of earthLesson.beats) {
       const current = grouped.get(beat.sectionId) ?? [];
       current.push(beat);
