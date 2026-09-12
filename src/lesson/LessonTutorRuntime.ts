@@ -24,24 +24,60 @@ function cloneState(state: LessonState): LessonState {
   return JSON.parse(JSON.stringify(state)) as LessonState;
 }
 
+function normalizeEvidence(value: string) {
+  return value
+    .toLowerCase()
+    .replace(/[ًٌٍَُِّْـ]/g, '')
+    .replace(/[أإآ]/g, 'ا')
+    .replace(/[ىي]/g, 'ي')
+    .replace(/[^\p{L}\p{N}]+/gu, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+const ACKNOWLEDGEMENTS = new Set([
+  'اه', 'ايوه', 'ايوا', 'نعم', 'تمام', 'ماشي', 'اوكيه', 'اوكي', 'يس', 'yes', 'yep',
+  'اكيد', 'صح', 'فهمت', 'حلو', 'كويس', 'تمام فهمت', 'اه فهمت', 'ايوه فهمت',
+]);
+
+function isGenericAcknowledgement(value: string) {
+  const normalized = normalizeEvidence(value);
+  return ACKNOWLEDGEMENTS.has(normalized);
+}
+
+function explicitlyUnresolved(value: string) {
+  const normalized = normalizeEvidence(value);
+  return normalized === 'لا'
+    || normalized === 'لأ'
+    || normalized.startsWith('مش فاهم')
+    || normalized.startsWith('مش فاهمه')
+    || normalized.startsWith('لسه مش فاهم')
+    || normalized.startsWith('مش واضح')
+    || normalized.startsWith('ما فهمتش');
+}
+
 export class LessonTutorRuntime {
   readonly tools: readonly LiveClientTool[];
 
   private state: LessonState;
   private readonly storageKey: string;
   private readonly listeners = new Set<(state: LessonState) => void>();
+  private lastLearnerTurn = '';
 
   constructor(
     readonly lesson: LessonDefinition,
     options: LessonTutorRuntimeOptions = {},
   ) {
-    this.storageKey = options.storageKey ?? `pixilive:lesson:${lesson.id}`;
+    // v2 intentionally starts clean because earlier builds allowed future beats to be
+    // marked understood while an earlier beat remained active.
+    this.storageKey = options.storageKey ?? `pixilive:lesson:v2:${lesson.id}`;
     if (options.onStateChange) this.listeners.add(options.onStateChange);
     this.state = this.loadState();
     this.tools = [
-      this.progressTool(),
+      this.assessmentTool(),
       this.detourTool(),
       this.stateTool(),
+      this.finishTool(),
     ];
   }
 
@@ -53,74 +89,86 @@ export class LessonTutorRuntime {
     return this.lesson.beats.find((beat) => beat.id === this.state.currentBeatId) ?? this.lesson.beats[0];
   }
 
+  observeLearnerTurn(text: string) {
+    const value = text.trim();
+    if (value) this.lastLearnerTurn = value;
+  }
+
   get systemPrompt(): string {
     const beatMap = this.lesson.beats
-      .map((beat) => `${beat.id} | القسم ${beat.sectionId} | ${beat.title} | الهدف: ${beat.objective} | مرساة النص: ${beat.sourceAnchor}`)
-      .join('\n');
+      .map((beat) => [
+        `${beat.id} | القسم ${beat.sectionId} | ${beat.title}`,
+        `الهدف: ${beat.objective}`,
+        `BASE SCRIPT — قولي ده كأساس: ${beat.script}`,
+        `CHECK — اسألي ده بعده: ${beat.check}`,
+        `PASS EVIDENCE — ما تعديش غير لما الطالب يثبت: ${beat.passEvidence}`,
+        `مرساة المصدر: ${beat.sourceAnchor}`,
+      ].join('\n'))
+      .join('\n\n');
 
     return `
-You are Nova, the spoken tutor for a structured Arabic lesson.
-Speak naturally in Egyptian Arabic. You are warm, curious, playful in a light way, and never sound like you are reading a textbook.
+You are Nova, the spoken tutor for a tightly controlled structured Arabic lesson.
+Speak naturally in Egyptian Arabic. You are warm, curious and lightly playful, but curriculum accuracy and sequence are more important than improvisation.
 
-ABSOLUTE GROUNDING RULE
-The FULL LESSON SOURCE below is the factual source of truth for this lesson.
-For claims about the lesson, do not invent facts, dates, mechanisms, examples, names, causes, consequences, or scientific details that are not supported by the source.
-You may simplify, paraphrase, make a small analogy, ask a question, or connect two statements that are already supported by the source.
-If an analogy could create a false scientific picture, explicitly say which part of the analogy works and where it stops working.
-If the learner asks for a factual detail that is outside the source, say briefly that this lesson does not establish that detail, then return to what the source does establish. Do not guess.
+SOURCE OF TRUTH + GOOGLE SEARCH
+The FULL LESSON SOURCE below is the authority for the planned lesson.
+Do not use Google Search to rewrite, expand, embellish or fact-check ordinary lesson teaching. The planned lesson must stay closed-world and grounded in the supplied source.
+Google Search is available ONLY when the learner explicitly asks for a factual detail that the lesson source does not establish, or explicitly asks for current/time-sensitive information.
+When you use Search, say briefly that this is extra information beyond the lesson, answer the learner's question, then return to the saved lesson anchor. Never silently mix searched facts into the canonical lesson script.
+For ordinary lesson claims, do not invent facts, dates, mechanisms, examples, names, causes or consequences outside the FULL LESSON SOURCE.
 
-TEACHING GOAL
-Eventually teach ALL learning beats. Do not skip a beat merely because a later topic came up in conversation.
-The beat map is navigation metadata only. It never replaces the full source.
-Use the full source whenever you explain.
+CANONICAL TEACHING PATH — VERY IMPORTANT
+There are ordered learning beats below. Each beat has a BASE SCRIPT, a CHECK and PASS EVIDENCE.
+For the normal path, teach ONLY the current beat returned by lesson state.
+Say the current beat's BASE SCRIPT as written. You may make only tiny spoken-language adjustments that do not add, remove or change factual content.
+Then ask its CHECK as written.
+Do not teach the next beat until the application advances currentBeatId after valid learner evidence.
+If the learner interrupts during the script, answer the interruption appropriately, then resume the unfinished current script/check. Do not silently jump ahead.
+If the learner already demonstrates the current concept while asking a question, you may acknowledge that evidence and assess it, but you still may not select a future beat yourself.
+Never expose beat IDs, state labels, BASE SCRIPT, CHECK or PASS EVIDENCE to the learner.
 
-VOICE PACING
-Teach one small learning move per spoken turn, usually 2–6 short sentences.
-Never dump a whole section in one response.
-Allow interruption at any time.
-Do not end with permission questions like "تحب أكمل؟", "أكمل؟", "نكمل؟", or "واضحة؟".
-End smoothly with a cognitive continuation: a tiny prediction, comparison, choice, explanation-in-the-learner's-own-words, or a half-open question tied directly to the active idea.
-Examples of good endings:
-- "فلو القارة جزء من الصفيحة، تتوقع الصفيحة ممكن يكون تحتها بحر كمان ولا لأ؟"
-- "يبقى هنا شكل الساحلين لوحده يفتح سؤال… بس إيه اللي يخليه دليل أقوى؟"
-
-UNDERSTANDING BEFORE ADVANCING
-Explaining a beat is not proof that the learner understood it.
-Use update_lesson_progress when there is useful evidence about coverage or understanding.
-Only set understanding=understood after the learner demonstrates the idea through an answer, explanation, prediction, correction, or successful application.
-If the learner is partly right, preserve the correct part, fix only the missing/wrong part, and keep the same beat as partial.
-If confused, do not repeat the same wording. Change representation: simpler wording, concrete example, careful analogy, contrast, or tiny thought experiment.
+UNDERSTANDING AND TOOL USE
+The application is the authority on progress.
+Use assess_current_beat after a learner response gives useful evidence about the CURRENT beat. The tool deliberately has no beatId: you cannot mark future beats.
+For understanding=understood, quote the exact relevant words from the learner's latest turn in the evidence field.
+"اه", "تمام", "أوكيه", "أكيد", "فهمت", "yes" and similar acknowledgements are NOT evidence of understanding by themselves.
+Explaining something yourself is never evidence that the learner understood it.
+Only mark understood after the learner demonstrates the PASS EVIDENCE through an explanation, prediction, correction, calculation, choice with meaningful justification, or successful application.
+If partly right, preserve the right part, correct the missing/wrong part, and assess partial. If confused, assess struggling and change representation without changing the scientific claim.
+Tool responses contain the newest authoritative state. Follow them even if conversational memory conflicts.
+If uncertain about where to continue, call get_lesson_state instead of guessing.
 
 MISCONCEPTIONS
-Correct misconceptions immediately and gently.
-For the mantle specifically, never say the plates float on a sea of molten rock. The source says the mantle is mostly solid and can deform/flow very slowly over geological time.
-Record a short misconception string with update_lesson_progress when it is pedagogically useful.
+Correct misconceptions immediately and gently before moving on.
+For the mantle specifically, never validate language that the crust or plates "float on dough", "float on magma", or float on a liquid sea. The lesson says the mantle is mostly solid and can deform/flow extremely slowly over geological time.
+Also preserve the distinction that a tectonic plate includes crust PLUS the rigid uppermost mantle; it is not simply a continent or the crust alone.
 
-DETours AND RETURNING
-The learner may ask a deeper side question at any time.
-If the question temporarily leaves the active beat, call manage_lesson_detour(action="push", topic=...).
-Answer only as far as the lesson source supports, while keeping the saved beat as the anchor.
-When the side question is resolved, call manage_lesson_detour(action="pop") and bridge back naturally.
-Do not say "نرجع للدرس؟". Instead say something like "وده يرجعنا للنقطة اللي كنا ماسكين فيها..." and continue from the anchor.
+VOICE PACING
+Usually make one small learning move per spoken turn. The BASE SCRIPT can be spoken in one concise turn unless interrupted.
+Never end ordinary lesson turns with permission questions such as "تحب أكمل؟", "أكمل؟", "نكمل؟", "تحب تعرف؟", "تحب نختبر؟" or "واضحة؟".
+Use the beat's CHECK or another content-bearing clarification only when the learner's interruption requires it.
+
+DETOURS AND RETURNING
+If the learner temporarily leaves the active lesson idea, call manage_lesson_detour(action="push", topic=...).
+Keep the current beat as the anchor. Answer from the lesson source, or use Google Search only under the explicit outside-source/current-information rule above.
+Do NOT pop a detour while the learner is explicitly saying they still do not understand it.
+When it is actually resolved, call manage_lesson_detour(action="pop") and bridge naturally back to the exact current beat without asking permission.
 Nested detours are allowed.
 
-STATE
-The application, not your conversational memory, is the authority on progress.
-Tool responses contain the newest authoritative state. Follow them even if older conversation context conflicts.
-If you become uncertain about the current beat, call get_lesson_state instead of guessing.
-Never say beat IDs or internal state labels to the learner.
+COMPLETION
+You are forbidden from saying or implying "خلصنا الدرس", "كده خلصنا", "دي كل حاجة", saying goodbye because the lesson is over, or otherwise claiming completion unless you FIRST call finish_lesson and it returns finished=true.
+If finish_lesson says the lesson is incomplete, continue from the current beat it returns. Never override it from conversational memory.
 
 START / RESUME
-When the learner asks to start or explain the lesson, begin from currentBeatId in the state below.
-If earlier beats are already understood, resume naturally with a one-sentence human reminder, not an administrative recap.
+When the learner asks to start or explain the lesson, begin from currentBeatId in the state below. If earlier beats are already understood, give at most one natural reminder and continue with the current beat's BASE SCRIPT.
 
-LEARNING BEAT MAP
+LEARNING BEAT CONTRACTS
 ${beatMap}
 
 CURRENT STATE AT SESSION START
 ${JSON.stringify(this.state, null, 2)}
 
-FULL LESSON SOURCE — DO NOT TREAT THE BEAT MAP AS A SUBSTITUTE FOR THIS
+FULL LESSON SOURCE — AUTHORITATIVE FOR THE PLANNED LESSON
 ---
 ${this.lesson.fullSource}
 ---
@@ -135,6 +183,7 @@ ${this.lesson.fullSource}
 
   reset() {
     this.state = this.createInitialState();
+    this.lastLearnerTurn = '';
     this.persistAndEmit();
   }
 
@@ -194,7 +243,7 @@ ${this.lesson.fullSource}
       try {
         window.localStorage.setItem(this.storageKey, JSON.stringify(this.state));
       } catch {
-        // Storage is optional; the in-memory state still remains authoritative for this session.
+        // Storage is optional; the in-memory state remains authoritative for this session.
       }
     }
     const snapshot = this.snapshot;
@@ -218,6 +267,12 @@ ${this.lesson.fullSource}
     if (next) this.state.currentBeatId = next.id;
   }
 
+  private unresolvedBeats() {
+    return this.lesson.beats
+      .filter((beat) => this.state.beats[beat.id]?.understanding !== 'understood')
+      .map((beat) => ({ id: beat.id, title: beat.title }));
+  }
+
   private compactState() {
     const beat = this.currentBeat;
     const understoodCount = this.lesson.beats.filter((item) => this.state.beats[item.id]?.understanding === 'understood').length;
@@ -226,6 +281,9 @@ ${this.lesson.fullSource}
       currentBeatId: beat.id,
       currentBeatTitle: beat.title,
       currentObjective: beat.objective,
+      currentScript: beat.script,
+      currentCheck: beat.check,
+      passEvidence: beat.passEvidence,
       activeDetour: this.state.detours.at(-1) ?? null,
       detourDepth: this.state.detours.length,
       understoodCount,
@@ -235,47 +293,82 @@ ${this.lesson.fullSource}
     };
   }
 
-  private progressTool(): LiveClientTool {
+  private assessmentTool(): LiveClientTool {
     return {
       declaration: {
-        name: 'update_lesson_progress',
-        description: 'Update coverage/understanding for one lesson beat after teaching it or observing learner evidence. The app returns the authoritative next state.',
+        name: 'assess_current_beat',
+        description: 'Assess ONLY the authoritative current lesson beat after the learner responds. There is intentionally no beatId. The app advances sequentially only after valid evidence.',
         parametersJsonSchema: {
           type: 'object',
           additionalProperties: false,
           properties: {
-            beatId: { type: 'string', description: 'Exact beat id from the learning beat map.' },
-            coverage: { type: 'string', enum: ['not_covered', 'covered'] },
             understanding: { type: 'string', enum: ['unknown', 'struggling', 'partial', 'understood'] },
-            misconception: { type: 'string', description: 'Optional short misconception, only when one was actually observed.' },
+            evidence: { type: 'string', description: 'Exact relevant words quoted from the learner latest turn. Required for understood.' },
+            misconception: { type: 'string', description: 'Optional short misconception actually observed in the learner response.' },
           },
-          required: ['beatId', 'coverage', 'understanding'],
+          required: ['understanding', 'evidence'],
         },
       },
       handle: (args) => {
-        const beatId = typeof args.beatId === 'string' ? args.beatId : '';
-        const coverage = args.coverage;
+        const beat = this.currentBeat;
         const understanding = args.understanding;
-        const beat = this.lesson.beats.find((item) => item.id === beatId);
-        if (!beat) return { error: `Unknown beatId: ${beatId}`, state: this.compactState() };
-        if (!isCoverage(coverage) || !isUnderstanding(understanding)) {
-          return { error: 'Invalid coverage or understanding value.', state: this.compactState() };
+        if (!isUnderstanding(understanding)) {
+          return { error: 'Invalid understanding value.', state: this.compactState() };
         }
 
-        const previous = this.state.beats[beatId] ?? defaultBeatState();
+        const evidence = typeof args.evidence === 'string' ? args.evidence.trim() : '';
+        if (understanding === 'understood') {
+          if (!this.lastLearnerTurn) {
+            return {
+              error: 'Cannot mark understood: no learner turn has been observed. Ask the current CHECK and wait for learner evidence.',
+              state: this.compactState(),
+            };
+          }
+          if (!evidence) {
+            return {
+              error: 'Cannot mark understood without quoting learner evidence.',
+              observedLearnerTurn: this.lastLearnerTurn,
+              state: this.compactState(),
+            };
+          }
+          const observed = normalizeEvidence(this.lastLearnerTurn);
+          const quoted = normalizeEvidence(evidence);
+          if (!quoted || !observed.includes(quoted)) {
+            return {
+              error: 'Evidence must quote the learner latest turn, not a paraphrase or invented evidence.',
+              observedLearnerTurn: this.lastLearnerTurn,
+              state: this.compactState(),
+            };
+          }
+          if (isGenericAcknowledgement(this.lastLearnerTurn)) {
+            return {
+              error: 'A generic acknowledgement is not evidence of understanding. Stay on the current beat and ask its content-bearing CHECK.',
+              observedLearnerTurn: this.lastLearnerTurn,
+              state: this.compactState(),
+            };
+          }
+        }
+
+        const previous = this.state.beats[beat.id] ?? defaultBeatState();
         const misconception = typeof args.misconception === 'string' ? args.misconception.trim() : '';
         const misconceptions = misconception && !previous.misconceptions.includes(misconception)
           ? [...previous.misconceptions, misconception].slice(-8)
           : previous.misconceptions;
 
-        this.state.beats[beatId] = {
-          coverage: understanding === 'understood' ? 'covered' : coverage,
+        this.state.beats[beat.id] = {
+          coverage: 'covered',
           understanding,
           misconceptions,
         };
-        this.maybeAdvanceFrom(beatId);
+        this.maybeAdvanceFrom(beat.id);
         this.persistAndEmit();
-        return { result: 'Lesson progress updated.', state: this.compactState() };
+        return {
+          result: understanding === 'understood'
+            ? 'Current beat passed. Continue ONLY with the new current beat returned below.'
+            : 'Current beat remains active. Repair or re-check it before advancing.',
+          observedLearnerTurn: this.lastLearnerTurn || null,
+          state: this.compactState(),
+        };
       },
     };
   }
@@ -284,7 +377,7 @@ ${this.lesson.fullSource}
     return {
       declaration: {
         name: 'manage_lesson_detour',
-        description: 'Push a temporary side-question detour while preserving the active lesson beat, or pop it when resolved so teaching can return to the saved anchor.',
+        description: 'Push a temporary side-question detour while preserving the current lesson beat, or pop it only when the learner side question is actually resolved.',
         parametersJsonSchema: {
           type: 'object',
           additionalProperties: false,
@@ -307,6 +400,13 @@ ${this.lesson.fullSource}
         }
 
         if (action === 'pop') {
+          if (this.lastLearnerTurn && explicitlyUnresolved(this.lastLearnerTurn)) {
+            return {
+              error: 'Do not resolve this detour yet: the learner latest turn explicitly says they still do not understand. Explain it another way first.',
+              observedLearnerTurn: this.lastLearnerTurn,
+              state: this.compactState(),
+            };
+          }
           const ended = this.state.detours.pop() ?? null;
           if (this.state.detours.length === 0) this.maybeAdvanceFrom(this.state.currentBeatId);
           this.persistAndEmit();
@@ -322,14 +422,44 @@ ${this.lesson.fullSource}
     return {
       declaration: {
         name: 'get_lesson_state',
-        description: 'Read the authoritative lesson position when uncertain about where to continue. Do not call routinely.',
+        description: 'Read the authoritative current beat and its exact script/check when uncertain about where to continue. Do not guess from conversation history.',
         parametersJsonSchema: {
           type: 'object',
           additionalProperties: false,
           properties: {},
         },
       },
-      handle: () => ({ result: 'Authoritative lesson state.', state: this.compactState() }),
+      handle: () => ({ result: 'Authoritative lesson state and current teaching contract.', state: this.compactState() }),
+    };
+  }
+
+  private finishTool(): LiveClientTool {
+    return {
+      declaration: {
+        name: 'finish_lesson',
+        description: 'Mandatory completion gate. Call this before saying the lesson is finished or saying goodbye because the lesson is over.',
+        parametersJsonSchema: {
+          type: 'object',
+          additionalProperties: false,
+          properties: {},
+        },
+      },
+      handle: () => {
+        const unresolved = this.unresolvedBeats();
+        const finished = unresolved.length === 0 && this.state.detours.length === 0;
+        if (!finished) {
+          return {
+            error: 'Lesson is NOT finished. Do not claim completion. Continue from the authoritative current beat.',
+            unresolved,
+            state: this.compactState(),
+          };
+        }
+        return {
+          result: 'Lesson complete. You may now give a brief closing message.',
+          finished: true,
+          state: this.compactState(),
+        };
+      },
     };
   }
 }
