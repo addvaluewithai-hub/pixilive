@@ -1,0 +1,427 @@
+:root {
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  color: #f7f7fb;
+  background: #070917;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+  background:
+    radial-gradient(circle at 82% 18%, rgba(118, 92, 255, 0.18), transparent 34%),
+    radial-gradient(circle at 12% 78%, rgba(42, 193, 255, 0.1), transparent 30%),
+    #070917;
+}
+
+button,
+input {
+  font: inherit;
+}
+
+.lesson-shell {
+  min-height: 100vh;
+  display: grid;
+  grid-template-columns: minmax(0, 0.95fr) minmax(420px, 1.05fr);
+  gap: 28px;
+  padding: 28px;
+  box-sizing: border-box;
+}
+
+.lesson-copy,
+.nova-panel {
+  min-height: calc(100vh - 56px);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 28px;
+  background: rgba(12, 15, 36, 0.7);
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.3);
+  backdrop-filter: blur(22px);
+}
+
+.lesson-copy {
+  padding: 42px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.lesson-kicker {
+  color: #a9a2ff;
+  font-size: 13px;
+  letter-spacing: 0.12em;
+  margin-bottom: 18px;
+}
+
+.lesson-copy h1 {
+  margin: 0;
+  font-size: clamp(42px, 6vw, 84px);
+  line-height: 0.98;
+  letter-spacing: -0.055em;
+  max-width: 720px;
+}
+
+.lesson-copy h1 em {
+  display: block;
+  color: #a89cff;
+  font-style: normal;
+  font-weight: 600;
+}
+
+.lesson-question {
+  margin: 24px 0 28px;
+  color: #c7cad9;
+  font-size: 18px;
+  line-height: 1.7;
+  max-width: 620px;
+}
+
+.lesson-progress-card {
+  padding: 20px;
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.045);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.progress-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: end;
+  gap: 16px;
+}
+
+.progress-head div {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.progress-head span,
+.progress-head strong,
+.progress-head b {
+  display: block;
+}
+
+.progress-head span {
+  color: #9da2b7;
+  font-size: 13px;
+}
+
+.progress-head strong {
+  font-size: 14px;
+}
+
+.progress-head b {
+  font-size: 24px;
+}
+
+.progress-track {
+  height: 7px;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 99px;
+  margin: 14px 0 16px;
+  overflow: hidden;
+}
+
+.progress-track i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #7d6cff, #64d5ff);
+  transition: width 280ms ease;
+}
+
+.active-beat {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 16px;
+}
+
+.active-beat small {
+  color: #a99eff;
+  border: 1px solid rgba(169, 158, 255, 0.35);
+  border-radius: 99px;
+  padding: 4px 8px;
+}
+
+.active-beat span {
+  color: #e7e8ef;
+}
+
+.section-checks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.section-checks span {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 10px;
+  border-radius: 999px;
+  color: #8f94a9;
+  background: rgba(255, 255, 255, 0.035);
+  border: 1px solid transparent;
+  font-size: 12px;
+}
+
+.section-checks span.active {
+  color: #f7f7fb;
+  border-color: rgba(168, 156, 255, 0.42);
+}
+
+.section-checks span.done {
+  color: #d9f8ef;
+}
+
+.section-checks i {
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.06);
+  font-style: normal;
+  font-size: 10px;
+}
+
+.section-checks .done i {
+  background: rgba(92, 214, 172, 0.18);
+}
+
+.lesson-transcript {
+  margin-top: 18px;
+  min-height: 112px;
+  padding: 16px 18px;
+  border-radius: 18px;
+  background: rgba(2, 4, 14, 0.44);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.lesson-transcript p {
+  margin: 0;
+  line-height: 1.7;
+}
+
+.lesson-transcript p + p {
+  margin-top: 12px;
+}
+
+.lesson-transcript b {
+  display: inline-block;
+  min-width: 52px;
+  color: #aaa1ff;
+  font-size: 12px;
+}
+
+.lesson-transcript span,
+.empty-line {
+  color: #d5d7e1;
+}
+
+.nova-panel {
+  position: relative;
+  overflow: hidden;
+  display: grid;
+  grid-template-rows: auto minmax(420px, 1fr) auto;
+}
+
+.nova-panel::before {
+  content: "";
+  position: absolute;
+  inset: 8% 14% 26%;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(125, 108, 255, 0.2), rgba(125, 108, 255, 0) 68%);
+  filter: blur(26px);
+  pointer-events: none;
+}
+
+.nova-topbar {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px 22px 0;
+}
+
+.nova-name {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-weight: 700;
+}
+
+.nova-name i {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #9a8eff;
+  box-shadow: 0 0 18px #9a8eff;
+}
+
+.live-status {
+  color: #a6aabc;
+  font-size: 12px;
+  padding: 6px 9px;
+  border-radius: 99px;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.live-listening {
+  color: #98ebd0;
+}
+
+.live-speaking {
+  color: #b6aaff;
+}
+
+.live-error {
+  color: #ff9f9f;
+}
+
+.nova-stage {
+  position: relative;
+  z-index: 1;
+  min-height: 420px;
+}
+
+.nova-stage canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.nova-controls {
+  position: relative;
+  z-index: 2;
+  padding: 0 22px 22px;
+}
+
+.start-lesson,
+.end-lesson {
+  width: 100%;
+  border: 0;
+  border-radius: 15px;
+  padding: 14px 18px;
+  cursor: pointer;
+  font-weight: 800;
+}
+
+.start-lesson {
+  color: #090b18;
+  background: linear-gradient(135deg, #b7adff, #79dcff);
+}
+
+.end-lesson {
+  color: #fff;
+  background: rgba(255, 110, 126, 0.15);
+  border: 1px solid rgba(255, 110, 126, 0.25);
+}
+
+.start-lesson:disabled,
+.end-lesson:disabled,
+.lesson-text-turn button:disabled,
+.reset-progress:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.lesson-text-turn {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 9px;
+  margin-top: 10px;
+}
+
+.lesson-text-turn input {
+  min-width: 0;
+  color: #fff;
+  background: rgba(255, 255, 255, 0.055);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 13px;
+  padding: 12px 13px;
+  outline: none;
+}
+
+.lesson-text-turn input:focus {
+  border-color: rgba(168, 156, 255, 0.55);
+}
+
+.lesson-text-turn button {
+  border: 0;
+  border-radius: 13px;
+  padding: 0 16px;
+  color: #fff;
+  background: #6658d7;
+  cursor: pointer;
+}
+
+.reset-progress {
+  margin-top: 12px;
+  padding: 0;
+  border: 0;
+  color: #8f94a9;
+  background: none;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.detour-note,
+.lesson-error {
+  margin: 10px 0 0;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.detour-note {
+  color: #b6aff6;
+}
+
+.lesson-error {
+  color: #ff9f9f;
+}
+
+@media (max-width: 980px) {
+  .lesson-shell {
+    grid-template-columns: 1fr;
+  }
+
+  .lesson-copy,
+  .nova-panel {
+    min-height: auto;
+  }
+
+  .lesson-copy {
+    padding: 30px;
+  }
+
+  .nova-panel {
+    min-height: 720px;
+  }
+}
+
+@media (max-width: 560px) {
+  .lesson-shell {
+    padding: 12px;
+    gap: 12px;
+  }
+
+  .lesson-copy,
+  .nova-panel {
+    border-radius: 20px;
+  }
+
+  .lesson-copy {
+    padding: 24px 20px;
+  }
+
+  .lesson-copy h1 {
+    font-size: 48px;
+  }
+
+  .section-checks span {
+    padding: 6px 8px;
+  }
+}
