@@ -22,6 +22,12 @@ export interface NovaLiveControllerOptions extends NovaLiveControllerEvents {
   container: HTMLElement;
   systemPrompt?: string;
   tools?: readonly LiveClientTool[];
+  /**
+   * Optional control tools that make a turn atomic to the listener: speech emitted
+   * before one of these tools is discarded, while non-control turns are buffered
+   * only until generation completes.
+   */
+  outputGateControlTools?: readonly string[];
   width?: number;
   height?: number;
   background?: number;
@@ -122,7 +128,9 @@ export class NovaLiveController {
         this.setMode('listening');
       },
       onError: (message) => this.events.onError?.(message),
-    }, options.tools ?? []);
+    }, options.tools ?? [], options.outputGateControlTools?.length
+      ? { controlToolNames: options.outputGateControlTools }
+      : undefined);
   }
 
   async init() {
