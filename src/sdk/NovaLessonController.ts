@@ -1,3 +1,4 @@
+import { emitSessionLog } from '../debug/sessionLog';
 import { LessonTutorRuntime } from '../lesson/LessonTutorRuntime';
 import type { LessonDefinition, LessonState, LessonTutorRuntimeOptions } from '../lesson/types';
 import { NovaLiveController, type NovaLiveControllerOptions } from './NovaLiveController';
@@ -19,10 +20,22 @@ export class NovaLessonController {
   constructor(options: NovaLessonControllerOptions) {
     const { lesson, lessonRuntime, ...novaOptions } = options;
     this.tutor = new LessonTutorRuntime(lesson, lessonRuntime);
+    const diagnosticTools = this.tutor.tools.map((tool) => ({
+      declaration: tool.declaration,
+      handle: (args: Record<string, unknown>) => {
+        const response = tool.handle(args);
+        emitSessionLog('tool', 'lesson_tool_response', {
+          name: tool.declaration.name,
+          response,
+        });
+        return response;
+      },
+    }));
+
     this.nova = new NovaLiveController({
       ...novaOptions,
       systemPrompt: this.tutor.systemPrompt,
-      tools: this.tutor.tools,
+      tools: diagnosticTools,
     });
   }
 
