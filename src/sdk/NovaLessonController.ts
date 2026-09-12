@@ -8,11 +8,7 @@ export interface NovaLessonControllerOptions extends Omit<NovaLiveControllerOpti
   lessonRuntime?: LessonTutorRuntimeOptions;
 }
 
-/**
- * Nova + Gemini Live + structured lesson state.
- * The full lesson source stays in the system instruction while local tools keep
- * progress and detour state authoritative outside the model's sliding context.
- */
+/** Nova + Gemini Live + authoritative lesson sequence/progress. */
 export class NovaLessonController {
   readonly tutor: LessonTutorRuntime;
   readonly nova: NovaLiveController;
@@ -32,13 +28,8 @@ export class NovaLessonController {
       },
     }));
 
-    const externalInputTranscript = novaOptions.onInputTranscript;
     this.nova = new NovaLiveController({
       ...novaOptions,
-      onInputTranscript: (text) => {
-        this.tutor.observeLearnerTurn(text);
-        externalInputTranscript?.(text);
-      },
       systemPrompt: this.tutor.systemPrompt,
       tools: diagnosticTools,
     });
@@ -53,14 +44,13 @@ export class NovaLessonController {
   }
 
   async connect() {
-    // Rebuild the prompt at every fresh connection so persisted progress is the
-    // starting authority even after a page reload or a previous session ended.
+    // Rebuild the small role prompt on every fresh connection. Lesson content itself
+    // still arrives beat-by-beat from the runtime tools.
     this.nova.setSystemPrompt(this.tutor.systemPrompt);
     await this.nova.connect();
   }
 
   sendText(text: string) {
-    this.tutor.observeLearnerTurn(text);
     this.nova.sendText(text);
   }
 
