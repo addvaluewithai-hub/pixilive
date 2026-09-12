@@ -1,4 +1,5 @@
 import { type FormEvent, useEffect, useMemo, useRef, useState } from 'react';
+import { exportSessionLog, subscribeSessionLog, type SessionLogEvent } from './debug/sessionLog';
 import { earthLesson } from './lesson/earthLesson';
 import type { LessonState } from './lesson/types';
 import type { LiveStatus } from './live/types';
@@ -15,6 +16,22 @@ const statusLabel: Record<LiveStatus, string> = {
   error: 'حصلت مشكلة',
 };
 
+async function copyText(value: string) {
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(value);
+    return;
+  }
+
+  const area = document.createElement('textarea');
+  area.value = value;
+  area.style.position = 'fixed';
+  area.style.opacity = '0';
+  document.body.appendChild(area);
+  area.select();
+  document.execCommand('copy');
+  area.remove();
+}
+
 export function LessonDemo() {
   const stageRef = useRef<HTMLDivElement | null>(null);
   const controllerRef = useRef<NovaLessonController | null>(null);
@@ -24,6 +41,8 @@ export function LessonDemo() {
   const [outputTranscript, setOutputTranscript] = useState('');
   const [text, setText] = useState('');
   const [error, setError] = useState('');
+  const [sessionLogs, setSessionLogs] = useState<SessionLogEvent[]>([]);
+  const [copiedLog, setCopiedLog] = useState(false);
 
   const connected = status === 'listening' || status === 'speaking';
 
@@ -32,6 +51,10 @@ export function LessonDemo() {
     if (!container) return;
 
     let disposed = false;
+    const unsubscribeLogs = subscribeSessionLog((entry) => {
+      setSessionLogs((current) => [...current, entry]);
+    });
+
     const controller = new NovaLessonController({
       container,
       lesson: earthLesson,
@@ -43,7 +66,7 @@ export function LessonDemo() {
     });
     controllerRef.current = controller;
     setLessonState(controller.state);
-    const unsubscribe = controller.subscribeLessonState(setLessonState);
+    const unsubscribeLesson = controller.subscribeLessonState(setLessonState);
 
     void controller.init().catch((reason) => {
       if (disposed) return;
@@ -52,7 +75,8 @@ export function LessonDemo() {
 
     return () => {
       disposed = true;
-      unsubscribe();
+      unsubscribeLogs();
+      unsubscribeLesson();
       if (controllerRef.current === controller) controllerRef.current = null;
       void controller.destroy();
     };
@@ -109,6 +133,39 @@ export function LessonDemo() {
     setInputTranscript('');
     setOutputTranscript('');
     setError('');
+  };
+
+  const copyLessonLog = async () => {
+    const diagnostic = {
+      kind: 'pixilive-nova-lesson-diagnostic',
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      note: 'Contains lesson transcripts, Gemini/session events, tool calls, lesson tool responses, timing and lesson state. API keys, ephemeral tokens and raw audio are excluded.',
+      lesson: {
+        id: earthLesson.id,
+        title: earthLesson.title,
+        language: earthLesson.language,
+        totalBeats: earthLesson.beats.length,
+        activeBeat: activeBeat ? {
+          id: activeBeat.id,
+          sectionId: activeBeat.sectionId,
+          title: activeBeat.title,
+          objective: activeBeat.objective,
+        } : null,
+        understoodBeats: understood,
+      },
+      liveStatus: status,
+      lessonState,
+      session: exportSessionLog(sessionLogs),
+    };
+
+    try {
+      await copyText(JSON.stringify(diagnostic, null, 2));
+      setCopiedLog(true);
+      window.setTimeout(() => setCopiedLog(false), 1800);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'تعذر نسخ الـ log');
+    }
   };
 
   return (
@@ -180,6 +237,16 @@ export function LessonDemo() {
             />
             <button type="submit" disabled={!connected || !text.trim()}>إرسال</button>
           </form>
+
+          <div className="lesson-diagnostics">
+            <button className="copy-lesson-log" type="button" onClick={() => void copyLessonLog()} disabled={!sessionLogs.length}>
+              {copiedLog ? '✓ اتنسخ — ابعتهولي' : `نسخ الـ log كامل (${sessionLogs.length})`}
+            </button>
+            <button className="clear-lesson-log" type="button" onClick={() => setSessionLogs([])} disabled={!sessionLogs.length}>
+              مسح الـ log
+            </button>
+            <p>بيشمل المحادثة، tool calls والـ responses، التوقيت، وآخر lesson state. من غير API keys أو raw audio.</p>
+          </div>
 
           <button className="reset-progress" type="button" onClick={resetLesson} disabled={connected || status === 'connecting'}>
             ابدأ الدرس من الأول
