@@ -7,9 +7,14 @@ import './performance.css';
 import './session-log.css';
 
 const lessonDemo = new URLSearchParams(window.location.search).get('lesson') === '1';
+const root = createRoot(document.getElementById('root')!);
 
-createRoot(document.getElementById('root')!).render(
-  <StrictMode>
-    {lessonDemo ? <LessonDemo /> : <App />}
-  </StrictMode>,
-);
+if (lessonDemo) {
+  root.render(<LessonDemo />);
+} else {
+  root.render(
+    <StrictMode>
+      <App />
+    </StrictMode>,
+  );
+}
