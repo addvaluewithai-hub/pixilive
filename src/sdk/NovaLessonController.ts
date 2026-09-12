@@ -3,7 +3,9 @@ import { LessonTutorRuntime } from '../lesson/LessonTutorRuntime';
 import type { LessonDefinition, LessonState, LessonTutorRuntimeOptions } from '../lesson/types';
 import { NovaLiveController, type NovaLiveControllerOptions } from './NovaLiveController';
 
-export interface NovaLessonControllerOptions extends Omit<NovaLiveControllerOptions, 'systemPrompt' | 'tools'> {
+const LESSON_CONTROL_TOOLS = ['get_lesson_state', 'assess_current_beat', 'finish_lesson'] as const;
+
+export interface NovaLessonControllerOptions extends Omit<NovaLiveControllerOptions, 'systemPrompt' | 'tools' | 'outputGateControlTools'> {
   lesson: LessonDefinition;
   lessonRuntime?: LessonTutorRuntimeOptions;
 }
@@ -32,6 +34,10 @@ export class NovaLessonController {
       ...novaOptions,
       systemPrompt: this.tutor.systemPrompt,
       tools: diagnosticTools,
+      // Lesson progress tools are control-plane decisions. Gemini may internally
+      // generate speech before deciding to call one, but that provisional speech is
+      // never played to the learner. Only the post-tool continuation becomes audible.
+      outputGateControlTools: LESSON_CONTROL_TOOLS,
     });
   }
 
