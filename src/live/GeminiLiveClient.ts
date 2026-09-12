@@ -210,7 +210,7 @@ export class GeminiLiveClient {
         emitSessionLog('session', 'setup_sent', {
           model: MODEL,
           thinkingLevel: 'HIGH',
-          googleSearch: true,
+          googleSearch: false,
           functionCalling: 'synchronous-optional',
           tools: functionDeclarations.map((tool) => tool.name),
           localPerformancePrimary: true,
@@ -232,10 +232,7 @@ export class GeminiLiveClient {
                 },
               ],
             },
-            tools: [
-              { googleSearch: {} },
-              { functionDeclarations },
-            ],
+            tools: [{ functionDeclarations }],
             realtimeInputConfig: {
               activityHandling: 'START_OF_ACTIVITY_INTERRUPTS',
               automaticActivityDetection: {
