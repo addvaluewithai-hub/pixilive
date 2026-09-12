@@ -5,6 +5,7 @@ on:
   push:
     branches:
       - main
+      - feature/nova-lesson-tutor
   workflow_dispatch:
 
 permissions:
