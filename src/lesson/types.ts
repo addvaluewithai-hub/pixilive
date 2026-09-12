@@ -7,6 +7,12 @@ export interface LessonBeat {
   title: string;
   objective: string;
   sourceAnchor: string;
+  /** Canonical Egyptian-Arabic teaching copy for the normal path. */
+  script: string;
+  /** Canonical content-bearing check that follows the base script. */
+  check: string;
+  /** What learner evidence is sufficient to pass this beat. */
+  passEvidence: string;
 }
 
 export interface LessonDefinition {
