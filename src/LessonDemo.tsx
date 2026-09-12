@@ -14,6 +14,9 @@ type ReviewItem =
   | { kind: 'nova'; text: string }
   | { kind: 'tool'; name: string; args: Record<string, unknown>; response?: unknown };
 
+type ConversationItem = Extract<ReviewItem, { kind: 'student' | 'nova' }>;
+type ToolItem = Extract<ReviewItem, { kind: 'tool' }>;
+
 const statusLabel: Record<LiveStatus, string> = {
   idle: 'جاهزة',
   connecting: 'بتوصل…',
@@ -55,21 +58,12 @@ async function copyText(value: string) {
 }
 
 function isReviewEvent(entry: SessionLogEvent) {
-  if (entry.category === 'user') {
-    return entry.event === 'text_sent' || entry.event === 'transcript';
-  }
-
-  if (entry.category === 'gemini') {
-    return entry.event === 'first_output_transcript' || entry.event === 'output_transcript';
-  }
-
-  if (entry.category === 'tool') {
-    if (entry.event === 'lesson_tool_response' || entry.event === 'google_search_activity') return true;
-    if (entry.event !== 'call_received') return false;
-    return entry.data?.name !== 'direct_character';
-  }
-
-  return false;
+  if (entry.category === 'user') return entry.event === 'text_sent' || entry.event === 'transcript';
+  if (entry.category === 'gemini') return entry.event === 'first_output_transcript' || entry.event === 'output_transcript';
+  if (entry.category !== 'tool') return false;
+  if (entry.event === 'lesson_tool_response') return true;
+  if (entry.event !== 'call_received') return false;
+  return entry.data?.name !== 'direct_character';
 }
 
 function mergeTranscript(current: string, incoming: string) {
@@ -81,19 +75,11 @@ function mergeTranscript(current: string, incoming: string) {
 
   const maxOverlap = Math.min(80, left.length, right.length);
   for (let overlap = maxOverlap; overlap >= 3; overlap -= 1) {
-    if (left.slice(-overlap) === right.slice(0, overlap)) {
-      return `${left}${right.slice(overlap)}`;
-    }
+    if (left.slice(-overlap) === right.slice(0, overlap)) return `${left}${right.slice(overlap)}`;
   }
 
   const needsSpace = !/[\s،,.!?؟:؛]$/.test(left) && !/^[\s،,.!?؟:؛]/.test(right);
   return `${left}${needsSpace ? ' ' : ''}${right}`;
-}
-
-function compactSearchDetail(value: unknown) {
-  if (typeof value !== 'string') return value;
-  const oneLine = value.replace(/\s+/g, ' ').trim();
-  return oneLine.length > 600 ? `${oneLine.slice(0, 600)}…` : oneLine;
 }
 
 function buildReviewItems(entries: SessionLogEvent[]) {
@@ -130,18 +116,6 @@ function buildReviewItems(entries: SessionLogEvent[]) {
       continue;
     }
 
-    if (entry.category === 'tool' && entry.event === 'google_search_activity') {
-      const phase = typeof entry.data?.phase === 'string' ? entry.data.phase : 'activity';
-      const detail = phase === 'query' ? entry.data?.code : entry.data?.output;
-      items.push({
-        kind: 'tool',
-        name: `google_search:${phase}`,
-        args: { detail: compactSearchDetail(detail) },
-        response: phase === 'result' ? 'server-side search result observed' : undefined,
-      });
-      continue;
-    }
-
     if (entry.category === 'tool' && entry.event === 'lesson_tool_response') {
       const name = typeof entry.data?.name === 'string' ? entry.data.name : '';
       for (let index = items.length - 1; index >= 0; index -= 1) {
@@ -157,11 +131,7 @@ function buildReviewItems(entries: SessionLogEvent[]) {
   return items;
 }
 
-function formatReviewLog(
-  entries: SessionLogEvent[],
-  activeBeat: EarthBeat | undefined,
-  understood: number,
-) {
+function formatReviewLog(entries: SessionLogEvent[], activeBeat: EarthBeat | undefined, understood: number) {
   const items = buildReviewItems(entries);
   const lines = [
     '# Nova lesson review log',
@@ -180,7 +150,6 @@ function formatReviewLog(
       lines.push(`[${number}] NOVA`, item.text, '');
       return;
     }
-
     lines.push(
       `[${number}] TOOL ${item.name}`,
       `args: ${JSON.stringify(item.args)}`,
@@ -196,31 +165,26 @@ function BoardVisual({ sectionId }: { sectionId?: string }) {
   switch (sectionId) {
     case '02':
       return (
-        <div className="board-visual visual-layers" aria-label="رسم توضيحي للصفيحة والوشاح">
-          <div className="layer-chip crust-chip">قشرة</div>
-          <div className="layer-plate">
-            <strong>الصفيحة</strong>
-            <span>القشرة + الجزء العلوي الصلب من الوشاح</span>
-          </div>
-          <div className="layer-mantle">
-            <strong>الوشاح</strong>
-            <span>صلب في معظمه · يتشوه ببطء شديد</span>
-          </div>
+        <div className="board-visual visual-layers" aria-label="الصفيحة والوشاح">
+          <div className="earth-layer crust"><span>القشرة</span></div>
+          <div className="earth-layer lithosphere"><strong>الصفيحة</strong><span>القشرة + الجزء العلوي الصلب من الوشاح</span></div>
+          <div className="earth-layer mantle"><strong>الوشاح</strong><span>صلب في معظمه · يتشوه ببطء شديد</span></div>
         </div>
       );
     case '03':
       return (
-        <div className="board-visual visual-ridge" aria-label="رسم توضيحي لحيد وسط المحيط">
-          <div className="ridge-arrow ridge-left">←</div>
-          <div className="ridge-floor"><span>أقدم</span><i /><span>أحدث</span></div>
+        <div className="board-visual visual-ridge" aria-label="حيد وسط المحيط">
+          <span className="age old">أقدم</span>
+          <div className="seafloor left"><i /></div>
           <div className="ridge-core"><b>حيد</b><small>قشرة جديدة</small></div>
-          <div className="ridge-floor ridge-floor-right"><span>أحدث</span><i /><span>أقدم</span></div>
-          <div className="ridge-arrow ridge-right">→</div>
+          <div className="seafloor right"><i /></div>
+          <span className="age old">أقدم</span>
+          <div className="ridge-arrows"><span>←</span><span>→</span></div>
         </div>
       );
     case '04':
       return (
-        <div className="board-visual visual-boundaries" aria-label="أنواع حركة حدود الصفائح">
+        <div className="board-visual visual-boundaries" aria-label="أنواع حدود الصفائح">
           <div><b>← →</b><span>تباعد</span></div>
           <div><b>→ ←</b><span>تقارب</span></div>
           <div><b>⇄</b><span>تحويلي</span></div>
@@ -229,30 +193,26 @@ function BoardVisual({ sectionId }: { sectionId?: string }) {
     case '05':
       return (
         <div className="board-visual visual-time" aria-label="تراكم الحركة عبر الزمن">
-          <div className="time-rate"><strong>3 سم</strong><span>كل سنة</span></div>
-          <div className="time-flow">×</div>
-          <div className="time-years"><strong>1,000,000</strong><span>سنة</span></div>
-          <div className="time-equals">=</div>
-          <div className="time-result"><strong>30 كم</strong><span>في المثال</span></div>
+          <div><strong>3 سم</strong><span>كل سنة</span></div>
+          <b>×</b>
+          <div><strong>1,000,000</strong><span>سنة</span></div>
+          <b>=</b>
+          <div className="time-answer"><strong>30 كم</strong><span>في المثال</span></div>
         </div>
       );
     case '06':
       return (
-        <div className="board-visual visual-samples" aria-label="عينات صخور حول حيد نشط">
-          <span className="sample-old">أقدم</span>
-          <i className="sample-line" />
-          <strong>أحدث<br /><small>عند الحيد</small></strong>
-          <i className="sample-line" />
-          <span className="sample-old">أقدم</span>
+        <div className="board-visual visual-samples" aria-label="عينات حول حيد نشط">
+          <span>أقدم</span><i /><strong>أحدث<small>عند الحيد</small></strong><i /><span>أقدم</span>
         </div>
       );
     case '01':
     default:
       return (
-        <div className="board-visual visual-coasts" aria-label="مقارنة شكل ساحلي أفريقيا وأمريكا الجنوبية">
-          <div className="coast-piece coast-america"><span>أمريكا الجنوبية</span><i /></div>
-          <div className="coast-question"><b>؟</b><span>تشابه يفتح سؤالًا<br />مش إثبات لوحده</span></div>
-          <div className="coast-piece coast-africa"><i /><span>أفريقيا</span></div>
+        <div className="board-visual visual-coasts" aria-label="مقارنة أفريقيا وأمريكا الجنوبية">
+          <div className="coast america"><i /><span>أمريكا الجنوبية</span></div>
+          <div className="coast-question"><b>؟</b><span>تشابه يفتح سؤالًا، مش إثبات لوحده</span></div>
+          <div className="coast africa"><i /><span>أفريقيا</span></div>
         </div>
       );
   }
@@ -288,8 +248,8 @@ export function LessonDemo() {
       lesson: earthLesson,
       transparent: true,
       onStatus: setStatus,
-      onInputTranscript: (value) => setInputTranscript(value),
-      onOutputTranscript: (value) => setOutputTranscript(value),
+      onInputTranscript: setInputTranscript,
+      onOutputTranscript: setOutputTranscript,
       onError: setError,
     });
     controllerRef.current = controller;
@@ -321,8 +281,8 @@ export function LessonDemo() {
   }, []);
 
   const reviewItems = useMemo(() => buildReviewItems(reviewLogs), [reviewLogs]);
-  const conversationItems = reviewItems.filter((item) => item.kind !== 'tool').slice(-8);
-  const toolItems = reviewItems.filter((item) => item.kind === 'tool').slice(-8);
+  const conversationItems = reviewItems.filter((item): item is ConversationItem => item.kind !== 'tool').slice(-12);
+  const toolItems = reviewItems.filter((item): item is ToolItem => item.kind === 'tool').slice(-12);
 
   const understood = lessonState
     ? Object.values(lessonState.beats).filter((beat) => beat.understanding === 'understood').length
@@ -332,9 +292,6 @@ export function LessonDemo() {
   const activeBeatIndex = earthLesson.beats.findIndex((beat) => beat.id === activeBeat?.id);
   const activeBeatState = activeBeat ? lessonState?.beats[activeBeat.id] : undefined;
   const activeSectionId = activeBeat?.sectionId ?? '01';
-  const activeSection = sections.find(([sectionId]) => sectionId === activeSectionId);
-  const activeSectionIndex = Math.max(0, sections.findIndex(([sectionId]) => sectionId === activeSectionId));
-  const activeDetour = lessonState?.detours.at(-1) ?? null;
 
   const connect = async () => {
     const controller = controllerRef.current;
@@ -344,7 +301,7 @@ export function LessonDemo() {
     setOutputTranscript('');
     try {
       await controller.connect();
-      const opener = 'اشرحلي الدرس ده بالمصري حتة حتة لحد ما نخلص كل حاجة، وابدأ من المكان اللي أنا واقف عنده.';
+      const opener = 'ابدأ الدرس من مكاني الحالي وامشي معايا خطوة خطوة.';
       setInputTranscript(opener);
       controller.sendText(opener);
     } catch (reason) {
@@ -397,205 +354,153 @@ export function LessonDemo() {
 
   return (
     <main className="lesson-shell" dir="rtl">
-      <header className="lesson-header">
-        <div className="lesson-brand">
-          <span className="lesson-brand-mark">N</span>
-          <div>
-            <small>منهج الإنسان · Nova Live</small>
-            <strong>{earthLesson.title}</strong>
-          </div>
+      <header className="lesson-topbar">
+        <div className="topbar-lesson">
+          <span className="nova-wordmark">Nova</span>
+          <div><small>الدرس</small><strong>{earthLesson.title}</strong></div>
         </div>
 
-        <div className="header-current">
-          <small>إحنا هنا</small>
-          <strong>{activeBeat?.title ?? 'بداية الدرس'}</strong>
-          <span>{sectionTitles[activeSectionId]} · فكرة {activeBeatIndex + 1} من {earthLesson.beats.length}</span>
-        </div>
-
-        <div className="header-progress">
-          <div><span>{understood}/{earthLesson.beats.length}</span><b>{percent}%</b></div>
+        <div className="topbar-progress">
+          <div><span>{percent}%</span><small>{understood} من {earthLesson.beats.length} فكرة</small></div>
           <div className="progress-track"><i style={{ width: `${percent}%` }} /></div>
+        </div>
+
+        <div className="topbar-tools">
+          <button className={drawer === 'conversation' ? 'active' : ''} type="button" onClick={() => toggleDrawer('conversation')}>المحادثة</button>
+          <button className={drawer === 'diagnostics' ? 'active' : ''} type="button" onClick={() => toggleDrawer('diagnostics')}>التشخيص</button>
+          <button className="reset-icon" type="button" onClick={resetLesson} disabled={connected || status === 'connecting'} title="ابدأ من الأول">↺</button>
         </div>
       </header>
 
       <div className="lesson-workspace">
-        <aside className="nova-panel">
-          <div className="nova-topbar">
-            <div className="nova-name"><i /> Nova</div>
-            <span className={`live-status live-${status}`}>{statusLabel[status]}</span>
+        <aside className="nova-dock">
+          <div className="nova-dock-head">
+            <strong>Nova</strong>
+            <span className={`live-status live-${status}`}><i />{statusLabel[status]}</span>
           </div>
 
           <div ref={stageRef} className="nova-stage" />
 
-          <div className="nova-caption" aria-live="polite">
-            <small>{status === 'speaking' ? 'Nova بتقول' : 'آخر كلام'}</small>
-            <p>{outputTranscript || 'أنا هنا جنبك. اللوحة في النص هي مساحة الشرح والنشاط.'}</p>
+          <div className="nova-live-caption" aria-live="polite">
+            <p>{outputTranscript || 'جاهزة نبدأ لما تكون جاهز.'}</p>
           </div>
 
-          <div className="nova-controls">
+          <div className="nova-session-control">
             {!connected ? (
               <button className="start-lesson" type="button" onClick={() => void connect()} disabled={status === 'connecting'}>
-                {status === 'connecting' ? 'بنجهّز Nova…' : understood > 0 ? 'كمّل من علامتك' : 'ابدأ الدرس'}
+                {status === 'connecting' ? 'بنوصّل…' : understood > 0 ? 'كمّل الدرس' : 'ابدأ الدرس'}
               </button>
             ) : (
               <button className="end-lesson" type="button" onClick={() => void disconnect()}>إنهاء الجلسة</button>
-            )}
-
-            <form className="lesson-text-turn" onSubmit={submit}>
-              <input
-                value={text}
-                onChange={(event) => setText(event.target.value)}
-                placeholder={connected ? 'اسأل Nova أو اكتب اللي مش واضح…' : 'ابدأ الجلسة الأول'}
-                disabled={!connected}
-              />
-              <button type="submit" disabled={!connected || !text.trim()}>إرسال</button>
-            </form>
-
-            {activeDetour && (
-              <p className="detour-note">سؤال جانبي مفتوح: {activeDetour.topic}</p>
             )}
             {error && <p className="lesson-error">{error}</p>}
           </div>
         </aside>
 
         <section className="learning-board">
-          <div className="board-topline">
-            <div className="board-location">
-              <span>القسم {activeSectionId}</span>
-              <b>{sectionTitles[activeSectionId]}</b>
+          <div className="board-heading-row">
+            <div>
+              <span className="board-eyebrow">{sectionTitles[activeSectionId]} · {activeBeatIndex + 1}/{earthLesson.beats.length}</span>
+              <h1>{activeBeat?.title}</h1>
+              <p>{activeBeat?.objective}</p>
             </div>
             <span className={`beat-state state-${activeBeatState?.understanding ?? 'unknown'}`}>
               {understandingLabel[activeBeatState?.understanding ?? 'unknown']}
             </span>
           </div>
 
-          <div className="board-heading">
-            <small>الفكرة الحالية</small>
-            <h1>{activeBeat?.title}</h1>
-            <p>{activeBeat?.objective}</p>
+          <div className="learning-canvas">
+            <BoardVisual sectionId={activeSectionId} />
           </div>
 
-          <BoardVisual sectionId={activeSectionId} />
-
-          <div className="board-content-grid">
-            <article className="board-script-card">
-              <div className="board-card-label"><i /> على السبورة</div>
-              <p>{activeBeat?.script}</p>
-            </article>
-
-            <article className="board-check-card">
-              <div className="board-card-label"><i /> دورك</div>
-              <h2>{activeBeat?.check}</h2>
-              <p>جاوب بطريقتك. Nova هتثبت الفكرة الأول قبل ما تنقلك للي بعدها.</p>
-            </article>
+          <div className="current-question">
+            <span>سؤال Nova</span>
+            <h2>{activeBeat?.check}</h2>
           </div>
 
-          <div className="board-actions">
-            <span>محتاج حاجة مختلفة؟</span>
-            <button type="button" disabled={!connected} onClick={() => sendTurn('بسّطلي الفكرة الحالية أكتر من غير ما تنتقل للي بعدها.')}>بسّطها</button>
-            <button type="button" disabled={!connected} onClick={() => sendTurn('اديني مثال بسيط من نفس محتوى الدرس على الفكرة الحالية.')}>مثال</button>
-            <button type="button" disabled={!connected} onClick={() => sendTurn('اختبرني في الفكرة الحالية بسؤال قصير من غير ما تنتقل للي بعدها.')}>اختبرني</button>
+          <div className="board-bottom">
+            <form className="lesson-composer" onSubmit={submit}>
+              <input
+                value={text}
+                onChange={(event) => setText(event.target.value)}
+                placeholder={connected ? 'اسأل، جاوب، أو قول اللي مش واضح…' : 'ابدأ الجلسة عشان تتكلم مع Nova'}
+                disabled={!connected}
+              />
+              <button type="submit" disabled={!connected || !text.trim()}>إرسال</button>
+            </form>
+
+            <div className="board-actions">
+              <button type="button" disabled={!connected} onClick={() => sendTurn('بسّطلي الفكرة الحالية أكتر.')}>بسّطها</button>
+              <button type="button" disabled={!connected} onClick={() => sendTurn('اديني مثال بسيط على الفكرة الحالية.')}>مثال</button>
+              <button type="button" disabled={!connected} onClick={() => sendTurn('اختبرني بسؤال قصير في الفكرة الحالية.')}>اختبرني</button>
+              {inputTranscript && <span>آخر رد: {inputTranscript}</span>}
+            </div>
           </div>
         </section>
 
         <aside className="lesson-rail">
-          <div className="rail-head">
-            <div>
-              <small>مسار الدرس</small>
-              <strong>{activeSectionIndex + 1} / {sections.length}</strong>
-            </div>
-            <span>{understood} فكرة اتثبتت</span>
-          </div>
-
-          <div className="rail-sections">
+          <div className="rail-title"><small>المسار</small><strong>{understood}/{earthLesson.beats.length}</strong></div>
+          <nav className="rail-nav" aria-label="أقسام الدرس">
             {sections.map(([sectionId, beats]) => {
               const completed = beats.filter((beat) => lessonState?.beats[beat.id]?.understanding === 'understood').length;
               const complete = completed === beats.length;
               const active = sectionId === activeSectionId;
               return (
-                <div key={sectionId} className={`rail-section ${complete ? 'done' : ''} ${active ? 'active' : ''}`}>
-                  <div className="rail-section-head">
-                    <i>{complete ? '✓' : sectionId}</i>
-                    <div><strong>{sectionTitles[sectionId]}</strong><span>{completed}/{beats.length}</span></div>
-                  </div>
-
+                <div key={sectionId} className={`rail-item ${complete ? 'done' : ''} ${active ? 'active' : ''}`}>
+                  <span className="rail-dot">{complete ? '✓' : sectionId}</span>
+                  <div><strong>{sectionTitles[sectionId]}</strong><small>{completed}/{beats.length}</small></div>
                   {active && (
-                    <div className="rail-beats">
+                    <div className="rail-current-beats">
                       {beats.map((beat) => {
                         const state = lessonState?.beats[beat.id]?.understanding ?? 'unknown';
                         const current = beat.id === activeBeat?.id;
-                        return (
-                          <div key={beat.id} className={`rail-beat ${current ? 'current' : ''} ${state === 'understood' ? 'done' : ''}`}>
-                            <span>{state === 'understood' ? '✓' : '•'}</span>
-                            <b>{beat.title}</b>
-                          </div>
-                        );
+                        return <span key={beat.id} className={`${current ? 'current' : ''} ${state === 'understood' ? 'done' : ''}`}>{beat.title}</span>;
                       })}
                     </div>
                   )}
                 </div>
               );
             })}
-          </div>
-
-          <div className="rail-footer">
-            <p>الخطوات بتتفتح بالترتيب. Nova تقدر تبسّط وتجاوب، لكن ما تنطّش خطوة.</p>
-            <button className="reset-progress" type="button" onClick={resetLesson} disabled={connected || status === 'connecting'}>
-              ابدأ الدرس من الأول
-            </button>
-          </div>
+          </nav>
         </aside>
       </div>
 
-      <section className={`lesson-drawer-shell ${drawer === 'closed' ? 'is-closed' : ''}`}>
-        <div className="drawer-tabs">
-          <div className="drawer-tab-group">
-            <button className={drawer === 'conversation' ? 'active' : ''} type="button" onClick={() => toggleDrawer('conversation')}>
-              المحادثة
-              {conversationItems.length ? <span>{conversationItems.length}</span> : null}
-            </button>
-            <button className={drawer === 'diagnostics' ? 'active' : ''} type="button" onClick={() => toggleDrawer('diagnostics')}>
-              التشخيص
-              {toolItems.length ? <span>{toolItems.length}</span> : null}
-            </button>
+      {drawer !== 'closed' && (
+        <section className="lesson-drawer">
+          <div className="drawer-head">
+            <strong>{drawer === 'conversation' ? 'المحادثة' : 'التشخيص'}</strong>
+            <button type="button" onClick={() => setDrawer('closed')}>إغلاق</button>
           </div>
-          <p>مساحة ثانوية عشان الـ board تفضل هي مركز التجربة.</p>
-        </div>
 
-        {drawer === 'conversation' && (
-          <div className="drawer-content conversation-history">
-            {conversationItems.length ? conversationItems.map((item, index) => (
-              <article key={`${item.kind}-${index}`} className={`history-turn ${item.kind}`}>
-                <b>{item.kind === 'student' ? 'أنت' : 'Nova'}</b>
-                <p>{item.text}</p>
-              </article>
-            )) : <p className="drawer-empty">المحادثة هتظهر هنا بعد ما تبدأ.</p>}
-          </div>
-        )}
-
-        {drawer === 'diagnostics' && (
-          <div className="drawer-content diagnostics-drawer">
-            <div className="lesson-diagnostics">
-              <button className="copy-lesson-log" type="button" onClick={() => void copyLessonLog()} disabled={!reviewLogs.length}>
-                {copiedLog ? '✓ اتنسخ — ابعتهولي' : 'نسخ المحادثة + tool calls'}
-              </button>
-              <button className="clear-lesson-log" type="button" onClick={() => setReviewLogs([])} disabled={!reviewLogs.length}>
-                مسح
-              </button>
-              <p>مختصر للمراجعة: كلام الطالب وNova + lesson tools + أي Google Search.</p>
-            </div>
-
-            <div className="tool-stream">
-              {toolItems.length ? toolItems.map((item, index) => (
-                <article key={`${item.name}-${index}`}>
-                  <strong>{item.name}</strong>
-                  <code>{JSON.stringify(item.args)}</code>
+          {drawer === 'conversation' ? (
+            <div className="conversation-history">
+              {conversationItems.length ? conversationItems.map((item, index) => (
+                <article key={`${item.kind}-${index}`} className={`history-turn ${item.kind}`}>
+                  <b>{item.kind === 'student' ? 'أنت' : 'Nova'}</b>
+                  <p>{item.text}</p>
                 </article>
-              )) : <p className="drawer-empty">لسه مفيش tool calls في الجلسة.</p>}
+              )) : <p className="drawer-empty">المحادثة هتظهر هنا بعد ما تبدأ.</p>}
             </div>
-          </div>
-        )}
-      </section>
+          ) : (
+            <div className="diagnostics-view">
+              <div className="diagnostic-actions">
+                <button type="button" onClick={() => void copyLessonLog()} disabled={!reviewLogs.length}>
+                  {copiedLog ? '✓ اتنسخ — ابعتهولي' : 'نسخ المحادثة + tool calls'}
+                </button>
+                <button type="button" onClick={() => setReviewLogs([])} disabled={!reviewLogs.length}>مسح</button>
+              </div>
+              <div className="tool-stream">
+                {toolItems.length ? toolItems.map((item, index) => (
+                  <article key={`${item.name}-${index}`}>
+                    <strong>{item.name}</strong>
+                    <code>{JSON.stringify(item.args)}</code>
+                  </article>
+                )) : <p className="drawer-empty">لسه مفيش tool calls في الجلسة.</p>}
+              </div>
+            </div>
+          )}
+        </section>
+      )}
     </main>
   );
 }
