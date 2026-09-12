@@ -6,7 +6,7 @@ import { DirectedNovaCharacter } from '../character/DirectedNovaCharacter';
 import type { CharacterMode, PerformanceCue } from '../character/performance';
 import type { Emotion } from '../character/types';
 import { GeminiLiveClient } from '../live/GeminiLiveClient';
-import type { LiveStatus } from '../live/types';
+import type { LiveClientTool, LiveStatus } from '../live/types';
 import { NovaFlightController, type FlyToOptions, type Point2D } from './NovaFlightController';
 
 export interface NovaLiveControllerEvents {
@@ -21,6 +21,7 @@ export interface NovaLiveControllerEvents {
 export interface NovaLiveControllerOptions extends NovaLiveControllerEvents {
   container: HTMLElement;
   systemPrompt?: string;
+  tools?: readonly LiveClientTool[];
   width?: number;
   height?: number;
   background?: number;
@@ -121,7 +122,7 @@ export class NovaLiveController {
         this.setMode('listening');
       },
       onError: (message) => this.events.onError?.(message),
-    });
+    }, options.tools ?? []);
   }
 
   async init() {
