@@ -24,33 +24,12 @@ function cloneState(state: LessonState): LessonState {
   return JSON.parse(JSON.stringify(state)) as LessonState;
 }
 
-function normalizeEvidence(value: string) {
-  return value
-    .toLowerCase()
-    .replace(/[ًٌٍَُِّْـ]/g, '')
-    .replace(/[أإآ]/g, 'ا')
-    .replace(/[ىي]/g, 'ي')
-    .replace(/[^\p{L}\p{N}]+/gu, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
-
-const ACKNOWLEDGEMENTS = new Set([
-  'اه', 'ايوه', 'ايوا', 'نعم', 'تمام', 'ماشي', 'اوكيه', 'اوكي', 'يس', 'yes', 'yep',
-  'اكيد', 'صح', 'فهمت', 'حلو', 'كويس', 'تمام فهمت', 'اه فهمت', 'ايوه فهمت',
-]);
-
-function isGenericAcknowledgement(value: string) {
-  return ACKNOWLEDGEMENTS.has(normalizeEvidence(value));
-}
-
 export class LessonTutorRuntime {
   readonly tools: readonly LiveClientTool[];
 
   private state: LessonState;
   private readonly storageKey: string;
   private readonly listeners = new Set<(state: LessonState) => void>();
-  private lastLearnerTurn = '';
 
   constructor(
     readonly lesson: LessonDefinition,
@@ -74,44 +53,42 @@ export class LessonTutorRuntime {
     return this.lesson.beats.find((beat) => beat.id === this.state.currentBeatId) ?? this.lesson.beats[0];
   }
 
-  observeLearnerTurn(text: string) {
-    const value = text.trim();
-    if (value) this.lastLearnerTurn = value;
-  }
-
   /**
-   * Keep the Live system instruction deliberately small. Nova does not receive the
-   * whole lesson or future beat contracts. The runtime reveals only the current
-   * beat through get_lesson_state / assess_current_beat tool responses.
+   * The model gets a small role prompt, not the whole lesson. The runtime reveals
+   * only the current beat. Nova owns conversational teaching/judgement; this class
+   * owns sequence, persistence and the completion gate.
    */
   get systemPrompt(): string {
     return `
 You are Nova, a warm spoken tutor. Speak naturally in Egyptian Arabic.
 The lesson is called "${this.lesson.title}".
 
-The application owns the curriculum and the sequence. You do NOT have the lesson content in this prompt.
+The application owns lesson sequence. You do not have the whole lesson in this prompt.
 
-NORMAL LESSON FLOW
-1. Before teaching anything at session start, call get_lesson_state. It returns the ONLY lesson beat you should teach now.
-2. Say that beat's currentScript naturally, then ask its currentCheck.
-3. After the learner answers that check, your FIRST action must be assess_current_beat BEFORE you introduce any new lesson content.
-4. If the tool keeps the same beat active, repair or re-check that same idea.
-5. If the tool advances, use ONLY the new currentScript/currentCheck returned by the tool.
-Never guess, reconstruct, or teach future beats from model memory.
+LESSON FLOW
+- At session start, call get_lesson_state before teaching. It returns the only lesson beat you should teach now.
+- Teach the returned currentScript naturally and use currentCheck as the main check for understanding.
+- Conversation can breathe: the learner may answer over several turns, ask side questions, change wording, or need another explanation.
+- Judge understanding from the conversation as a whole while this beat is active, not only from the learner's latest sentence.
+- goodUnderstanding describes what solid understanding roughly looks like. It is guidance, not a phrase-matching checklist and not something the learner must repeat verbatim.
+- When you judge the current beat is understood well enough, call assess_current_beat with decision="pass" BEFORE introducing the next lesson beat.
+- If the idea is not understood yet, keep teaching the same beat naturally. You may call assess_current_beat with decision="stay" when useful to record that it remains unresolved; you do not need to call it after every utterance.
+- Never ask the learner to repeat an idea they already demonstrated just to create fresh evidence for the tool.
+- You cannot choose a beat ID or skip ahead. After a pass, teach only the new current beat returned by the tool.
 
-UNDERSTANDING
-"اه", "تمام", "فهمت", "yes" and similar acknowledgements are not enough by themselves.
-For understood, quote the learner's exact relevant words in evidence. Explanation, prediction, correction, calculation, or successful application count as evidence.
-Your own explanation is never evidence that the learner understood.
+TEACHING JUDGEMENT
+A bare acknowledgement like "اه" or "تمام" is usually not strong evidence by itself, but use the full conversation: if the learner already demonstrated the idea earlier, a later acknowledgement does not erase that understanding.
+Your goal is genuine understanding, not completing a verbal checklist. If the central idea is clear, do not over-test minor wording or force every detail into one answer.
+Correct meaningful misconceptions before passing the beat.
 
 SIDE QUESTIONS
 If the learner asks a side question, answer it naturally using your general knowledge when you are reasonably confident. You may simplify or add useful background.
 If you are unsure, say so instead of inventing certainty.
-A side question does not advance the curriculum by itself. After answering it, return naturally to the current lesson idea/check. If you lose your place, call get_lesson_state.
-Do not ask permission questions like "تحب أكمل؟" or "نكمل؟". Just continue naturally with a content-bearing question or the current check.
+A side question does not change curriculum progress by itself. After answering it, continue naturally from the current lesson idea. If you lose your place, call get_lesson_state.
+Do not ask permission questions like "تحب أكمل؟" or "نكمل؟". Continue with the lesson or a useful content-bearing question.
 
 COMPLETION
-Do not claim the lesson is finished and do not close the lesson as completed unless you first call finish_lesson and it returns finished=true.
+Do not claim the lesson is finished and do not close it as completed unless you first call finish_lesson and it returns finished=true.
 
 Never expose tool names, beat IDs, internal state labels, currentScript/currentCheck field names, or curriculum mechanics to the learner.
 `.trim();
@@ -125,7 +102,6 @@ Never expose tool names, beat IDs, internal state labels, currentScript/currentC
 
   reset() {
     this.state = this.createInitialState();
-    this.lastLearnerTurn = '';
     this.persistAndEmit();
   }
 
@@ -166,9 +142,8 @@ Never expose tool names, beat IDs, internal state labels, currentScript/currentC
       return {
         lessonId: this.lesson.id,
         currentBeatId: validCurrent ? parsed.currentBeatId as string : initial.currentBeatId,
-        beats,
-        // Side questions are conversational now; clear legacy detour state.
         detours: [],
+        beats,
         updatedAt: typeof parsed.updatedAt === 'string' ? parsed.updatedAt : initial.updatedAt,
       };
     } catch {
@@ -182,7 +157,7 @@ Never expose tool names, beat IDs, internal state labels, currentScript/currentC
       try {
         window.localStorage.setItem(this.storageKey, JSON.stringify(this.state));
       } catch {
-        // Storage is optional; in-memory state remains authoritative.
+        // Persistence is optional; in-memory state remains authoritative.
       }
     }
     const snapshot = this.snapshot;
@@ -221,7 +196,7 @@ Never expose tool names, beat IDs, internal state labels, currentScript/currentC
       currentObjective: beat.objective,
       currentScript: beat.script,
       currentCheck: beat.check,
-      passEvidence: beat.passEvidence,
+      goodUnderstanding: beat.passEvidence,
       understoodCount,
       totalBeats: this.lesson.beats.length,
       currentBeatState: this.state.beats[beat.id],
@@ -233,56 +208,23 @@ Never expose tool names, beat IDs, internal state labels, currentScript/currentC
     return {
       declaration: {
         name: 'assess_current_beat',
-        description: 'After the learner answers the CURRENT lesson check, call this BEFORE speaking any new lesson content. It assesses only the current beat and returns either the same beat or the next beat contract. There is intentionally no beatId.',
+        description: 'Decide whether the authoritative current lesson beat is understood based on the conversation so far. pass advances exactly one sequential beat; stay keeps the same beat. Do not require the learner to repeat something they already demonstrated in an earlier turn.',
         parametersJsonSchema: {
           type: 'object',
           additionalProperties: false,
           properties: {
-            understanding: { type: 'string', enum: ['unknown', 'struggling', 'partial', 'understood'] },
-            evidence: { type: 'string', description: 'Exact relevant words from the learner latest turn. Required for understood.' },
-            misconception: { type: 'string', description: 'Optional short misconception actually observed in the learner response.' },
+            decision: { type: 'string', enum: ['pass', 'stay'] },
+            note: { type: 'string', description: 'Optional concise reason for the judgement, for diagnostics only.' },
+            misconception: { type: 'string', description: 'Optional meaningful misconception that still needs correction.' },
           },
-          required: ['understanding', 'evidence'],
+          required: ['decision'],
         },
       },
       handle: (args) => {
         const beat = this.currentBeat;
-        const understanding = args.understanding;
-        if (!isUnderstanding(understanding)) {
-          return { error: 'Invalid understanding value.', state: this.compactState() };
-        }
-
-        const evidence = typeof args.evidence === 'string' ? args.evidence.trim() : '';
-        if (understanding === 'understood') {
-          if (!this.lastLearnerTurn) {
-            return {
-              error: 'No learner turn observed. Ask the current check and wait for evidence.',
-              state: this.compactState(),
-            };
-          }
-          if (!evidence) {
-            return {
-              error: 'Cannot mark understood without learner evidence.',
-              observedLearnerTurn: this.lastLearnerTurn,
-              state: this.compactState(),
-            };
-          }
-          const observed = normalizeEvidence(this.lastLearnerTurn);
-          const quoted = normalizeEvidence(evidence);
-          if (!quoted || !observed.includes(quoted)) {
-            return {
-              error: 'Evidence must quote the learner latest turn.',
-              observedLearnerTurn: this.lastLearnerTurn,
-              state: this.compactState(),
-            };
-          }
-          if (isGenericAcknowledgement(this.lastLearnerTurn)) {
-            return {
-              error: 'A generic acknowledgement is not evidence. Stay on this beat and ask a content-bearing check.',
-              observedLearnerTurn: this.lastLearnerTurn,
-              state: this.compactState(),
-            };
-          }
+        const decision = args.decision;
+        if (decision !== 'pass' && decision !== 'stay') {
+          return { error: 'decision must be pass or stay.', state: this.compactState() };
         }
 
         const previous = this.state.beats[beat.id] ?? defaultBeatState();
@@ -293,17 +235,18 @@ Never expose tool names, beat IDs, internal state labels, currentScript/currentC
 
         this.state.beats[beat.id] = {
           coverage: 'covered',
-          understanding,
+          understanding: decision === 'pass' ? 'understood' : misconception ? 'struggling' : 'partial',
           misconceptions,
         };
-        this.maybeAdvanceFrom(beat.id);
+
+        if (decision === 'pass') this.maybeAdvanceFrom(beat.id);
         this.persistAndEmit();
 
         return {
-          result: understanding === 'understood'
-            ? 'Beat passed. Teach ONLY the current beat returned below, then ask its currentCheck.'
-            : 'Beat remains active. Repair or re-check this same beat before advancing.',
-          observedLearnerTurn: this.lastLearnerTurn || null,
+          result: decision === 'pass'
+            ? 'Current beat passed. Continue with ONLY the new current beat returned below.'
+            : 'Current beat stays active. Continue teaching it naturally; do not advance yet.',
+          note: typeof args.note === 'string' && args.note.trim() ? args.note.trim() : undefined,
           state: this.compactState(),
         };
       },
@@ -314,7 +257,7 @@ Never expose tool names, beat IDs, internal state labels, currentScript/currentC
     return {
       declaration: {
         name: 'get_lesson_state',
-        description: 'Mandatory before the first teaching turn, and whenever you lose your place. Returns ONLY the authoritative current beat contract; future lesson content is not provided.',
+        description: 'Call before the first teaching turn and whenever you lose your place. Returns only the authoritative current beat; future beats are hidden.',
         parametersJsonSchema: {
           type: 'object',
           additionalProperties: false,
@@ -322,7 +265,7 @@ Never expose tool names, beat IDs, internal state labels, currentScript/currentC
         },
       },
       handle: () => ({
-        result: 'Teach this current beat only. Say currentScript naturally, then ask currentCheck.',
+        result: 'Teach this current beat only. Use currentScript naturally and currentCheck as the main understanding check.',
         state: this.compactState(),
       }),
     };
