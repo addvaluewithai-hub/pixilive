@@ -7,6 +7,7 @@ import { NovaLessonController } from './sdk/NovaLessonController';
 import './lesson-demo.css';
 
 type EarthBeat = (typeof earthLesson.beats)[number];
+type DrawerMode = 'closed' | 'conversation' | 'diagnostics';
 
 type ReviewItem =
   | { kind: 'student'; text: string }
@@ -20,6 +21,22 @@ const statusLabel: Record<LiveStatus, string> = {
   speaking: 'بتشرح',
   error: 'حصلت مشكلة',
 };
+
+const sectionTitles: Record<string, string> = {
+  '01': 'اللغز',
+  '02': 'تحت أقدامنا',
+  '03': 'الدليل',
+  '04': 'جرّب الفكرة',
+  '05': 'الزمن والمحرك',
+  '06': 'فسّر بنفسك',
+};
+
+const understandingLabel = {
+  unknown: 'لسه بنبدأ',
+  struggling: 'محتاج تبسيط',
+  partial: 'قربنا',
+  understood: 'اتثبتت',
+} as const;
 
 async function copyText(value: string) {
   if (navigator.clipboard?.writeText) {
@@ -175,6 +192,72 @@ function formatReviewLog(
   return lines.join('\n').trim();
 }
 
+function BoardVisual({ sectionId }: { sectionId?: string }) {
+  switch (sectionId) {
+    case '02':
+      return (
+        <div className="board-visual visual-layers" aria-label="رسم توضيحي للصفيحة والوشاح">
+          <div className="layer-chip crust-chip">قشرة</div>
+          <div className="layer-plate">
+            <strong>الصفيحة</strong>
+            <span>القشرة + الجزء العلوي الصلب من الوشاح</span>
+          </div>
+          <div className="layer-mantle">
+            <strong>الوشاح</strong>
+            <span>صلب في معظمه · يتشوه ببطء شديد</span>
+          </div>
+        </div>
+      );
+    case '03':
+      return (
+        <div className="board-visual visual-ridge" aria-label="رسم توضيحي لحيد وسط المحيط">
+          <div className="ridge-arrow ridge-left">←</div>
+          <div className="ridge-floor"><span>أقدم</span><i /><span>أحدث</span></div>
+          <div className="ridge-core"><b>حيد</b><small>قشرة جديدة</small></div>
+          <div className="ridge-floor ridge-floor-right"><span>أحدث</span><i /><span>أقدم</span></div>
+          <div className="ridge-arrow ridge-right">→</div>
+        </div>
+      );
+    case '04':
+      return (
+        <div className="board-visual visual-boundaries" aria-label="أنواع حركة حدود الصفائح">
+          <div><b>← →</b><span>تباعد</span></div>
+          <div><b>→ ←</b><span>تقارب</span></div>
+          <div><b>⇄</b><span>تحويلي</span></div>
+        </div>
+      );
+    case '05':
+      return (
+        <div className="board-visual visual-time" aria-label="تراكم الحركة عبر الزمن">
+          <div className="time-rate"><strong>3 سم</strong><span>كل سنة</span></div>
+          <div className="time-flow">×</div>
+          <div className="time-years"><strong>1,000,000</strong><span>سنة</span></div>
+          <div className="time-equals">=</div>
+          <div className="time-result"><strong>30 كم</strong><span>في المثال</span></div>
+        </div>
+      );
+    case '06':
+      return (
+        <div className="board-visual visual-samples" aria-label="عينات صخور حول حيد نشط">
+          <span className="sample-old">أقدم</span>
+          <i className="sample-line" />
+          <strong>أحدث<br /><small>عند الحيد</small></strong>
+          <i className="sample-line" />
+          <span className="sample-old">أقدم</span>
+        </div>
+      );
+    case '01':
+    default:
+      return (
+        <div className="board-visual visual-coasts" aria-label="مقارنة شكل ساحلي أفريقيا وأمريكا الجنوبية">
+          <div className="coast-piece coast-america"><span>أمريكا الجنوبية</span><i /></div>
+          <div className="coast-question"><b>؟</b><span>تشابه يفتح سؤالًا<br />مش إثبات لوحده</span></div>
+          <div className="coast-piece coast-africa"><i /><span>أفريقيا</span></div>
+        </div>
+      );
+  }
+}
+
 export function LessonDemo() {
   const stageRef = useRef<HTMLDivElement | null>(null);
   const controllerRef = useRef<NovaLessonController | null>(null);
@@ -186,6 +269,7 @@ export function LessonDemo() {
   const [error, setError] = useState('');
   const [reviewLogs, setReviewLogs] = useState<SessionLogEvent[]>([]);
   const [copiedLog, setCopiedLog] = useState(false);
+  const [drawer, setDrawer] = useState<DrawerMode>('closed');
 
   const connected = status === 'listening' || status === 'speaking';
 
@@ -236,11 +320,21 @@ export function LessonDemo() {
     return [...grouped.entries()];
   }, []);
 
+  const reviewItems = useMemo(() => buildReviewItems(reviewLogs), [reviewLogs]);
+  const conversationItems = reviewItems.filter((item) => item.kind !== 'tool').slice(-8);
+  const toolItems = reviewItems.filter((item) => item.kind === 'tool').slice(-8);
+
   const understood = lessonState
     ? Object.values(lessonState.beats).filter((beat) => beat.understanding === 'understood').length
     : 0;
   const percent = Math.round((understood / earthLesson.beats.length) * 100);
-  const activeBeat = earthLesson.beats.find((beat) => beat.id === lessonState?.currentBeatId);
+  const activeBeat = earthLesson.beats.find((beat) => beat.id === lessonState?.currentBeatId) ?? earthLesson.beats[0];
+  const activeBeatIndex = earthLesson.beats.findIndex((beat) => beat.id === activeBeat?.id);
+  const activeBeatState = activeBeat ? lessonState?.beats[activeBeat.id] : undefined;
+  const activeSectionId = activeBeat?.sectionId ?? '01';
+  const activeSection = sections.find(([sectionId]) => sectionId === activeSectionId);
+  const activeSectionIndex = Math.max(0, sections.findIndex(([sectionId]) => sectionId === activeSectionId));
+  const activeDetour = lessonState?.detours.at(-1) ?? null;
 
   const connect = async () => {
     const controller = controllerRef.current;
@@ -262,12 +356,18 @@ export function LessonDemo() {
     await controllerRef.current?.disconnect();
   };
 
+  const sendTurn = (value: string) => {
+    const clean = value.trim();
+    if (!connected || !clean) return;
+    setInputTranscript(clean);
+    controllerRef.current?.sendText(clean);
+  };
+
   const submit = (event: FormEvent) => {
     event.preventDefault();
     const value = text.trim();
-    if (!connected || !value) return;
-    setInputTranscript(value);
-    controllerRef.current?.sendText(value);
+    if (!value) return;
+    sendTurn(value);
     setText('');
   };
 
@@ -276,6 +376,8 @@ export function LessonDemo() {
     controllerRef.current?.resetLesson();
     setInputTranscript('');
     setOutputTranscript('');
+    setReviewLogs([]);
+    setDrawer('closed');
     setError('');
   };
 
@@ -289,94 +391,216 @@ export function LessonDemo() {
     }
   };
 
+  const toggleDrawer = (mode: Exclude<DrawerMode, 'closed'>) => {
+    setDrawer((current) => current === mode ? 'closed' : mode);
+  };
+
   return (
     <main className="lesson-shell" dir="rtl">
-      <section className="lesson-copy">
-        <div className="lesson-kicker">منهج الإنسان · تجربة Nova Live</div>
-        <h1>الأرض التي نظنّها <em>ثابتة.</em></h1>
-        <p className="lesson-question">كيف نعرف أن الأرض تتحرك، حتى عندما لا نشعر بذلك؟</p>
-
-        <div className="lesson-progress-card">
-          <div className="progress-head">
-            <div>
-              <span>تقدّم الدرس</span>
-              <strong>{understood} / {earthLesson.beats.length}</strong>
-            </div>
-            <b>{percent}%</b>
+      <header className="lesson-header">
+        <div className="lesson-brand">
+          <span className="lesson-brand-mark">N</span>
+          <div>
+            <small>منهج الإنسان · Nova Live</small>
+            <strong>{earthLesson.title}</strong>
           </div>
+        </div>
+
+        <div className="header-current">
+          <small>إحنا هنا</small>
+          <strong>{activeBeat?.title ?? 'بداية الدرس'}</strong>
+          <span>{sectionTitles[activeSectionId]} · فكرة {activeBeatIndex + 1} من {earthLesson.beats.length}</span>
+        </div>
+
+        <div className="header-progress">
+          <div><span>{understood}/{earthLesson.beats.length}</span><b>{percent}%</b></div>
           <div className="progress-track"><i style={{ width: `${percent}%` }} /></div>
-          {activeBeat && (
-            <p className="active-beat">
-              <small>إحنا هنا</small>
-              <span>{activeBeat.title}</span>
-            </p>
-          )}
-          <div className="section-checks">
+        </div>
+      </header>
+
+      <div className="lesson-workspace">
+        <aside className="nova-panel">
+          <div className="nova-topbar">
+            <div className="nova-name"><i /> Nova</div>
+            <span className={`live-status live-${status}`}>{statusLabel[status]}</span>
+          </div>
+
+          <div ref={stageRef} className="nova-stage" />
+
+          <div className="nova-caption" aria-live="polite">
+            <small>{status === 'speaking' ? 'Nova بتقول' : 'آخر كلام'}</small>
+            <p>{outputTranscript || 'أنا هنا جنبك. اللوحة في النص هي مساحة الشرح والنشاط.'}</p>
+          </div>
+
+          <div className="nova-controls">
+            {!connected ? (
+              <button className="start-lesson" type="button" onClick={() => void connect()} disabled={status === 'connecting'}>
+                {status === 'connecting' ? 'بنجهّز Nova…' : understood > 0 ? 'كمّل من علامتك' : 'ابدأ الدرس'}
+              </button>
+            ) : (
+              <button className="end-lesson" type="button" onClick={() => void disconnect()}>إنهاء الجلسة</button>
+            )}
+
+            <form className="lesson-text-turn" onSubmit={submit}>
+              <input
+                value={text}
+                onChange={(event) => setText(event.target.value)}
+                placeholder={connected ? 'اسأل Nova أو اكتب اللي مش واضح…' : 'ابدأ الجلسة الأول'}
+                disabled={!connected}
+              />
+              <button type="submit" disabled={!connected || !text.trim()}>إرسال</button>
+            </form>
+
+            {activeDetour && (
+              <p className="detour-note">سؤال جانبي مفتوح: {activeDetour.topic}</p>
+            )}
+            {error && <p className="lesson-error">{error}</p>}
+          </div>
+        </aside>
+
+        <section className="learning-board">
+          <div className="board-topline">
+            <div className="board-location">
+              <span>القسم {activeSectionId}</span>
+              <b>{sectionTitles[activeSectionId]}</b>
+            </div>
+            <span className={`beat-state state-${activeBeatState?.understanding ?? 'unknown'}`}>
+              {understandingLabel[activeBeatState?.understanding ?? 'unknown']}
+            </span>
+          </div>
+
+          <div className="board-heading">
+            <small>الفكرة الحالية</small>
+            <h1>{activeBeat?.title}</h1>
+            <p>{activeBeat?.objective}</p>
+          </div>
+
+          <BoardVisual sectionId={activeSectionId} />
+
+          <div className="board-content-grid">
+            <article className="board-script-card">
+              <div className="board-card-label"><i /> على السبورة</div>
+              <p>{activeBeat?.script}</p>
+            </article>
+
+            <article className="board-check-card">
+              <div className="board-card-label"><i /> دورك</div>
+              <h2>{activeBeat?.check}</h2>
+              <p>جاوب بطريقتك. Nova هتثبت الفكرة الأول قبل ما تنقلك للي بعدها.</p>
+            </article>
+          </div>
+
+          <div className="board-actions">
+            <span>محتاج حاجة مختلفة؟</span>
+            <button type="button" disabled={!connected} onClick={() => sendTurn('بسّطلي الفكرة الحالية أكتر من غير ما تنتقل للي بعدها.')}>بسّطها</button>
+            <button type="button" disabled={!connected} onClick={() => sendTurn('اديني مثال بسيط من نفس محتوى الدرس على الفكرة الحالية.')}>مثال</button>
+            <button type="button" disabled={!connected} onClick={() => sendTurn('اختبرني في الفكرة الحالية بسؤال قصير من غير ما تنتقل للي بعدها.')}>اختبرني</button>
+          </div>
+        </section>
+
+        <aside className="lesson-rail">
+          <div className="rail-head">
+            <div>
+              <small>مسار الدرس</small>
+              <strong>{activeSectionIndex + 1} / {sections.length}</strong>
+            </div>
+            <span>{understood} فكرة اتثبتت</span>
+          </div>
+
+          <div className="rail-sections">
             {sections.map(([sectionId, beats]) => {
-              const complete = beats.every((beat) => lessonState?.beats[beat.id]?.understanding === 'understood');
-              const active = beats.some((beat) => beat.id === lessonState?.currentBeatId);
+              const completed = beats.filter((beat) => lessonState?.beats[beat.id]?.understanding === 'understood').length;
+              const complete = completed === beats.length;
+              const active = sectionId === activeSectionId;
               return (
-                <span key={sectionId} className={`${complete ? 'done' : ''} ${active ? 'active' : ''}`}>
-                  <i>{complete ? '✓' : sectionId}</i>
-                  القسم {sectionId}
-                </span>
+                <div key={sectionId} className={`rail-section ${complete ? 'done' : ''} ${active ? 'active' : ''}`}>
+                  <div className="rail-section-head">
+                    <i>{complete ? '✓' : sectionId}</i>
+                    <div><strong>{sectionTitles[sectionId]}</strong><span>{completed}/{beats.length}</span></div>
+                  </div>
+
+                  {active && (
+                    <div className="rail-beats">
+                      {beats.map((beat) => {
+                        const state = lessonState?.beats[beat.id]?.understanding ?? 'unknown';
+                        const current = beat.id === activeBeat?.id;
+                        return (
+                          <div key={beat.id} className={`rail-beat ${current ? 'current' : ''} ${state === 'understood' ? 'done' : ''}`}>
+                            <span>{state === 'understood' ? '✓' : '•'}</span>
+                            <b>{beat.title}</b>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
               );
             })}
           </div>
-        </div>
 
-        <div className="lesson-transcript" aria-live="polite">
-          {inputTranscript && <p className="user-line"><b>أنت</b><span>{inputTranscript}</span></p>}
-          {outputTranscript && <p className="nova-line"><b>Nova</b><span>{outputTranscript}</span></p>}
-          {!inputTranscript && !outputTranscript && <p className="empty-line">Nova هتشرح فكرة واحدة كل مرة، وتفضل فاكرة إحنا وقفنا فين حتى لو دخلنا في سؤال جانبي.</p>}
-        </div>
-      </section>
-
-      <section className="nova-panel">
-        <div className="nova-topbar">
-          <div className="nova-name"><i /> Nova</div>
-          <span className={`live-status live-${status}`}>{statusLabel[status]}</span>
-        </div>
-
-        <div ref={stageRef} className="nova-stage" />
-
-        <div className="nova-controls">
-          {!connected ? (
-            <button className="start-lesson" type="button" onClick={() => void connect()} disabled={status === 'connecting'}>
-              {status === 'connecting' ? 'بنجهّز Nova…' : understood > 0 ? 'كمّل من علامتك' : 'ابدأ الدرس'}
+          <div className="rail-footer">
+            <p>الخطوات بتتفتح بالترتيب. Nova تقدر تبسّط وتجاوب، لكن ما تنطّش خطوة.</p>
+            <button className="reset-progress" type="button" onClick={resetLesson} disabled={connected || status === 'connecting'}>
+              ابدأ الدرس من الأول
             </button>
-          ) : (
-            <button className="end-lesson" type="button" onClick={() => void disconnect()}>إنهاء الجلسة</button>
-          )}
-
-          <form className="lesson-text-turn" onSubmit={submit}>
-            <input
-              value={text}
-              onChange={(event) => setText(event.target.value)}
-              placeholder={connected ? 'قول أو اكتب اللي مش فاهمه…' : 'ابدأ الجلسة الأول'}
-              disabled={!connected}
-            />
-            <button type="submit" disabled={!connected || !text.trim()}>إرسال</button>
-          </form>
-
-          <div className="lesson-diagnostics">
-            <button className="copy-lesson-log" type="button" onClick={() => void copyLessonLog()} disabled={!reviewLogs.length}>
-              {copiedLog ? '✓ اتنسخ — ابعتهولي' : 'نسخ المحادثة + tool calls'}
-            </button>
-            <button className="clear-lesson-log" type="button" onClick={() => setReviewLogs([])} disabled={!reviewLogs.length}>
-              مسح
-            </button>
-            <p>نسخة مختصرة للمراجعة: كلام الطالب وNova + lesson tool calls/results + أي Google Search، بالترتيب الحقيقي.</p>
           </div>
+        </aside>
+      </div>
 
-          <button className="reset-progress" type="button" onClick={resetLesson} disabled={connected || status === 'connecting'}>
-            ابدأ الدرس من الأول
-          </button>
-          {lessonState?.detours.length ? (
-            <p className="detour-note">في سؤال جانبي مفتوح · Nova هترجع تلقائيًا لنقطة الدرس بعد ما يخلص.</p>
-          ) : null}
-          {error && <p className="lesson-error">{error}</p>}
+      <section className={`lesson-drawer-shell ${drawer === 'closed' ? 'is-closed' : ''}`}>
+        <div className="drawer-tabs">
+          <div className="drawer-tab-group">
+            <button className={drawer === 'conversation' ? 'active' : ''} type="button" onClick={() => toggleDrawer('conversation')}>
+              المحادثة
+              {conversationItems.length ? <span>{conversationItems.length}</span> : null}
+            </button>
+            <button className={drawer === 'diagnostics' ? 'active' : ''} type="button" onClick={() => toggleDrawer('diagnostics')}>
+              التشخيص
+              {toolItems.length ? <span>{toolItems.length}</span> : null}
+            </button>
+          </div>
+          <p>مساحة ثانوية عشان الـ board تفضل هي مركز التجربة.</p>
         </div>
+
+        {drawer === 'conversation' && (
+          <div className="drawer-content conversation-history">
+            {conversationItems.length ? conversationItems.map((item, index) => {
+              if (item.kind === 'tool') return null;
+              return (
+                <article key={`${item.kind}-${index}`} className={`history-turn ${item.kind}`}>
+                  <b>{item.kind === 'student' ? 'أنت' : 'Nova'}</b>
+                  <p>{item.text}</p>
+                </article>
+              );
+            }) : <p className="drawer-empty">المحادثة هتظهر هنا بعد ما تبدأ.</p>}
+          </div>
+        )}
+
+        {drawer === 'diagnostics' && (
+          <div className="drawer-content diagnostics-drawer">
+            <div className="lesson-diagnostics">
+              <button className="copy-lesson-log" type="button" onClick={() => void copyLessonLog()} disabled={!reviewLogs.length}>
+                {copiedLog ? '✓ اتنسخ — ابعتهولي' : 'نسخ المحادثة + tool calls'}
+              </button>
+              <button className="clear-lesson-log" type="button" onClick={() => setReviewLogs([])} disabled={!reviewLogs.length}>
+                مسح
+              </button>
+              <p>مختصر للمراجعة: كلام الطالب وNova + lesson tools + أي Google Search.</p>
+            </div>
+
+            <div className="tool-stream">
+              {toolItems.length ? toolItems.map((item, index) => {
+                if (item.kind !== 'tool') return null;
+                return (
+                  <article key={`${item.name}-${index}`}>
+                    <strong>{item.name}</strong>
+                    <code>{JSON.stringify(item.args)}</code>
+                  </article>
+                );
+              }) : <p className="drawer-empty">لسه مفيش tool calls في الجلسة.</p>}
+            </div>
+          </div>
+        )}
       </section>
     </main>
   );
