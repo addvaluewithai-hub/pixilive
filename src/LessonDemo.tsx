@@ -47,7 +47,7 @@ function isReviewEvent(entry: SessionLogEvent) {
   }
 
   if (entry.category === 'tool') {
-    if (entry.event === 'lesson_tool_response') return true;
+    if (entry.event === 'lesson_tool_response' || entry.event === 'google_search_activity') return true;
     if (entry.event !== 'call_received') return false;
     return entry.data?.name !== 'direct_character';
   }
@@ -71,6 +71,12 @@ function mergeTranscript(current: string, incoming: string) {
 
   const needsSpace = !/[\s،,.!?؟:؛]$/.test(left) && !/^[\s،,.!?؟:؛]/.test(right);
   return `${left}${needsSpace ? ' ' : ''}${right}`;
+}
+
+function compactSearchDetail(value: unknown) {
+  if (typeof value !== 'string') return value;
+  const oneLine = value.replace(/\s+/g, ' ').trim();
+  return oneLine.length > 600 ? `${oneLine.slice(0, 600)}…` : oneLine;
 }
 
 function buildReviewItems(entries: SessionLogEvent[]) {
@@ -104,6 +110,18 @@ function buildReviewItems(entries: SessionLogEvent[]) {
         ? entry.data.args as Record<string, unknown>
         : {};
       items.push({ kind: 'tool', name, args });
+      continue;
+    }
+
+    if (entry.category === 'tool' && entry.event === 'google_search_activity') {
+      const phase = typeof entry.data?.phase === 'string' ? entry.data.phase : 'activity';
+      const detail = phase === 'query' ? entry.data?.code : entry.data?.output;
+      items.push({
+        kind: 'tool',
+        name: `google_search:${phase}`,
+        args: { detail: compactSearchDetail(detail) },
+        response: phase === 'result' ? 'server-side search result observed' : undefined,
+      });
       continue;
     }
 
@@ -348,7 +366,7 @@ export function LessonDemo() {
             <button className="clear-lesson-log" type="button" onClick={() => setReviewLogs([])} disabled={!reviewLogs.length}>
               مسح
             </button>
-            <p>نسخة مختصرة للمراجعة: كلام الطالب وNova + lesson tool calls/results فقط، بالترتيب الحقيقي.</p>
+            <p>نسخة مختصرة للمراجعة: كلام الطالب وNova + lesson tool calls/results + أي Google Search، بالترتيب الحقيقي.</p>
           </div>
 
           <button className="reset-progress" type="button" onClick={resetLesson} disabled={connected || status === 'connecting'}>
