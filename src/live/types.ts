@@ -12,3 +12,14 @@ export interface LiveCallbacks {
   onInterrupted: () => void;
   onError: (message: string) => void;
 }
+
+export interface LiveClientToolDeclaration {
+  name: string;
+  description: string;
+  parametersJsonSchema: Record<string, unknown>;
+}
+
+export interface LiveClientTool {
+  declaration: LiveClientToolDeclaration;
+  handle: (args: Record<string, unknown>) => Record<string, unknown>;
+}
