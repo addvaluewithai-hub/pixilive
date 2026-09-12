@@ -1,5 +1,5 @@
 import { type FormEvent, useEffect, useMemo, useRef, useState } from 'react';
-import { exportSessionLog, subscribeSessionLog, type SessionLogEvent } from './debug/sessionLog';
+import { subscribeSessionLog, type SessionLogEvent } from './debug/sessionLog';
 import { earthLesson } from './lesson/earthLesson';
 import type { LessonState } from './lesson/types';
 import type { LiveStatus } from './live/types';
@@ -7,6 +7,10 @@ import { NovaLessonController } from './sdk/NovaLessonController';
 import './lesson-demo.css';
 
 type EarthBeat = (typeof earthLesson.beats)[number];
+
+type ReviewItem =
+  | { kind: 'student' | 'nova'; text: string }
+  | { kind: 'tool'; name: string; args: Record<string, unknown>; response?: unknown };
 
 const statusLabel: Record<LiveStatus, string> = {
   idle: 'جاهزة',
@@ -32,6 +36,126 @@ async function copyText(value: string) {
   area.remove();
 }
 
+function isReviewEvent(entry: SessionLogEvent) {
+  if (entry.category === 'user') {
+    return entry.event === 'text_sent' || entry.event === 'transcript';
+  }
+
+  if (entry.category === 'gemini') {
+    return entry.event === 'first_output_transcript' || entry.event === 'output_transcript';
+  }
+
+  if (entry.category === 'tool') {
+    if (entry.event === 'lesson_tool_response') return true;
+    if (entry.event !== 'call_received') return false;
+    return entry.data?.name !== 'direct_character';
+  }
+
+  return false;
+}
+
+function mergeTranscript(current: string, incoming: string) {
+  const left = current.replace(/\s+/g, ' ').trim();
+  const right = incoming.replace(/\s+/g, ' ').trim();
+  if (!left) return right;
+  if (!right || left === right || left.endsWith(right)) return left;
+  if (right.startsWith(left)) return right;
+
+  const maxOverlap = Math.min(80, left.length, right.length);
+  for (let overlap = maxOverlap; overlap >= 3; overlap -= 1) {
+    if (left.slice(-overlap) === right.slice(0, overlap)) {
+      return `${left}${right.slice(overlap)}`;
+    }
+  }
+
+  const needsSpace = !/[\s،,.!?؟:؛]$/.test(left) && !/^[\s،,.!?؟:؛]/.test(right);
+  return `${left}${needsSpace ? ' ' : ''}${right}`;
+}
+
+function buildReviewItems(entries: SessionLogEvent[]) {
+  const items: ReviewItem[] = [];
+
+  const appendSpeech = (kind: 'student' | 'nova', text: unknown) => {
+    if (typeof text !== 'string' || !text.trim()) return;
+    const previous = items.at(-1);
+    if (previous?.kind === kind) {
+      previous.text = mergeTranscript(previous.text, text);
+      return;
+    }
+    items.push({ kind, text: text.trim() });
+  };
+
+  for (const entry of entries) {
+    if (entry.category === 'user' && (entry.event === 'text_sent' || entry.event === 'transcript')) {
+      appendSpeech('student', entry.data?.text);
+      continue;
+    }
+
+    if (entry.category === 'gemini' && (entry.event === 'first_output_transcript' || entry.event === 'output_transcript')) {
+      appendSpeech('nova', entry.data?.text);
+      continue;
+    }
+
+    if (entry.category === 'tool' && entry.event === 'call_received') {
+      const name = typeof entry.data?.name === 'string' ? entry.data.name : '';
+      if (!name || name === 'direct_character') continue;
+      const args = entry.data?.args && typeof entry.data.args === 'object'
+        ? entry.data.args as Record<string, unknown>
+        : {};
+      items.push({ kind: 'tool', name, args });
+      continue;
+    }
+
+    if (entry.category === 'tool' && entry.event === 'lesson_tool_response') {
+      const name = typeof entry.data?.name === 'string' ? entry.data.name : '';
+      for (let index = items.length - 1; index >= 0; index -= 1) {
+        const candidate = items[index];
+        if (candidate.kind === 'tool' && candidate.name === name && candidate.response === undefined) {
+          candidate.response = entry.data?.response;
+          break;
+        }
+      }
+    }
+  }
+
+  return items;
+}
+
+function formatReviewLog(
+  entries: SessionLogEvent[],
+  activeBeat: EarthBeat | undefined,
+  understood: number,
+) {
+  const items = buildReviewItems(entries);
+  const lines = [
+    '# Nova lesson review log',
+    `Progress: ${understood}/${earthLesson.beats.length} understood`,
+    `Active beat: ${activeBeat ? `${activeBeat.id} — ${activeBeat.title}` : 'unknown'}`,
+    '',
+  ];
+
+  items.forEach((item, index) => {
+    const number = index + 1;
+    if (item.kind === 'student') {
+      lines.push(`[${number}] STUDENT`, item.text, '');
+      return;
+    }
+    if (item.kind === 'nova') {
+      lines.push(`[${number}] NOVA`, item.text, '');
+      return;
+    }
+
+    lines.push(
+      `[${number}] TOOL ${item.name}`,
+      `args: ${JSON.stringify(item.args)}`,
+      `result: ${item.response === undefined ? '(no response captured)' : JSON.stringify(item.response)}`,
+      '',
+    );
+  });
+
+  return lines.join('\n').trim();
+}
+
 export function LessonDemo() {
   const stageRef = useRef<HTMLDivElement | null>(null);
   const controllerRef = useRef<NovaLessonController | null>(null);
@@ -41,7 +165,7 @@ export function LessonDemo() {
   const [outputTranscript, setOutputTranscript] = useState('');
   const [text, setText] = useState('');
   const [error, setError] = useState('');
-  const [sessionLogs, setSessionLogs] = useState<SessionLogEvent[]>([]);
+  const [reviewLogs, setReviewLogs] = useState<SessionLogEvent[]>([]);
   const [copiedLog, setCopiedLog] = useState(false);
 
   const connected = status === 'listening' || status === 'speaking';
@@ -52,7 +176,8 @@ export function LessonDemo() {
 
     let disposed = false;
     const unsubscribeLogs = subscribeSessionLog((entry) => {
-      setSessionLogs((current) => [...current, entry]);
+      if (!isReviewEvent(entry)) return;
+      setReviewLogs((current) => [...current, entry]);
     });
 
     const controller = new NovaLessonController({
@@ -136,31 +261,8 @@ export function LessonDemo() {
   };
 
   const copyLessonLog = async () => {
-    const diagnostic = {
-      kind: 'pixilive-nova-lesson-diagnostic',
-      version: 1,
-      exportedAt: new Date().toISOString(),
-      note: 'Contains lesson transcripts, Gemini/session events, tool calls, lesson tool responses, timing and lesson state. API keys, ephemeral tokens and raw audio are excluded.',
-      lesson: {
-        id: earthLesson.id,
-        title: earthLesson.title,
-        language: earthLesson.language,
-        totalBeats: earthLesson.beats.length,
-        activeBeat: activeBeat ? {
-          id: activeBeat.id,
-          sectionId: activeBeat.sectionId,
-          title: activeBeat.title,
-          objective: activeBeat.objective,
-        } : null,
-        understoodBeats: understood,
-      },
-      liveStatus: status,
-      lessonState,
-      session: exportSessionLog(sessionLogs),
-    };
-
     try {
-      await copyText(JSON.stringify(diagnostic, null, 2));
+      await copyText(formatReviewLog(reviewLogs, activeBeat, understood));
       setCopiedLog(true);
       window.setTimeout(() => setCopiedLog(false), 1800);
     } catch (reason) {
@@ -239,13 +341,13 @@ export function LessonDemo() {
           </form>
 
           <div className="lesson-diagnostics">
-            <button className="copy-lesson-log" type="button" onClick={() => void copyLessonLog()} disabled={!sessionLogs.length}>
-              {copiedLog ? '✓ اتنسخ — ابعتهولي' : `نسخ الـ log كامل (${sessionLogs.length})`}
+            <button className="copy-lesson-log" type="button" onClick={() => void copyLessonLog()} disabled={!reviewLogs.length}>
+              {copiedLog ? '✓ اتنسخ — ابعتهولي' : 'نسخ المحادثة + tool calls'}
             </button>
-            <button className="clear-lesson-log" type="button" onClick={() => setSessionLogs([])} disabled={!sessionLogs.length}>
-              مسح الـ log
+            <button className="clear-lesson-log" type="button" onClick={() => setReviewLogs([])} disabled={!reviewLogs.length}>
+              مسح
             </button>
-            <p>بيشمل المحادثة، tool calls والـ responses، التوقيت، وآخر lesson state. من غير API keys أو raw audio.</p>
+            <p>نسخة مختصرة للمراجعة: كلام الطالب وNova + lesson tool calls/results فقط، بالترتيب الحقيقي.</p>
           </div>
 
           <button className="reset-progress" type="button" onClick={resetLesson} disabled={connected || status === 'connecting'}>
