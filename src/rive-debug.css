@@ -1,0 +1,21 @@
+.motion-lab-toggle span em {
+  margin-left: 2px;
+  padding: 2px 6px;
+  border: 1px solid rgba(134,239,172,.25);
+  border-radius: 999px;
+  color: #86efac;
+  background: rgba(134,239,172,.06);
+  font-size: 8px;
+  font-style: normal;
+  font-weight: 800;
+  letter-spacing: .08em;
+}
+.motion-lab-toggle span i.unbound {
+  background: #fb7185;
+  box-shadow: 0 0 12px rgba(251,113,133,.45);
+}
+.motion-lab-toggle span i.unbound + em {
+  color: #fb7185;
+  border-color: rgba(251,113,133,.25);
+  background: rgba(251,113,133,.06);
+}
