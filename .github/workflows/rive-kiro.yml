@@ -38,10 +38,16 @@ jobs:
         run: mkdir -p rive/kiro/build
 
       - name: Verify RML
-        run: rive rive/kiro --verify --format=json | tee rive/kiro/build/verify.json
+        shell: bash
+        run: |
+          set -o pipefail
+          rive rive/kiro --verify --format=json | tee rive/kiro/build/verify.json
 
       - name: Build unsigned runtime asset
-        run: rive rive/kiro --once --format=json | tee rive/kiro/build/build.json
+        shell: bash
+        run: |
+          set -o pipefail
+          rive rive/kiro --once --format=json | tee rive/kiro/build/build.json
 
       - name: Inspect resolved scene
         run: rive inspect rive/kiro --json > rive/kiro/build/inspect.json
