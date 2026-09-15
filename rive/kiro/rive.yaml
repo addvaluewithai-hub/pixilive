@@ -1,7 +1,5 @@
 name: kiro
 main: Kiro
-debugLevel: 0
-optimizationLevel: 2
 
 output:
   dir: build
