@@ -32,7 +32,9 @@ export const characterRegistry = [
       alphaMax: 0,
     },
     rive: {
-      src: '/rive/kiro.riv',
+      // Cache-bust the authored asset so a deploy can never keep an older .riv
+      // while the React controls already expect newer ViewModel bindings.
+      src: '/rive/kiro.riv?v=kiro-rig-24',
       artboard: 'Kiro',
       stateMachine: 'KiroMachine',
     },
