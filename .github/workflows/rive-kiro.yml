@@ -8,6 +8,7 @@ on:
       - 'rive/kiro/**'
       - 'public/rive/**'
       - 'src/**'
+      - 'scripts/capture-rive-kiro.mjs'
       - 'package.json'
       - '.github/workflows/rive-kiro.yml'
   workflow_dispatch:
@@ -32,9 +33,6 @@ jobs:
       - name: Install app dependencies
         run: npm install --no-audit --no-fund
 
-      - name: Typecheck and build app
-        run: npm run build
-
       - name: Install Rive Linux dependencies
         shell: bash
         run: |
@@ -51,7 +49,7 @@ jobs:
         run: rive --version
 
       - name: Prepare output directory
-        run: mkdir -p rive/kiro/build
+        run: mkdir -p rive/kiro/build visual-artifacts public/rive
 
       - name: Verify RML
         shell: bash
@@ -68,14 +66,43 @@ jobs:
       - name: Inspect resolved scene
         run: rive inspect rive/kiro --json > rive/kiro/build/inspect.json
 
-      - name: Render two-second preview
-        run: rive rive/kiro --screenshot=rive/kiro/build/kiro.png --advance=2s
+      - name: Use the freshly built Rive asset in the app
+        run: cp rive/kiro/build/kiro.riv public/rive/kiro.riv
+
+      - name: Typecheck and build app
+        run: npm run build
+
+      - name: Install Playwright Chromium
+        run: |
+          npm install --no-save --no-audit --no-fund playwright@latest
+          npx playwright install --with-deps chromium
+
+      - name: Start app preview
+        shell: bash
+        run: |
+          npx vite preview --host 127.0.0.1 --port 4173 > /tmp/pixilive-rive-preview.log 2>&1 &
+          for attempt in {1..30}; do
+            if curl --fail --silent http://127.0.0.1:4173 > /dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          cat /tmp/pixilive-rive-preview.log || true
+          exit 1
+
+      - name: Capture Kiro browser states
+        env:
+          PIXILIVE_PREVIEW_URL: http://127.0.0.1:4173
+        run: node scripts/capture-rive-kiro.mjs
+
+      - name: Render two-second CLI preview
+        run: rive rive/kiro --screenshot=rive/kiro/build/kiro-cli.png --advance=2s
 
       - name: Capture schemas for the next rig iteration
         shell: bash
         run: |
           {
-            for TYPE in Artboard LayoutComponentStyle Shape Triangle Ellipse Rectangle Fill SolidColor Solo ViewModel ViewModelPropertyNumber ViewModelPropertyBoolean ViewModelPropertyEnum ViewModelPropertyTrigger Enum; do
+            for TYPE in Artboard LayoutComponentStyle Shape Triangle Ellipse Rectangle Fill SolidColor Node RootBone Bone IKConstraint TranslationConstraint RotationConstraint TransformConstraint ViewModel ViewModelPropertyNumber ViewModelPropertyBoolean ViewModelPropertyEnum ViewModelPropertyTrigger Enum; do
               echo "=== $TYPE ==="
               rive schema "$TYPE" || true
               echo
@@ -87,6 +114,9 @@ jobs:
             rive docs --search 'ViewModelPropertyNumber' || true
             echo
             rive docs --search 'viewModelId' || true
+            echo
+            echo '=== Joystick docs search ==='
+            rive docs --search 'joystick' || true
           } > rive/kiro/build/schema-notes.txt
 
       - name: Capture CLI authoring docs and scaffold
@@ -148,4 +178,5 @@ jobs:
           name: kiro-rive-build
           path: |
             rive/kiro/build/
+            visual-artifacts/kiro-*.png
           if-no-files-found: warn
