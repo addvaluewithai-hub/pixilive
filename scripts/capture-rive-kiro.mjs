@@ -28,13 +28,15 @@ try {
   await page.waitForTimeout(250);
   await canvas.screenshot({ path: path.join(outputDir, 'kiro-curious-gaze.png') });
 
-  await page.getByRole('button', { name: /Motion lab show/i }).click();
-  const motionButton = page.getByRole('button', { name: 'Run motion sweep' });
+  await page.locator('.motion-lab-toggle').click();
+  const bodyAiButton = page.getByRole('button', { name: /Body AI (on|off)/i });
+  await bodyAiButton.waitFor({ state: 'visible' });
+  const motionButton = page.getByRole('button', { name: /Motion sweep/i });
   await motionButton.click();
   await page.waitForTimeout(700);
   await canvas.screenshot({ path: path.join(outputDir, 'kiro-motion-sweep.png') });
 
-  console.log('Captured clean Kiro calm, happy, curious gaze, and motion sweep states.');
+  console.log('Captured clean Kiro calm, happy, curious gaze, and motion sweep states; Body AI control is present.');
 } finally {
   await browser.close();
 }
