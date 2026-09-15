@@ -2,6 +2,7 @@ import { Application, Container, Graphics, type Ticker } from 'pixi.js';
 import { useEffect, useRef } from 'react';
 import type { CharacterDefinition, CharacterRuntime } from '../character/runtime';
 import type { Emotion, MouthPose } from '../character/types';
+import { RiveCharacterStage } from './RiveCharacterStage';
 
 interface CharacterStageProps {
   character: CharacterDefinition;
@@ -10,13 +11,19 @@ interface CharacterStageProps {
   speaking: boolean;
 }
 
-export function CharacterStage({ character, emotion, mouth, speaking }: CharacterStageProps) {
+export function CharacterStage(props: CharacterStageProps) {
+  if (props.character.rive) return <RiveCharacterStage {...props} />;
+  return <PixiCharacterStage {...props} />;
+}
+
+function PixiCharacterStage({ character, emotion, mouth, speaking }: CharacterStageProps) {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const runtimeRef = useRef<CharacterRuntime | null>(null);
 
   useEffect(() => {
     const host = hostRef.current;
-    if (!host) return;
+    const createRuntime = character.create;
+    if (!host || !createRuntime) return;
 
     let disposed = false;
     let app: Application | null = null;
@@ -54,7 +61,7 @@ export function CharacterStage({ character, emotion, mouth, speaking }: Characte
         particles.push({ graphic, speed: 0.06 + Math.random() * 0.16, phase: Math.random() * Math.PI * 2 });
       }
 
-      const runtime = character.create();
+      const runtime = createRuntime();
       runtimeRef.current = runtime;
       world.addChild(runtime.view);
       runtime.setEmotion(emotion);
