@@ -3,10 +3,7 @@
         <LayoutComponentStyle name="Kiro Artboard Style" id="0:5"/>
         <Fill name="Background"><SolidColor colorValue="FF0B0C10" name="Color"/></Fill>
 
-        <!--
-          Character hierarchy is authored by XML nesting, not parentId references.
-          This matches Rive's real transform hierarchy: root -> body -> head/shoulders -> bones -> art.
-        -->
+        <!-- Character hierarchy is authored by XML nesting so every control inherits naturally. -->
         <Node x="400" y="530" name="CharacterRoot" id="0:180">
             <Node x="0" y="0" name="BodyControl" id="0:200">
                 <DataBindContext sourcePathIds="0:800-0:814" propertyKey="13"/>
@@ -14,7 +11,6 @@
                 <DataBindContext sourcePathIds="0:800-0:816" propertyKey="15"/>
 
                 <Node x="0" y="0" name="BodyIdle" id="0:201">
-                    <!-- HEAD: body motion carries the neck/head, then head controls add local acting. -->
                     <Node x="0" y="-275" name="HeadAnchor" id="0:181">
                         <Node x="0" y="0" name="HeadControl" id="0:210">
                             <DataBindContext sourcePathIds="0:800-0:817" propertyKey="13"/>
@@ -22,7 +18,6 @@
                             <DataBindContext sourcePathIds="0:800-0:819" propertyKey="15"/>
 
                             <Node x="0" y="0" name="HeadIdle" id="0:211">
-                                <!-- Front-most hair, deliberately a new silhouette rather than Milo's swoop. -->
                                 <Shape x="0" y="-102" name="HairCap" id="0:363">
                                     <PointsPath isClosed="true" name="Path">
                                         <CubicMirroredVertex x="-102" y="25" rotation="-0.45" distance="34"/>
@@ -39,7 +34,6 @@
                                     <Fill name="Fill"><SolidColor colorValue="FF111318" name="Color"/></Fill>
                                 </Shape>
 
-                                <!-- Eyes use two transform layers: ambient blink + manual/emotion openness. -->
                                 <Node x="0" y="0" name="EyeAuto" id="0:220">
                                     <Node x="0" y="0" name="EyeManual" id="0:221">
                                         <DataBindContext sourcePathIds="0:800-0:824" propertyKey="17"/>
@@ -98,7 +92,6 @@
                                     </Shape>
                                 </Node>
 
-                                <!-- Happy is an unmistakable U-shaped smile in screen coordinates. -->
                                 <Shape x="0" y="60" opacity="0" name="SmileMouth" id="0:360">
                                     <DataBindContext sourcePathIds="0:800-0:826" propertyKey="18"/>
                                     <PointsPath isClosed="false" name="Path">
@@ -135,7 +128,6 @@
                                     <Fill name="Fill"><SolidColor colorValue="FF111318" name="Color"/></Fill>
                                 </Shape>
 
-                                <!-- Base head is last, therefore behind the facial details in Rive draw order. -->
                                 <Shape x="0" y="0" name="HeadBase" id="0:370">
                                     <Ellipse width="258" height="276" originX="0.5" originY="0.5" name="Path"/>
                                     <Fill name="Skin"><SolidColor colorValue="FFF4F1E9" name="Color"/></Fill>
@@ -145,67 +137,65 @@
                         </Node>
                     </Node>
 
-                    <!-- LEFT ARM: sleeve at the actual shoulder; hand/forearm inherit the two-bone chain. -->
-                    <Node x="-116" y="-92" name="LeftShoulderIdle" id="0:290">
-                        <Shape x="0" y="0" rotation="0.12" name="LeftSleeve" id="0:334">
-                            <Rectangle width="86" height="94" originX="0.5" originY="0.5" cornerRadiusTL="28" cornerRadiusTR="28" cornerRadiusBL="28" cornerRadiusBR="28" name="Path"/>
-                            <Fill name="Shirt"><SolidColor colorValue="FF14161C" name="Color"/></Fill>
-                            <Stroke thickness="4.5" name="Outline"><SolidColor colorValue="FFF4F1E9" name="Color"/></Stroke>
-                        </Shape>
+                    <!-- Sleeves now inherit the shoulder bone itself, eliminating the detached shoulder-pad effect. -->
+                    <Node x="-118" y="-91" name="LeftShoulderIdle" id="0:290">
                         <RootBone x="0" y="0" length="118" rotation="1.72" name="LeftUpperBone" id="0:300">
                             <DataBindContext sourcePathIds="0:800-0:820" propertyKey="15"/>
+                            <Shape x="26" y="0" name="LeftSleeve" id="0:334">
+                                <Rectangle width="68" height="66" originX="0.5" originY="0.5" cornerRadiusTL="23" cornerRadiusTR="23" cornerRadiusBL="23" cornerRadiusBR="23" name="Path"/>
+                                <Fill name="Shirt"><SolidColor colorValue="FF14161C" name="Color"/></Fill>
+                                <Stroke thickness="4.5" name="Outline"><SolidColor colorValue="FFF4F1E9" name="Color"/></Stroke>
+                            </Shape>
                             <Bone length="112" rotation="-0.78" name="LeftForeBone" id="0:301">
                                 <DataBindContext sourcePathIds="0:800-0:821" propertyKey="15"/>
                                 <Shape x="116" y="0" name="LeftHand" id="0:340">
-                                    <Ellipse width="62" height="56" originX="0.5" originY="0.5" name="Palm"/>
+                                    <Ellipse width="54" height="50" originX="0.5" originY="0.5" name="Palm"/>
                                     <Fill name="Skin"><SolidColor colorValue="FFF4F1E9" name="Color"/></Fill>
                                     <Stroke thickness="4" cap="round" join="round" name="Outline"><SolidColor colorValue="FF111318" name="Color"/></Stroke>
                                 </Shape>
                                 <Shape x="56" y="0" name="LeftForearm" id="0:330">
-                                    <Rectangle width="112" height="48" originX="0.5" originY="0.5" cornerRadiusTL="24" cornerRadiusTR="24" cornerRadiusBL="24" cornerRadiusBR="24" name="Path"/>
+                                    <Rectangle width="112" height="44" originX="0.5" originY="0.5" cornerRadiusTL="22" cornerRadiusTR="22" cornerRadiusBL="22" cornerRadiusBR="22" name="Path"/>
                                     <Fill name="Skin"><SolidColor colorValue="FFF4F1E9" name="Color"/></Fill>
                                     <Stroke thickness="4" name="Outline"><SolidColor colorValue="FF111318" name="Color"/></Stroke>
                                 </Shape>
                             </Bone>
-                            <Shape x="59" y="0" name="LeftUpperArm" id="0:332">
-                                <Rectangle width="118" height="58" originX="0.5" originY="0.5" cornerRadiusTL="28" cornerRadiusTR="28" cornerRadiusBL="28" cornerRadiusBR="28" name="Path"/>
+                            <Shape x="76" y="0" name="LeftUpperArm" id="0:332">
+                                <Rectangle width="90" height="46" originX="0.5" originY="0.5" cornerRadiusTL="23" cornerRadiusTR="23" cornerRadiusBL="23" cornerRadiusBR="23" name="Path"/>
                                 <Fill name="Skin"><SolidColor colorValue="FFF4F1E9" name="Color"/></Fill>
                                 <Stroke thickness="4" name="Outline"><SolidColor colorValue="FF111318" name="Color"/></Stroke>
                             </Shape>
                         </RootBone>
                     </Node>
 
-                    <!-- RIGHT ARM mirrors the hierarchy, not the pixels. -->
-                    <Node x="116" y="-92" name="RightShoulderIdle" id="0:291">
-                        <Shape x="0" y="0" rotation="-0.12" name="RightSleeve" id="0:335">
-                            <Rectangle width="86" height="94" originX="0.5" originY="0.5" cornerRadiusTL="28" cornerRadiusTR="28" cornerRadiusBL="28" cornerRadiusBR="28" name="Path"/>
-                            <Fill name="Shirt"><SolidColor colorValue="FF14161C" name="Color"/></Fill>
-                            <Stroke thickness="4.5" name="Outline"><SolidColor colorValue="FFF4F1E9" name="Color"/></Stroke>
-                        </Shape>
+                    <Node x="118" y="-91" name="RightShoulderIdle" id="0:291">
                         <RootBone x="0" y="0" length="118" rotation="1.4215927" name="RightUpperBone" id="0:310">
                             <DataBindContext sourcePathIds="0:800-0:822" propertyKey="15"/>
+                            <Shape x="26" y="0" name="RightSleeve" id="0:335">
+                                <Rectangle width="68" height="66" originX="0.5" originY="0.5" cornerRadiusTL="23" cornerRadiusTR="23" cornerRadiusBL="23" cornerRadiusBR="23" name="Path"/>
+                                <Fill name="Shirt"><SolidColor colorValue="FF14161C" name="Color"/></Fill>
+                                <Stroke thickness="4.5" name="Outline"><SolidColor colorValue="FFF4F1E9" name="Color"/></Stroke>
+                            </Shape>
                             <Bone length="112" rotation="0.78" name="RightForeBone" id="0:311">
                                 <DataBindContext sourcePathIds="0:800-0:823" propertyKey="15"/>
                                 <Shape x="116" y="0" name="RightHand" id="0:341">
-                                    <Ellipse width="62" height="56" originX="0.5" originY="0.5" name="Palm"/>
+                                    <Ellipse width="54" height="50" originX="0.5" originY="0.5" name="Palm"/>
                                     <Fill name="Skin"><SolidColor colorValue="FFF4F1E9" name="Color"/></Fill>
                                     <Stroke thickness="4" cap="round" join="round" name="Outline"><SolidColor colorValue="FF111318" name="Color"/></Stroke>
                                 </Shape>
                                 <Shape x="56" y="0" name="RightForearm" id="0:331">
-                                    <Rectangle width="112" height="48" originX="0.5" originY="0.5" cornerRadiusTL="24" cornerRadiusTR="24" cornerRadiusBL="24" cornerRadiusBR="24" name="Path"/>
+                                    <Rectangle width="112" height="44" originX="0.5" originY="0.5" cornerRadiusTL="22" cornerRadiusTR="22" cornerRadiusBL="22" cornerRadiusBR="22" name="Path"/>
                                     <Fill name="Skin"><SolidColor colorValue="FFF4F1E9" name="Color"/></Fill>
                                     <Stroke thickness="4" name="Outline"><SolidColor colorValue="FF111318" name="Color"/></Stroke>
                                 </Shape>
                             </Bone>
-                            <Shape x="59" y="0" name="RightUpperArm" id="0:333">
-                                <Rectangle width="118" height="58" originX="0.5" originY="0.5" cornerRadiusTL="28" cornerRadiusTR="28" cornerRadiusBL="28" cornerRadiusBR="28" name="Path"/>
+                            <Shape x="76" y="0" name="RightUpperArm" id="0:333">
+                                <Rectangle width="90" height="46" originX="0.5" originY="0.5" cornerRadiusTL="23" cornerRadiusTR="23" cornerRadiusBL="23" cornerRadiusBR="23" name="Path"/>
                                 <Fill name="Skin"><SolidColor colorValue="FFF4F1E9" name="Color"/></Fill>
                                 <Stroke thickness="4" name="Outline"><SolidColor colorValue="FF111318" name="Color"/></Stroke>
                             </Shape>
                         </RootBone>
                     </Node>
 
-                    <!-- Broad shoulder line tapering into a softer waist; no old Pixi tube body. -->
                     <Shape x="0" y="22" name="Torso" id="0:320">
                         <PointsPath isClosed="true" name="Path">
                             <CubicMirroredVertex x="-128" y="-92" rotation="-0.1" distance="26"/>
