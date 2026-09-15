@@ -25,6 +25,11 @@ type RigState = {
   leftElbow: number;
   rightShoulder: number;
   rightElbow: number;
+  leftHandX: number;
+  leftHandY: number;
+  rightHandX: number;
+  rightHandY: number;
+  ikStrength: number;
   eyeScale: number;
   browY: number;
   smileOpacity: number;
@@ -42,6 +47,11 @@ const defaultRig: RigState = {
   leftElbow: -0.78,
   rightShoulder: 1.4215927,
   rightElbow: 0.78,
+  leftHandX: -70,
+  leftHandY: 116,
+  rightHandX: 70,
+  rightHandY: 116,
+  ikStrength: 1,
   eyeScale: 1,
   browY: -55,
   smileOpacity: 0,
@@ -121,6 +131,11 @@ export function RiveCharacterStage({ character, emotion, mouth, speaking }: Rive
   const { setValue: setLeftElbow } = useViewModelInstanceNumber('leftElbow', viewModelInstance);
   const { setValue: setRightShoulder } = useViewModelInstanceNumber('rightShoulder', viewModelInstance);
   const { setValue: setRightElbow } = useViewModelInstanceNumber('rightElbow', viewModelInstance);
+  const { setValue: setLeftHandX } = useViewModelInstanceNumber('leftHandX', viewModelInstance);
+  const { setValue: setLeftHandY } = useViewModelInstanceNumber('leftHandY', viewModelInstance);
+  const { setValue: setRightHandX } = useViewModelInstanceNumber('rightHandX', viewModelInstance);
+  const { setValue: setRightHandY } = useViewModelInstanceNumber('rightHandY', viewModelInstance);
+  const { setValue: setIkStrength } = useViewModelInstanceNumber('ikStrength', viewModelInstance);
   const { setValue: setEyeScale } = useViewModelInstanceNumber('eyeScale', viewModelInstance);
   const { setValue: setBrowY } = useViewModelInstanceNumber('browY', viewModelInstance);
   const { setValue: setSmileOpacity } = useViewModelInstanceNumber('smileOpacity', viewModelInstance);
@@ -137,6 +152,11 @@ export function RiveCharacterStage({ character, emotion, mouth, speaking }: Rive
     setLeftElbow(next.leftElbow);
     setRightShoulder(next.rightShoulder);
     setRightElbow(next.rightElbow);
+    setLeftHandX(next.leftHandX);
+    setLeftHandY(next.leftHandY);
+    setRightHandX(next.rightHandX);
+    setRightHandY(next.rightHandY);
+    setIkStrength(next.ikStrength);
     setEyeScale(next.eyeScale);
     setBrowY(next.browY);
     setSmileOpacity(speaking ? 0 : next.smileOpacity);
@@ -215,10 +235,20 @@ export function RiveCharacterStage({ character, emotion, mouth, speaking }: Rive
       setBodyY(base.bodyY + Math.sin(t * 1.4) * 3);
       setBodyLean(base.bodyLean + Math.sin(t * 0.8) * 0.035);
       setHeadTilt(base.headTilt + Math.sin(t * 1.1 + 0.5) * 0.08);
-      setLeftShoulder(base.leftShoulder + Math.sin(t * 0.9) * 0.18);
-      setRightShoulder(base.rightShoulder - Math.sin(t * 0.9) * 0.18);
-      setLeftElbow(base.leftElbow + Math.sin(t * 1.2 + 1) * 0.2);
-      setRightElbow(base.rightElbow - Math.sin(t * 1.2 + 1) * 0.2);
+
+      if (base.ikStrength > 0.5) {
+        const reachX = Math.sin(t * 1.15) * 34;
+        const reachY = Math.cos(t * 0.9) * 24;
+        setLeftHandX(base.leftHandX + reachX);
+        setLeftHandY(base.leftHandY + reachY);
+        setRightHandX(base.rightHandX - reachX);
+        setRightHandY(base.rightHandY + reachY);
+      } else {
+        setLeftShoulder(base.leftShoulder + Math.sin(t * 0.9) * 0.18);
+        setRightShoulder(base.rightShoulder - Math.sin(t * 0.9) * 0.18);
+        setLeftElbow(base.leftElbow + Math.sin(t * 1.2 + 1) * 0.2);
+        setRightElbow(base.rightElbow - Math.sin(t * 1.2 + 1) * 0.2);
+      }
       frame = requestAnimationFrame(tick);
     };
 
@@ -288,19 +318,24 @@ export function RiveCharacterStage({ character, emotion, mouth, speaking }: Rive
             </div>
 
             <div className="rig-grid">
+              <RigSlider label="IK strength" value={rig.ikStrength} min={0} max={1} step={0.01} onChange={(value) => updateRig('ikStrength', value)} />
               <RigSlider label="Body lean" value={rig.bodyLean} min={-0.18} max={0.18} step={0.01} onChange={(value) => updateRig('bodyLean', value)} />
               <RigSlider label="Head tilt" value={rig.headTilt} min={-0.3} max={0.3} step={0.01} onChange={(value) => updateRig('headTilt', value)} />
               <RigSlider label="Head X" value={rig.headX} min={-35} max={35} step={1} onChange={(value) => updateRig('headX', value)} />
               <RigSlider label="Head Y" value={rig.headY} min={-25} max={25} step={1} onChange={(value) => updateRig('headY', value)} />
-              <RigSlider label="L shoulder" value={rig.leftShoulder} min={1.05} max={2.35} step={0.01} onChange={(value) => updateRig('leftShoulder', value)} />
-              <RigSlider label="L elbow" value={rig.leftElbow} min={-1.65} max={0.2} step={0.01} onChange={(value) => updateRig('leftElbow', value)} />
-              <RigSlider label="R shoulder" value={rig.rightShoulder} min={0.8} max={2.1} step={0.01} onChange={(value) => updateRig('rightShoulder', value)} />
-              <RigSlider label="R elbow" value={rig.rightElbow} min={-0.2} max={1.65} step={0.01} onChange={(value) => updateRig('rightElbow', value)} />
+              <RigSlider label="L hand X" value={rig.leftHandX} min={-170} max={20} step={1} onChange={(value) => updateRig('leftHandX', value)} />
+              <RigSlider label="L hand Y" value={rig.leftHandY} min={20} max={210} step={1} onChange={(value) => updateRig('leftHandY', value)} />
+              <RigSlider label="R hand X" value={rig.rightHandX} min={-20} max={170} step={1} onChange={(value) => updateRig('rightHandX', value)} />
+              <RigSlider label="R hand Y" value={rig.rightHandY} min={20} max={210} step={1} onChange={(value) => updateRig('rightHandY', value)} />
+              <RigSlider label="L shoulder manual" value={rig.leftShoulder} min={1.05} max={2.35} step={0.01} onChange={(value) => updateRig('leftShoulder', value)} />
+              <RigSlider label="L elbow manual" value={rig.leftElbow} min={-1.65} max={0.2} step={0.01} onChange={(value) => updateRig('leftElbow', value)} />
+              <RigSlider label="R shoulder manual" value={rig.rightShoulder} min={0.8} max={2.1} step={0.01} onChange={(value) => updateRig('rightShoulder', value)} />
+              <RigSlider label="R elbow manual" value={rig.rightElbow} min={-0.2} max={1.65} step={0.01} onChange={(value) => updateRig('rightElbow', value)} />
               <RigSlider label="Eye openness" value={rig.eyeScale} min={0.5} max={1.2} step={0.01} onChange={(value) => updateRig('eyeScale', value)} />
               <RigSlider label="Brow height" value={rig.browY} min={-74} max={-42} step={1} onChange={(value) => updateRig('browY', value)} />
             </div>
 
-            <p className="motion-lab-note">Move the pointer for gaze. Click the character for a recoil test. The arm sliders drive real Rive bone joints, so broken shoulder/elbow behavior is easy to spot.</p>
+            <p className="motion-lab-note">IK = 1: move the hand targets and let Rive solve shoulder + elbow. IK = 0: use the manual joint sliders. Move the pointer for gaze and click the character for a recoil test.</p>
           </div>
         )}
       </section>
