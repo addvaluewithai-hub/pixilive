@@ -28,12 +28,13 @@ try {
   await page.waitForTimeout(250);
   await canvas.screenshot({ path: path.join(outputDir, 'kiro-curious-gaze.png') });
 
+  await page.getByRole('button', { name: /Motion lab show/i }).click();
   const motionButton = page.getByRole('button', { name: 'Run motion sweep' });
   await motionButton.click();
   await page.waitForTimeout(700);
   await canvas.screenshot({ path: path.join(outputDir, 'kiro-motion-sweep.png') });
 
-  console.log('Captured Kiro calm, happy, curious gaze, and motion sweep states.');
+  console.log('Captured clean Kiro calm, happy, curious gaze, and motion sweep states.');
 } finally {
   await browser.close();
 }
