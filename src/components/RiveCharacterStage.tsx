@@ -4,6 +4,12 @@ import {
   useViewModelInstanceNumber,
 } from '@rive-app/react-webgl2';
 import { useEffect, useRef, useState } from 'react';
+import {
+  createAgentMotionState,
+  inferAgentGesture,
+  stepAgentMotion,
+  type AgentGesture,
+} from '../character/agentMotion';
 import type { CharacterDefinition } from '../character/runtime';
 import type { Emotion, MouthPose } from '../character/types';
 
@@ -12,6 +18,7 @@ interface RiveCharacterStageProps {
   emotion: Emotion;
   mouth: MouthPose;
   speaking: boolean;
+  speechText: string;
 }
 
 type RigState = {
@@ -36,6 +43,11 @@ type RigState = {
   neutralOpacity: number;
 };
 
+type AutoPose = Pick<
+  RigState,
+  'bodyY' | 'bodyLean' | 'headY' | 'headTilt' | 'leftHandX' | 'leftHandY' | 'rightHandX' | 'rightHandY'
+>;
+
 const defaultRig: RigState = {
   bodyX: 0,
   bodyY: 0,
@@ -56,6 +68,17 @@ const defaultRig: RigState = {
   browY: -53,
   smileOpacity: 0,
   neutralOpacity: 1,
+};
+
+const zeroAutoPose: AutoPose = {
+  bodyY: 0,
+  bodyLean: 0,
+  headY: 0,
+  headTilt: 0,
+  leftHandX: 0,
+  leftHandY: 0,
+  rightHandX: 0,
+  rightHandY: 0,
 };
 
 const emotionFace: Record<Emotion, Partial<RigState>> = {
@@ -90,7 +113,12 @@ function RigSlider({ label, value, min, max, step, onChange }: RigSliderProps) {
   );
 }
 
-export function RiveCharacterStage({ character, emotion, mouth, speaking }: RiveCharacterStageProps) {
+const smoothToward = (current: number, target: number, response: number, dt: number) => {
+  const alpha = 1 - Math.exp(-Math.min(0.05, dt) * response);
+  return current + (target - current) * alpha;
+};
+
+export function RiveCharacterStage({ character, emotion, mouth, speaking, speechText }: RiveCharacterStageProps) {
   const source = character.rive;
   if (!source) throw new Error(`${character.name} is missing its Rive source configuration.`);
 
@@ -107,7 +135,19 @@ export function RiveCharacterStage({ character, emotion, mouth, speaking }: Rive
   const [rig, setRig] = useState<RigState>(defaultRig);
   const [labOpen, setLabOpen] = useState(false);
   const [motionSweep, setMotionSweep] = useState(false);
+  const [agentMotionEnabled, setAgentMotionEnabled] = useState(true);
+  const [gestureStrength, setGestureStrength] = useState(1);
+  const [agentGesture, setAgentGesture] = useState<AgentGesture>('conversational');
   const reactionTimer = useRef<number | null>(null);
+  const reactionStartedAt = useRef(-10_000);
+  const rigRef = useRef<RigState>(defaultRig);
+  const autoPoseRef = useRef<AutoPose>({ ...zeroAutoPose });
+  const agentMotionStateRef = useRef(createAgentMotionState());
+  const gestureRef = useRef<AgentGesture>('conversational');
+  const speechRef = useRef({ speaking, energy: mouth.energy, emotion, text: speechText, strength: gestureStrength });
+
+  rigRef.current = rig;
+  speechRef.current = { speaking, energy: mouth.energy, emotion, text: speechText, strength: gestureStrength };
 
   const { setValue: setSpeaking } = useViewModelInstanceBoolean('speaking', viewModelInstance);
   const { setValue: setGazeX } = useViewModelInstanceNumber('gazeX', viewModelInstance);
@@ -167,24 +207,30 @@ export function RiveCharacterStage({ character, emotion, mouth, speaking }: Rive
   const updateRig = (key: keyof RigState, value: number) => {
     const next = { ...rig, [key]: value };
     setRig(next);
+    rigRef.current = next;
     applyRig(next);
   };
 
   const patchRig = (patch: Partial<RigState>) => {
     const next = { ...rig, ...patch };
     setRig(next);
+    rigRef.current = next;
     applyRig(next);
   };
 
   useEffect(() => {
-    applyRig(rig);
+    applyRig(rigRef.current);
     // Re-apply the authored pose after the Rive ViewModel instance becomes available.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [viewModelInstance]);
 
   useEffect(() => {
     const face = emotionFace[emotion];
-    setRig((current) => ({ ...current, ...face }));
+    setRig((current) => {
+      const next = { ...current, ...face };
+      rigRef.current = next;
+      return next;
+    });
     if (face.eyeScale !== undefined) setEyeScale(face.eyeScale);
     if (face.browY !== undefined) setBrowY(face.browY);
     if (face.smileOpacity !== undefined) setSmileOpacity(speaking ? 0 : face.smileOpacity);
@@ -225,9 +271,95 @@ export function RiveCharacterStage({ character, emotion, mouth, speaking }: Rive
   ]);
 
   useEffect(() => {
+    if (!viewModelInstance || !agentMotionEnabled || motionSweep) return;
+
+    agentMotionStateRef.current = createAgentMotionState();
+    autoPoseRef.current = { ...zeroAutoPose };
+    let previousTime = performance.now();
+    let frame = 0;
+
+    const tick = (now: number) => {
+      const dt = Math.min(0.05, Math.max(0.001, (now - previousTime) / 1000));
+      previousTime = now;
+      const speech = speechRef.current;
+      const base = rigRef.current;
+      const target = stepAgentMotion(
+        {
+          nowMs: now,
+          dtSeconds: dt,
+          speaking: speech.speaking,
+          energy: speech.energy,
+          emotion: speech.emotion,
+          text: speech.text,
+          strength: speech.strength,
+        },
+        agentMotionStateRef.current,
+      );
+
+      const reactionAge = now - reactionStartedAt.current;
+      const reactionProgress = Math.max(0, Math.min(1, reactionAge / 260));
+      const reactionPulse = reactionAge >= 0 && reactionProgress < 1 ? Math.sin(Math.PI * reactionProgress) : 0;
+      target.bodyY -= 8 * reactionPulse;
+      target.headY -= 4 * reactionPulse;
+      target.headTilt += 0.065 * reactionPulse;
+
+      const pose = autoPoseRef.current;
+      const bodyResponse = speech.speaking ? 9 : 5;
+      const handResponse = speech.speaking ? 7 : 4;
+      pose.bodyY = smoothToward(pose.bodyY, target.bodyY, bodyResponse, dt);
+      pose.bodyLean = smoothToward(pose.bodyLean, target.bodyLean, bodyResponse, dt);
+      pose.headY = smoothToward(pose.headY, target.headY, bodyResponse + 1, dt);
+      pose.headTilt = smoothToward(pose.headTilt, target.headTilt, bodyResponse + 1, dt);
+      pose.leftHandX = smoothToward(pose.leftHandX, target.leftHandX, handResponse, dt);
+      pose.leftHandY = smoothToward(pose.leftHandY, target.leftHandY, handResponse, dt);
+      pose.rightHandX = smoothToward(pose.rightHandX, target.rightHandX, handResponse, dt);
+      pose.rightHandY = smoothToward(pose.rightHandY, target.rightHandY, handResponse, dt);
+
+      setBodyY(base.bodyY + pose.bodyY);
+      setBodyLean(base.bodyLean + pose.bodyLean);
+      setHeadY(base.headY + pose.headY);
+      setHeadTilt(base.headTilt + pose.headTilt);
+
+      if (base.ikStrength > 0.5) {
+        setLeftHandX(base.leftHandX + pose.leftHandX);
+        setLeftHandY(base.leftHandY + pose.leftHandY);
+        setRightHandX(base.rightHandX + pose.rightHandX);
+        setRightHandY(base.rightHandY + pose.rightHandY);
+      }
+
+      if (target.gesture !== gestureRef.current) {
+        gestureRef.current = target.gesture;
+        setAgentGesture(target.gesture);
+      }
+
+      frame = requestAnimationFrame(tick);
+    };
+
+    frame = requestAnimationFrame(tick);
+    return () => {
+      cancelAnimationFrame(frame);
+      autoPoseRef.current = { ...zeroAutoPose };
+      agentMotionStateRef.current = createAgentMotionState();
+      const base = rigRef.current;
+      setBodyY(base.bodyY);
+      setBodyLean(base.bodyLean);
+      setHeadY(base.headY);
+      setHeadTilt(base.headTilt);
+      if (base.ikStrength > 0.5) {
+        setLeftHandX(base.leftHandX);
+        setLeftHandY(base.leftHandY);
+        setRightHandX(base.rightHandX);
+        setRightHandY(base.rightHandY);
+      }
+    };
+    // Speech/energy/text are consumed through refs so this RAF is not restarted on every viseme.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [agentMotionEnabled, motionSweep, viewModelInstance]);
+
+  useEffect(() => {
     if (!motionSweep || !viewModelInstance) return;
 
-    const base = rig;
+    const base = rigRef.current;
     const started = performance.now();
     let frame = 0;
 
@@ -266,6 +398,14 @@ export function RiveCharacterStage({ character, emotion, mouth, speaking }: Rive
     if (reactionTimer.current !== null) window.clearTimeout(reactionTimer.current);
   }, []);
 
+  useEffect(() => {
+    const inferred = inferAgentGesture(speechText, emotion);
+    if (inferred !== gestureRef.current && !speaking) {
+      gestureRef.current = inferred;
+      setAgentGesture(inferred);
+    }
+  }, [emotion, speaking, speechText]);
+
   const handlePointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
     const rect = event.currentTarget.getBoundingClientRect();
     const x = ((event.clientX - rect.left) / Math.max(1, rect.width) - 0.5) * 2;
@@ -275,15 +415,25 @@ export function RiveCharacterStage({ character, emotion, mouth, speaking }: Rive
   };
 
   const react = () => {
+    if (agentMotionEnabled && !motionSweep) {
+      reactionStartedAt.current = performance.now();
+      return;
+    }
     if (reactionTimer.current !== null) window.clearTimeout(reactionTimer.current);
     setBodyY(rig.bodyY - 10);
     setHeadY(rig.headY - 5);
     setHeadTilt(rig.headTilt + 0.09);
     reactionTimer.current = window.setTimeout(() => {
-      applyRig(rig);
+      applyRig(rigRef.current);
       reactionTimer.current = null;
     }, 170);
   };
+
+  const bodyAiLabel = !bindingsReady
+    ? 'NOT BOUND'
+    : agentMotionEnabled
+      ? `BODY AI · ${speaking ? agentGesture.toUpperCase() : 'IDLE'}`
+      : 'BODY AI · OFF';
 
   return (
     <div
@@ -305,20 +455,29 @@ export function RiveCharacterStage({ character, emotion, mouth, speaking }: Rive
         aria-label="Rive motion playground"
       >
         <button className="motion-lab-toggle" type="button" onClick={() => setLabOpen((value) => !value)}>
-          <span><i className={bindingsReady ? 'bound' : 'unbound'} /> Motion lab <em>{bindingsReady ? 'BOUND' : 'NOT BOUND'}</em></span>
+          <span><i className={bindingsReady ? 'bound' : 'unbound'} /> Motion lab <em>{bodyAiLabel}</em></span>
           <b>{labOpen ? 'hide' : 'show'}</b>
         </button>
 
         {labOpen && (
           <div className="motion-lab-body">
             <div className="motion-lab-actions">
+              <button
+                type="button"
+                className={agentMotionEnabled ? 'active' : ''}
+                onClick={() => setAgentMotionEnabled((value) => !value)}
+                disabled={!bindingsReady}
+              >
+                Body AI {agentMotionEnabled ? 'on' : 'off'}
+              </button>
               <button type="button" className={motionSweep ? 'active' : ''} onClick={() => setMotionSweep((value) => !value)} disabled={!bindingsReady}>
-                {motionSweep ? 'Stop motion sweep' : 'Run motion sweep'}
+                {motionSweep ? 'Stop sweep' : 'Motion sweep'}
               </button>
               <button type="button" onClick={() => patchRig(defaultRig)} disabled={!bindingsReady}>Reset rig</button>
             </div>
 
             <div className="rig-grid">
+              <RigSlider label="Gesture power" value={gestureStrength} min={0} max={1.5} step={0.05} onChange={setGestureStrength} />
               <RigSlider label="IK strength" value={rig.ikStrength} min={0} max={1} step={0.01} onChange={(value) => updateRig('ikStrength', value)} />
               <RigSlider label="Body lean" value={rig.bodyLean} min={-0.18} max={0.18} step={0.01} onChange={(value) => updateRig('bodyLean', value)} />
               <RigSlider label="Head tilt" value={rig.headTilt} min={-0.3} max={0.3} step={0.01} onChange={(value) => updateRig('headTilt', value)} />
@@ -338,7 +497,7 @@ export function RiveCharacterStage({ character, emotion, mouth, speaking }: Rive
 
             <p className="motion-lab-note">
               {bindingsReady
-                ? 'IK = 1: move the hand targets and let Rive solve shoulder + elbow. IK = 0: use the manual joint sliders. Move the pointer for gaze and click the character for a recoil test.'
+                ? `Body AI reads live speech energy + transcript intent (${agentGesture}) and turns them into smoothed Rive IK beats, head motion and posture. Disable it for manual rig testing.`
                 : 'Rive ViewModel is not bound yet. Controls are intentionally reporting this instead of silently doing nothing.'}
             </p>
           </div>
