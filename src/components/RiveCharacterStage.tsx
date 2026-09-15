@@ -94,7 +94,7 @@ export function RiveCharacterStage({ character, emotion, mouth, speaking }: Rive
 
   const viewModelInstance = rive?.viewModelInstance;
   const [rig, setRig] = useState<RigState>(defaultRig);
-  const [labOpen, setLabOpen] = useState(true);
+  const [labOpen, setLabOpen] = useState(false);
   const [motionSweep, setMotionSweep] = useState(false);
   const reactionTimer = useRef<number | null>(null);
 
