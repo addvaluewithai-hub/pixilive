@@ -29,6 +29,12 @@ export interface CharacterAmbient {
   alphaMax: number;
 }
 
+export interface RiveCharacterSource {
+  src: string;
+  artboard: string;
+  stateMachine: string;
+}
+
 export interface CharacterDefinition {
   id: string;
   name: string;
@@ -40,5 +46,6 @@ export interface CharacterDefinition {
   systemPrompt: string;
   framing: CharacterFraming;
   ambient: CharacterAmbient;
-  create(): CharacterRuntime;
+  rive?: RiveCharacterSource;
+  create?: () => CharacterRuntime;
 }
