@@ -45,7 +45,7 @@ type RigState = {
 
 type AutoPose = Pick<
   RigState,
-  'bodyY' | 'bodyLean' | 'headY' | 'headTilt' | 'leftHandX' | 'leftHandY' | 'rightHandX' | 'rightHandY'
+  'bodyY' | 'bodyLean' | 'headY' | 'headTilt' | 'leftHandX' | 'leftHandY' | 'rightHandX' | 'rightHandY' | 'eyeScale' | 'browY'
 >;
 
 const defaultRig: RigState = {
@@ -79,6 +79,8 @@ const zeroAutoPose: AutoPose = {
   leftHandY: 0,
   rightHandX: 0,
   rightHandY: 0,
+  eyeScale: 0,
+  browY: 0,
 };
 
 const emotionFace: Record<Emotion, Partial<RigState>> = {
@@ -314,11 +316,15 @@ export function RiveCharacterStage({ character, emotion, mouth, speaking, speech
       pose.leftHandY = smoothToward(pose.leftHandY, target.leftHandY, handResponse, dt);
       pose.rightHandX = smoothToward(pose.rightHandX, target.rightHandX, handResponse, dt);
       pose.rightHandY = smoothToward(pose.rightHandY, target.rightHandY, handResponse, dt);
+      pose.eyeScale = smoothToward(pose.eyeScale, target.eyeScale, bodyResponse, dt);
+      pose.browY = smoothToward(pose.browY, target.browY, bodyResponse, dt);
 
       setBodyY(base.bodyY + pose.bodyY);
       setBodyLean(base.bodyLean + pose.bodyLean);
       setHeadY(base.headY + pose.headY);
       setHeadTilt(base.headTilt + pose.headTilt);
+      setEyeScale(base.eyeScale + pose.eyeScale);
+      setBrowY(base.browY + pose.browY);
 
       if (base.ikStrength > 0.5) {
         setLeftHandX(base.leftHandX + pose.leftHandX);
@@ -345,6 +351,8 @@ export function RiveCharacterStage({ character, emotion, mouth, speaking, speech
       setBodyLean(base.bodyLean);
       setHeadY(base.headY);
       setHeadTilt(base.headTilt);
+      setEyeScale(base.eyeScale);
+      setBrowY(base.browY);
       if (base.ikStrength > 0.5) {
         setLeftHandX(base.leftHandX);
         setLeftHandY(base.leftHandY);
@@ -497,7 +505,7 @@ export function RiveCharacterStage({ character, emotion, mouth, speaking, speech
 
             <p className="motion-lab-note">
               {bindingsReady
-                ? `Body AI reads live speech energy + transcript intent (${agentGesture}) and turns them into smoothed Rive IK beats, head motion and posture. Disable it for manual rig testing.`
+                ? `Body AI reads live speech energy + transcript intent (${agentGesture}) and turns them into smoothed Rive IK beats, head motion, posture and facial micro-expression. Disable it for manual rig testing.`
                 : 'Rive ViewModel is not bound yet. Controls are intentionally reporting this instead of silently doing nothing.'}
             </p>
           </div>
