@@ -1,122 +1,237 @@
 <Rive version="1" kind="fragment">
-    <Artboard defaultStateMachineId="0:100" styleId="0:5" width="800" height="800" name="Kiro" id="0:1">
+    <Artboard defaultStateMachineId="0:100" styleId="0:5" viewModelId="0:200" viewModelInstanceId="0:201" width="800" height="800" name="Kiro" id="0:1">
         <LayoutComponentStyle name="Kiro Artboard Style" id="0:5"/>
 
         <Fill name="Background">
             <SolidColor colorValue="FF0C0D12" name="Color"/>
         </Fill>
 
-        <!-- Kiro is intentionally built from native Rive vector primitives. -->
-        <Shape x="400" y="535" name="Torso" id="0:10">
-            <Triangle originX="0.5" originY="0.5" width="330" height="330" name="TorsoPath"/>
-            <Fill name="TorsoFill">
-                <SolidColor colorValue="FFEEF1F7" name="Color"/>
-            </Fill>
+        <!-- Foreground face details are declared first because Rive paints earlier shapes on top. -->
+        <Shape x="400" y="343" opacity="0" name="Teeth" id="0:42">
+            <DataBindContext sourcePathIds="0:200-0:211" propertyKey="18"/>
+            <Ellipse originX="0.5" originY="0.5" width="58" height="15" name="TeethPath"/>
+            <Fill name="TeethFill"><SolidColor colorValue="FFF8FAFF" name="Color"/></Fill>
         </Shape>
 
-        <Shape x="400" y="285" name="Head" id="0:20">
-            <Triangle originX="0.5" originY="0.5" width="315" height="285" name="HeadPath"/>
-            <Fill name="HeadFill">
-                <SolidColor colorValue="FFF7F8FC" name="Color"/>
-            </Fill>
+        <Shape x="400" y="366" opacity="0" name="Tongue" id="0:43">
+            <DataBindContext sourcePathIds="0:200-0:212" propertyKey="18"/>
+            <Ellipse originX="0.5" originY="0.5" width="43" height="18" name="TonguePath"/>
+            <Fill name="TongueFill"><SolidColor colorValue="FF8B7CFF" name="Color"/></Fill>
         </Shape>
 
-        <Shape x="252" y="286" rotation="-0.35" name="LeftEar" id="0:21">
-            <Triangle originX="0.5" originY="0.5" width="92" height="132" name="LeftEarPath"/>
-            <Fill name="LeftEarFill">
-                <SolidColor colorValue="FFBFC7D8" name="Color"/>
-            </Fill>
+        <Shape x="400" y="351" opacity="0" name="RoundAccent" id="0:44">
+            <DataBindContext sourcePathIds="0:200-0:207" propertyKey="18"/>
+            <Ellipse originX="0.5" originY="0.5" width="25" height="32" name="RoundAccentPath"/>
+            <Fill name="RoundAccentFill"><SolidColor colorValue="FF5449B8" name="Color"/></Fill>
         </Shape>
 
-        <Shape x="548" y="286" rotation="0.35" name="RightEar" id="0:22">
-            <Triangle originX="0.5" originY="0.5" width="92" height="132" name="RightEarPath"/>
-            <Fill name="RightEarFill">
-                <SolidColor colorValue="FFBFC7D8" name="Color"/>
-            </Fill>
+        <Shape x="400" y="350" opacity="0" name="LipPressAccent" id="0:45">
+            <DataBindContext sourcePathIds="0:200-0:209" propertyKey="18"/>
+            <Ellipse originX="0.5" originY="0.5" width="76" height="7" name="LipPressPath"/>
+            <Fill name="LipPressFill"><SolidColor colorValue="FFEEEFFD" name="Color"/></Fill>
         </Shape>
 
-        <Shape x="347" y="282" rotation="3.1415927" name="LeftEye" id="0:30">
-            <Triangle originX="0.5" originY="0.5" width="38" height="30" name="LeftEyePath"/>
-            <Fill name="LeftEyeFill">
-                <SolidColor colorValue="FF11131A" name="Color"/>
-            </Fill>
+        <Shape x="400" y="346" opacity="0" name="LowerLipBiteAccent" id="0:46">
+            <DataBindContext sourcePathIds="0:200-0:210" propertyKey="18"/>
+            <Ellipse originX="0.5" originY="0.5" width="52" height="10" name="LowerLipBitePath"/>
+            <Fill name="LowerLipBiteFill"><SolidColor colorValue="FFF8FAFF" name="Color"/></Fill>
         </Shape>
 
-        <Shape x="453" y="282" rotation="3.1415927" name="RightEye" id="0:31">
-            <Triangle originX="0.5" originY="0.5" width="38" height="30" name="RightEyePath"/>
-            <Fill name="RightEyeFill">
-                <SolidColor colorValue="FF11131A" name="Color"/>
-            </Fill>
+        <Shape x="400" y="352" name="Mouth" id="0:40">
+            <Ellipse originX="0.5" originY="0.5" width="72" height="12" name="MouthPath" id="0:41">
+                <DataBindContext sourcePathIds="0:200-0:206" propertyKey="20" converterId="0:301"/>
+                <DataBindContext sourcePathIds="0:200-0:205" propertyKey="21" converterId="0:300"/>
+            </Ellipse>
+            <Fill name="MouthFill"><SolidColor colorValue="FF11131A" name="Color"/></Fill>
         </Shape>
 
-        <Shape x="400" y="349" rotation="3.1415927" name="MouthRest" id="0:40">
-            <Triangle originX="0.5" originY="0.5" width="76" height="20" name="MouthRestPath"/>
-            <Fill name="MouthRestFill">
-                <SolidColor colorValue="FF11131A" name="Color"/>
-            </Fill>
+        <Shape x="333" y="333" opacity="0.1" name="LeftCheek" id="0:47">
+            <DataBindContext sourcePathIds="0:200-0:213" propertyKey="18"/>
+            <Ellipse originX="0.5" originY="0.5" width="42" height="13" name="LeftCheekPath"/>
+            <Fill name="LeftCheekFill"><SolidColor colorValue="FF8B7CFF" name="Color"/></Fill>
         </Shape>
 
-        <Shape x="400" y="446" rotation="3.1415927" name="Core" id="0:50">
-            <Triangle originX="0.5" originY="0.5" width="86" height="74" name="CorePath"/>
-            <Fill name="CoreFill">
-                <SolidColor colorValue="FF8B7CFF" name="Color"/>
-            </Fill>
+        <Shape x="467" y="333" opacity="0.1" name="RightCheek" id="0:48">
+            <DataBindContext sourcePathIds="0:200-0:213" propertyKey="18"/>
+            <Ellipse originX="0.5" originY="0.5" width="42" height="13" name="RightCheekPath"/>
+            <Fill name="RightCheekFill"><SolidColor colorValue="FF8B7CFF" name="Color"/></Fill>
         </Shape>
 
-        <Shape x="236" y="535" rotation="-0.72" name="LeftArm" id="0:60">
-            <Triangle originX="0.5" originY="0.5" width="105" height="265" name="LeftArmPath"/>
-            <Fill name="LeftArmFill">
-                <SolidColor colorValue="FFDCE1EC" name="Color"/>
-            </Fill>
+        <Shape x="350" y="282" name="LeftPupil" id="0:32">
+            <DataBindContext sourcePathIds="0:200-0:203" propertyKey="13" converterId="0:302"/>
+            <DataBindContext sourcePathIds="0:200-0:204" propertyKey="14" converterId="0:304"/>
+            <Ellipse originX="0.5" originY="0.5" width="23" height="28" name="LeftPupilPath"/>
+            <Fill name="LeftPupilFill"><SolidColor colorValue="FF10131B" name="Color"/></Fill>
         </Shape>
 
-        <Shape x="564" y="535" rotation="0.72" name="RightArm" id="0:61">
-            <Triangle originX="0.5" originY="0.5" width="105" height="265" name="RightArmPath"/>
-            <Fill name="RightArmFill">
-                <SolidColor colorValue="FFDCE1EC" name="Color"/>
-            </Fill>
+        <Shape x="450" y="282" name="RightPupil" id="0:33">
+            <DataBindContext sourcePathIds="0:200-0:203" propertyKey="13" converterId="0:303"/>
+            <DataBindContext sourcePathIds="0:200-0:204" propertyKey="14" converterId="0:304"/>
+            <Ellipse originX="0.5" originY="0.5" width="23" height="28" name="RightPupilPath"/>
+            <Fill name="RightPupilFill"><SolidColor colorValue="FF10131B" name="Color"/></Fill>
         </Shape>
 
-        <Shape x="400" y="117" name="Antenna" id="0:70">
-            <Triangle originX="0.5" originY="0.5" width="48" height="105" name="AntennaPath"/>
-            <Fill name="AntennaFill">
-                <SolidColor colorValue="FF8B7CFF" name="Color"/>
-            </Fill>
+        <Shape x="347" y="280" name="LeftEye" id="0:30">
+            <Ellipse originX="0.5" originY="0.5" width="76" height="58" name="LeftEyePath"/>
+            <Fill name="LeftEyeFill"><SolidColor colorValue="FFF7F8FC" name="Color"/></Fill>
+        </Shape>
+
+        <Shape x="453" y="280" name="RightEye" id="0:31">
+            <Ellipse originX="0.5" originY="0.5" width="76" height="58" name="RightEyePath"/>
+            <Fill name="RightEyeFill"><SolidColor colorValue="FFF7F8FC" name="Color"/></Fill>
+        </Shape>
+
+        <Shape x="346" y="237" rotation="-0.08" name="LeftBrow" id="0:34">
+            <Rectangle originX="0.5" originY="0.5" width="62" height="8" name="LeftBrowPath"/>
+            <Fill name="LeftBrowFill"><SolidColor colorValue="FF202432" name="Color"/></Fill>
+        </Shape>
+
+        <Shape x="454" y="237" rotation="0.08" name="RightBrow" id="0:35">
+            <Rectangle originX="0.5" originY="0.5" width="62" height="8" name="RightBrowPath"/>
+            <Fill name="RightBrowFill"><SolidColor colorValue="FF202432" name="Color"/></Fill>
+        </Shape>
+
+        <Shape x="400" y="282" name="Head" id="0:20">
+            <Ellipse originX="0.5" originY="0.5" width="300" height="270" name="HeadPath"/>
+            <Fill name="HeadFill"><SolidColor colorValue="FFD8DDEA" name="Color"/></Fill>
+        </Shape>
+
+        <Shape x="400" y="487" name="Core" id="0:50">
+            <DataBindContext sourcePathIds="0:200-0:208" propertyKey="16" converterId="0:305"/>
+            <DataBindContext sourcePathIds="0:200-0:208" propertyKey="17" converterId="0:305"/>
+            <Ellipse originX="0.5" originY="0.5" width="82" height="82" name="CorePath"/>
+            <Fill name="CoreFill"><SolidColor colorValue="FF8B7CFF" name="Color"/></Fill>
+        </Shape>
+
+        <Shape x="264" y="285" rotation="-0.42" name="LeftEar" id="0:21">
+            <Triangle originX="0.5" originY="0.5" width="100" height="145" name="LeftEarPath"/>
+            <Fill name="LeftEarFill"><SolidColor colorValue="FF9FA8BD" name="Color"/></Fill>
+        </Shape>
+
+        <Shape x="536" y="285" rotation="0.42" name="RightEar" id="0:22">
+            <Triangle originX="0.5" originY="0.5" width="100" height="145" name="RightEarPath"/>
+            <Fill name="RightEarFill"><SolidColor colorValue="FF9FA8BD" name="Color"/></Fill>
+        </Shape>
+
+        <Shape x="400" y="118" name="Antenna" id="0:70">
+            <Ellipse originX="0.5" originY="0.5" width="36" height="90" name="AntennaPath"/>
+            <Fill name="AntennaFill"><SolidColor colorValue="FF8B7CFF" name="Color"/></Fill>
+        </Shape>
+
+        <Shape x="240" y="550" rotation="-0.38" name="LeftArm" id="0:60">
+            <Ellipse originX="0.5" originY="0.5" width="88" height="260" name="LeftArmPath"/>
+            <Fill name="LeftArmFill"><SolidColor colorValue="FFB7BECE" name="Color"/></Fill>
+        </Shape>
+
+        <Shape x="560" y="550" rotation="0.38" name="RightArm" id="0:61">
+            <Ellipse originX="0.5" originY="0.5" width="88" height="260" name="RightArmPath"/>
+            <Fill name="RightArmFill"><SolidColor colorValue="FFB7BECE" name="Color"/></Fill>
+        </Shape>
+
+        <Shape x="400" y="555" name="Torso" id="0:10">
+            <Ellipse originX="0.5" originY="0.5" width="340" height="365" name="TorsoPath"/>
+            <Fill name="TorsoFill"><SolidColor colorValue="FFEEF1F7" name="Color"/></Fill>
+        </Shape>
+
+        <Shape x="400" y="735" opacity="0.22" name="Shadow" id="0:11">
+            <Ellipse originX="0.5" originY="0.5" width="300" height="34" name="ShadowPath"/>
+            <Fill name="ShadowFill"><SolidColor colorValue="FF000000" name="Color"/></Fill>
         </Shape>
 
         <StateMachine name="KiroMachine" id="0:100">
             <StateMachineLayer name="Ambient" id="0:101">
                 <AnyState x="200" y="-120"/>
                 <ExitState x="400" y="-120"/>
-                <EntryState>
-                    <StateTransition stateToId="0:103"/>
-                </EntryState>
+                <EntryState><StateTransition stateToId="0:103"/></EntryState>
                 <AnimationState x="200" animationId="0:90" id="0:103"/>
+            </StateMachineLayer>
+            <StateMachineLayer name="Blink" id="0:104">
+                <AnyState x="200" y="80"/>
+                <ExitState x="400" y="80"/>
+                <EntryState><StateTransition stateToId="0:106"/></EntryState>
+                <AnimationState x="200" y="170" animationId="0:91" id="0:106"/>
             </StateMachineLayer>
         </StateMachine>
 
         <LinearAnimation loopValue="loop" duration="180" name="Idle" id="0:90">
             <KeyedObject objectId="0:60">
                 <KeyedProperty propertyKey="15">
-                    <KeyFrameDouble value="-0.72" interpolationType="linear"/>
-                    <KeyFrameDouble value="-0.66" interpolationType="linear" frame="90"/>
-                    <KeyFrameDouble value="-0.72" interpolationType="linear" frame="180"/>
+                    <KeyFrameDouble value="-0.38" interpolationType="linear"/>
+                    <KeyFrameDouble value="-0.33" interpolationType="linear" frame="90"/>
+                    <KeyFrameDouble value="-0.38" interpolationType="linear" frame="180"/>
                 </KeyedProperty>
             </KeyedObject>
             <KeyedObject objectId="0:61">
                 <KeyedProperty propertyKey="15">
-                    <KeyFrameDouble value="0.72" interpolationType="linear"/>
-                    <KeyFrameDouble value="0.66" interpolationType="linear" frame="90"/>
-                    <KeyFrameDouble value="0.72" interpolationType="linear" frame="180"/>
+                    <KeyFrameDouble value="0.38" interpolationType="linear"/>
+                    <KeyFrameDouble value="0.33" interpolationType="linear" frame="90"/>
+                    <KeyFrameDouble value="0.38" interpolationType="linear" frame="180"/>
                 </KeyedProperty>
             </KeyedObject>
             <KeyedObject objectId="0:70">
                 <KeyedProperty propertyKey="15">
-                    <KeyFrameDouble value="-0.055" interpolationType="linear"/>
-                    <KeyFrameDouble value="0.055" interpolationType="linear" frame="90"/>
-                    <KeyFrameDouble value="-0.055" interpolationType="linear" frame="180"/>
+                    <KeyFrameDouble value="-0.05" interpolationType="linear"/>
+                    <KeyFrameDouble value="0.05" interpolationType="linear" frame="90"/>
+                    <KeyFrameDouble value="-0.05" interpolationType="linear" frame="180"/>
+                </KeyedProperty>
+            </KeyedObject>
+            <KeyedObject objectId="0:10">
+                <KeyedProperty propertyKey="17">
+                    <KeyFrameDouble value="1" interpolationType="linear"/>
+                    <KeyFrameDouble value="1.018" interpolationType="linear" frame="90"/>
+                    <KeyFrameDouble value="1" interpolationType="linear" frame="180"/>
                 </KeyedProperty>
             </KeyedObject>
         </LinearAnimation>
+
+        <LinearAnimation loopValue="loop" duration="300" name="BlinkLoop" id="0:91">
+            <KeyedObject objectId="0:30"><KeyedProperty propertyKey="17"><KeyFrameDouble value="1" interpolationType="linear"/><KeyFrameDouble value="1" interpolationType="linear" frame="205"/><KeyFrameDouble value="0.08" interpolationType="linear" frame="210"/><KeyFrameDouble value="1" interpolationType="linear" frame="216"/><KeyFrameDouble value="1" interpolationType="linear" frame="300"/></KeyedProperty></KeyedObject>
+            <KeyedObject objectId="0:31"><KeyedProperty propertyKey="17"><KeyFrameDouble value="1" interpolationType="linear"/><KeyFrameDouble value="1" interpolationType="linear" frame="205"/><KeyFrameDouble value="0.08" interpolationType="linear" frame="210"/><KeyFrameDouble value="1" interpolationType="linear" frame="216"/><KeyFrameDouble value="1" interpolationType="linear" frame="300"/></KeyedProperty></KeyedObject>
+            <KeyedObject objectId="0:32"><KeyedProperty propertyKey="17"><KeyFrameDouble value="1" interpolationType="linear"/><KeyFrameDouble value="1" interpolationType="linear" frame="205"/><KeyFrameDouble value="0.08" interpolationType="linear" frame="210"/><KeyFrameDouble value="1" interpolationType="linear" frame="216"/><KeyFrameDouble value="1" interpolationType="linear" frame="300"/></KeyedProperty></KeyedObject>
+            <KeyedObject objectId="0:33"><KeyedProperty propertyKey="17"><KeyFrameDouble value="1" interpolationType="linear"/><KeyFrameDouble value="1" interpolationType="linear" frame="205"/><KeyFrameDouble value="0.08" interpolationType="linear" frame="210"/><KeyFrameDouble value="1" interpolationType="linear" frame="216"/><KeyFrameDouble value="1" interpolationType="linear" frame="300"/></KeyedProperty></KeyedObject>
+        </LinearAnimation>
     </Artboard>
+
+    <DataConverterRangeMapper minInput="0" maxInput="1" minOutput="10" maxOutput="62" clampLower="true" clampUpper="true" name="MouthOpenToHeight" id="0:300"/>
+    <DataConverterRangeMapper minInput="0" maxInput="1" minOutput="44" maxOutput="114" clampLower="true" clampUpper="true" name="MouthWidthToWidth" id="0:301"/>
+    <DataConverterRangeMapper minInput="-1" maxInput="1" minOutput="341" maxOutput="355" clampLower="true" clampUpper="true" name="GazeToLeftEyeX" id="0:302"/>
+    <DataConverterRangeMapper minInput="-1" maxInput="1" minOutput="445" maxOutput="459" clampLower="true" clampUpper="true" name="GazeToRightEyeX" id="0:303"/>
+    <DataConverterRangeMapper minInput="-1" maxInput="1" minOutput="273" maxOutput="289" clampLower="true" clampUpper="true" name="GazeToEyeY" id="0:304"/>
+    <DataConverterRangeMapper minInput="0" maxInput="1" minOutput="0.96" maxOutput="1.09" clampLower="true" clampUpper="true" name="SpeechEnergyToCoreScale" id="0:305"/>
+
+    <ViewModel defaultInstanceId="0:201" name="Kiro" id="0:200">
+        <ViewModelPropertyBoolean name="speaking" id="0:202"/>
+        <ViewModelPropertyNumber name="gazeX" id="0:203"/>
+        <ViewModelPropertyNumber name="gazeY" id="0:204"/>
+        <ViewModelPropertyNumber name="mouthOpen" id="0:205"/>
+        <ViewModelPropertyNumber name="mouthWidth" id="0:206"/>
+        <ViewModelPropertyNumber name="mouthRound" id="0:207"/>
+        <ViewModelPropertyNumber name="speechEnergy" id="0:208"/>
+        <ViewModelPropertyNumber name="lipPress" id="0:209"/>
+        <ViewModelPropertyNumber name="lowerLipBite" id="0:210"/>
+        <ViewModelPropertyNumber name="teeth" id="0:211"/>
+        <ViewModelPropertyNumber name="tongue" id="0:212"/>
+        <ViewModelPropertyNumber name="cornerPull" id="0:213"/>
+        <ViewModelPropertyNumber name="visemeIndex" id="0:214"/>
+        <ViewModelPropertyNumber name="emotionIndex" id="0:216"/>
+        <ViewModelPropertyTrigger name="react" id="0:215"/>
+
+        <ViewModelInstance exports="true" name="Default" id="0:201">
+            <ViewModelInstanceBoolean propertyValue="false" viewModelPropertyId="0:202"/>
+            <ViewModelInstanceNumber propertyValue="0" viewModelPropertyId="0:203"/>
+            <ViewModelInstanceNumber propertyValue="0" viewModelPropertyId="0:204"/>
+            <ViewModelInstanceNumber propertyValue="0.035" viewModelPropertyId="0:205"/>
+            <ViewModelInstanceNumber propertyValue="0.4" viewModelPropertyId="0:206"/>
+            <ViewModelInstanceNumber propertyValue="0.06" viewModelPropertyId="0:207"/>
+            <ViewModelInstanceNumber propertyValue="0" viewModelPropertyId="0:208"/>
+            <ViewModelInstanceNumber propertyValue="0.08" viewModelPropertyId="0:209"/>
+            <ViewModelInstanceNumber propertyValue="0" viewModelPropertyId="0:210"/>
+            <ViewModelInstanceNumber propertyValue="0" viewModelPropertyId="0:211"/>
+            <ViewModelInstanceNumber propertyValue="0" viewModelPropertyId="0:212"/>
+            <ViewModelInstanceNumber propertyValue="0.1" viewModelPropertyId="0:213"/>
+            <ViewModelInstanceNumber propertyValue="0" viewModelPropertyId="0:214"/>
+            <ViewModelInstanceNumber propertyValue="0" viewModelPropertyId="0:216"/>
+            <ViewModelInstanceTrigger viewModelPropertyId="0:215"/>
+        </ViewModelInstance>
+    </ViewModel>
 </Rive>
