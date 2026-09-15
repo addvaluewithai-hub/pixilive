@@ -59,23 +59,18 @@ jobs:
         shell: bash
         run: |
           {
-            echo '=== Ellipse ==='
-            rive schema Ellipse || true
-            echo
-            echo '=== Rectangle ==='
-            rive schema Rectangle || true
-            echo
-            echo '=== Group ==='
-            rive schema Group || true
-            echo
-            echo '=== Solo ==='
-            rive schema Solo || true
-            echo
-            echo '=== ViewModel ==='
-            rive schema ViewModel || true
+            for TYPE in Artboard LayoutComponentStyle Shape Triangle Ellipse Rectangle Fill SolidColor Solo ViewModel ViewModelPropertyNumber ViewModelPropertyBoolean ViewModelPropertyEnum ViewModelPropertyTrigger Enum; do
+              echo "=== $TYPE ==="
+              rive schema "$TYPE" || true
+              echo
+            done
+            echo '=== Drawing docs ==='
+            rive docs --search 'SolidColor' || true
             echo
             echo '=== Data binding docs ==='
-            rive docs --search 'view model' || true
+            rive docs --search 'ViewModelPropertyNumber' || true
+            echo
+            rive docs --search 'viewModelId' || true
           } > rive/kiro/build/schema-notes.txt
 
       - name: Upload Rive artifacts
