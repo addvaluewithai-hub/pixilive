@@ -9,6 +9,7 @@ interface CharacterStageProps {
   emotion: Emotion;
   mouth: MouthPose;
   speaking: boolean;
+  speechText: string;
 }
 
 export function CharacterStage(props: CharacterStageProps) {
