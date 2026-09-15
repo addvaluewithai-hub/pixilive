@@ -1,5 +1,4 @@
 name: kiro
-main: Kiro
 
 output:
   dir: build
