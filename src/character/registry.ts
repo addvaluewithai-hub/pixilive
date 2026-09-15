@@ -3,6 +3,7 @@ import { NovaCharacter } from './NovaCharacter';
 import type { CharacterDefinition } from './runtime';
 
 const commonEmotions = ['calm', 'happy', 'curious', 'excited'] as const;
+const kiroAssetUrl = `/rive/kiro.riv?v=${Date.now()}`;
 
 export const characterRegistry = [
   {
@@ -32,9 +33,10 @@ export const characterRegistry = [
       alphaMax: 0,
     },
     rive: {
-      // Cache-bust the authored asset so a deploy can never keep an older .riv
-      // while the React controls already expect newer ViewModel bindings.
-      src: '/rive/kiro.riv?v=kiro-rig-24',
+      // This is a fast-moving authored asset during the character lab phase.
+      // Give each page load a fresh URL so an old cached .riv can never pair
+      // with newer React controls/ViewModel bindings.
+      src: kiroAssetUrl,
       artboard: 'Kiro',
       stateMachine: 'KiroMachine',
     },
