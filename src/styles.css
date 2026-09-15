@@ -97,12 +97,15 @@ button:disabled { opacity:.45; cursor:not-allowed; }
 .rive-motion-lab { position:absolute; z-index:8; left:50%; top:18px; width:min(560px,calc(100vw - 760px)); min-width:360px; transform:translateX(-50%); border:1px solid rgba(255,255,255,.12); border-radius:18px; background:rgba(9,10,18,.78); box-shadow:0 18px 55px rgba(0,0,0,.32); backdrop-filter:blur(18px); overflow:hidden; }
 .motion-lab-toggle { width:100%; display:flex; align-items:center; justify-content:space-between; border:0; border-radius:0; padding:10px 13px; background:transparent; }
 .motion-lab-toggle:hover:not(:disabled) { transform:none; background:rgba(255,255,255,.045); border-color:transparent; }
-.motion-lab-toggle span { display:flex; align-items:center; gap:8px; font-size:11px; letter-spacing:.08em; text-transform:uppercase; font-weight:800; }
-.motion-lab-toggle span i { width:7px; height:7px; border-radius:50%; background:#86efac; box-shadow:0 0 12px rgba(134,239,172,.45); }
-.motion-lab-toggle > b { color:var(--muted); font-size:10px; font-weight:600; }
+.motion-lab-toggle span { display:flex; align-items:center; gap:8px; min-width:0; font-size:11px; letter-spacing:.08em; text-transform:uppercase; font-weight:800; }
+.motion-lab-toggle span i { flex:0 0 auto; width:7px; height:7px; border-radius:50%; background:#777; box-shadow:none; }
+.motion-lab-toggle span i.bound { background:#86efac; box-shadow:0 0 12px rgba(134,239,172,.45); }
+.motion-lab-toggle span i.unbound { background:#fb7185; box-shadow:0 0 12px rgba(251,113,133,.35); }
+.motion-lab-toggle span em { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:#8f98be; font-size:9px; font-style:normal; font-weight:700; letter-spacing:.06em; }
+.motion-lab-toggle > b { flex:0 0 auto; color:var(--muted); font-size:10px; font-weight:600; }
 .motion-lab-body { padding:0 13px 12px; border-top:1px solid rgba(255,255,255,.08); max-height:45vh; overflow:auto; }
-.motion-lab-actions { display:grid; grid-template-columns:1.4fr 1fr; gap:7px; padding:10px 0; }
-.motion-lab-actions button { padding:8px 10px; font-size:10px; }
+.motion-lab-actions { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:7px; padding:10px 0; }
+.motion-lab-actions button { min-width:0; padding:8px 7px; font-size:9.5px; }
 .rig-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:7px 12px; }
 .rig-slider { display:block; min-width:0; padding:7px 8px; border:1px solid rgba(255,255,255,.075); border-radius:11px; background:rgba(255,255,255,.025); }
 .rig-slider > span { display:flex; justify-content:space-between; gap:8px; margin-bottom:5px; color:#d9dbea; font-size:9.5px; line-height:1; }
@@ -113,4 +116,4 @@ button:disabled { opacity:.45; cursor:not-allowed; }
 @keyframes pulse { to { opacity:.3; transform:scale(.7); } }
 @media (max-width: 1100px) { .rive-motion-lab { left:52%; width:min(500px,46vw); min-width:330px; } .copy { max-width:400px; } }
 @media (max-width: 900px) { .copy { max-width:320px; bottom:28px; right:24px; left:auto; } .copy > p,.transcript { display:none; } h1 { font-size:44px; } .controls { top:auto; left:16px; right:auto; bottom:16px; transform:none; width:310px; } .rive-motion-lab { left:auto; right:16px; top:74px; width:min(430px,calc(100vw - 360px)); min-width:300px; transform:none; } }
-@media (max-width: 680px) { .brand { top:15px; left:16px; } .copy { display:none; } .controls { left:12px; right:12px; bottom:12px; width:auto; } .emotion-grid { grid-template-columns:repeat(4,1fr); } .hint,.character-description { display:none; } .tap-reaction { width:70vw; } .rive-motion-lab { left:12px; right:12px; top:64px; width:auto; min-width:0; } .motion-lab-body { max-height:33vh; } .rig-grid { grid-template-columns:1fr; } }
+@media (max-width: 680px) { .brand { top:15px; left:16px; } .copy { display:none; } .controls { left:12px; right:12px; bottom:12px; width:auto; } .emotion-grid { grid-template-columns:repeat(4,1fr); } .hint,.character-description { display:none; } .tap-reaction { width:70vw; } .rive-motion-lab { left:12px; right:12px; top:64px; width:auto; min-width:0; } .motion-lab-body { max-height:33vh; } .motion-lab-actions { grid-template-columns:1fr; } .rig-grid { grid-template-columns:1fr; } }
