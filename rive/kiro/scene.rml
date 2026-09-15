@@ -3,7 +3,6 @@
         <LayoutComponentStyle name="Kiro Artboard Style" id="0:5"/>
         <Fill name="Background"><SolidColor colorValue="FF0B0C10" name="Color"/></Fill>
 
-        <!-- Character hierarchy is authored by XML nesting so every control inherits naturally. -->
         <Node x="400" y="530" name="CharacterRoot" id="0:180">
             <Node x="0" y="0" name="BodyControl" id="0:200">
                 <DataBindContext sourcePathIds="0:800-0:814" propertyKey="13"/>
@@ -37,7 +36,6 @@
                                 <Node x="0" y="0" name="EyeAuto" id="0:220">
                                     <Node x="0" y="0" name="EyeManual" id="0:221">
                                         <DataBindContext sourcePathIds="0:800-0:824" propertyKey="17"/>
-
                                         <Node x="-52" y="-6" name="LeftEyeSocket" id="0:222">
                                             <Node x="0" y="0" name="LeftPupilControl" id="0:224">
                                                 <DataBindContext sourcePathIds="0:800-0:803" propertyKey="13" converterId="0:701"/>
@@ -53,7 +51,6 @@
                                                 <Stroke thickness="3.5" name="Outline"><SolidColor colorValue="FF111318" name="Color"/></Stroke>
                                             </Shape>
                                         </Node>
-
                                         <Node x="52" y="-6" name="RightEyeSocket" id="0:223">
                                             <Node x="0" y="0" name="RightPupilControl" id="0:225">
                                                 <DataBindContext sourcePathIds="0:800-0:803" propertyKey="13" converterId="0:701"/>
@@ -127,7 +124,6 @@
                                     </Ellipse>
                                     <Fill name="Fill"><SolidColor colorValue="FF111318" name="Color"/></Fill>
                                 </Shape>
-
                                 <Shape x="0" y="0" name="HeadBase" id="0:370">
                                     <Ellipse width="258" height="276" originX="0.5" originY="0.5" name="Path"/>
                                     <Fill name="Skin"><SolidColor colorValue="FFF4F1E9" name="Color"/></Fill>
@@ -137,7 +133,16 @@
                         </Node>
                     </Node>
 
-                    <!-- Sleeves now inherit the shoulder bone itself, eliminating the detached shoulder-pad effect. -->
+                    <!-- IK targets live in body space, so moving the torso carries the whole solve naturally. -->
+                    <Node x="-70" y="116" name="LeftHandTarget" id="0:280">
+                        <DataBindContext sourcePathIds="0:800-0:828" propertyKey="13"/>
+                        <DataBindContext sourcePathIds="0:800-0:829" propertyKey="14"/>
+                    </Node>
+                    <Node x="70" y="116" name="RightHandTarget" id="0:281">
+                        <DataBindContext sourcePathIds="0:800-0:830" propertyKey="13"/>
+                        <DataBindContext sourcePathIds="0:800-0:831" propertyKey="14"/>
+                    </Node>
+
                     <Node x="-118" y="-91" name="LeftShoulderIdle" id="0:290">
                         <RootBone x="0" y="0" length="118" rotation="1.72" name="LeftUpperBone" id="0:300">
                             <DataBindContext sourcePathIds="0:800-0:820" propertyKey="15"/>
@@ -148,6 +153,9 @@
                             </Shape>
                             <Bone length="112" rotation="-0.78" name="LeftForeBone" id="0:301">
                                 <DataBindContext sourcePathIds="0:800-0:821" propertyKey="15"/>
+                                <IKConstraint targetId="0:280" parentBoneCount="1" strength="1" name="LeftHandIK">
+                                    <DataBindContext sourcePathIds="0:800-0:832" propertyKey="172"/>
+                                </IKConstraint>
                                 <Shape x="116" y="0" name="LeftHand" id="0:340">
                                     <Ellipse width="54" height="50" originX="0.5" originY="0.5" name="Palm"/>
                                     <Fill name="Skin"><SolidColor colorValue="FFF4F1E9" name="Color"/></Fill>
@@ -177,6 +185,9 @@
                             </Shape>
                             <Bone length="112" rotation="0.78" name="RightForeBone" id="0:311">
                                 <DataBindContext sourcePathIds="0:800-0:823" propertyKey="15"/>
+                                <IKConstraint targetId="0:281" parentBoneCount="1" invertDirection="true" strength="1" name="RightHandIK">
+                                    <DataBindContext sourcePathIds="0:800-0:832" propertyKey="172"/>
+                                </IKConstraint>
                                 <Shape x="116" y="0" name="RightHand" id="0:341">
                                     <Ellipse width="54" height="50" originX="0.5" originY="0.5" name="Palm"/>
                                     <Fill name="Skin"><SolidColor colorValue="FFF4F1E9" name="Color"/></Fill>
@@ -214,7 +225,6 @@
                         <Fill name="Shirt"><SolidColor colorValue="FF14161C" name="Color"/></Fill>
                         <Stroke thickness="5" cap="round" join="round" name="Outline"><SolidColor colorValue="FFF4F1E9" name="Color"/></Stroke>
                     </Shape>
-
                     <Shape x="0" y="-126" name="Neck" id="0:321">
                         <Rectangle width="54" height="66" originX="0.5" originY="0.5" cornerRadiusTL="16" cornerRadiusTR="16" cornerRadiusBL="16" cornerRadiusBR="16" name="Path"/>
                         <Fill name="Skin"><SolidColor colorValue="FFF4F1E9" name="Color"/></Fill>
@@ -239,54 +249,20 @@
 
         <LinearAnimation loopValue="loop" duration="180" name="BreathAndDrift" id="0:90">
             <KeyedObject objectId="0:201">
-                <KeyedProperty propertyKey="14">
-                    <KeyFrameDouble value="0" interpolationType="linear"/>
-                    <KeyFrameDouble value="-4" interpolationType="linear" frame="90"/>
-                    <KeyFrameDouble value="0" interpolationType="linear" frame="180"/>
-                </KeyedProperty>
-                <KeyedProperty propertyKey="15">
-                    <KeyFrameDouble value="-0.006" interpolationType="linear"/>
-                    <KeyFrameDouble value="0.006" interpolationType="linear" frame="90"/>
-                    <KeyFrameDouble value="-0.006" interpolationType="linear" frame="180"/>
-                </KeyedProperty>
+                <KeyedProperty propertyKey="14"><KeyFrameDouble value="0" interpolationType="linear"/><KeyFrameDouble value="-4" interpolationType="linear" frame="90"/><KeyFrameDouble value="0" interpolationType="linear" frame="180"/></KeyedProperty>
+                <KeyedProperty propertyKey="15"><KeyFrameDouble value="-0.006" interpolationType="linear"/><KeyFrameDouble value="0.006" interpolationType="linear" frame="90"/><KeyFrameDouble value="-0.006" interpolationType="linear" frame="180"/></KeyedProperty>
             </KeyedObject>
             <KeyedObject objectId="0:211">
-                <KeyedProperty propertyKey="14">
-                    <KeyFrameDouble value="0" interpolationType="linear"/>
-                    <KeyFrameDouble value="-2.5" interpolationType="linear" frame="90"/>
-                    <KeyFrameDouble value="0" interpolationType="linear" frame="180"/>
-                </KeyedProperty>
-                <KeyedProperty propertyKey="15">
-                    <KeyFrameDouble value="0.008" interpolationType="linear"/>
-                    <KeyFrameDouble value="-0.008" interpolationType="linear" frame="90"/>
-                    <KeyFrameDouble value="0.008" interpolationType="linear" frame="180"/>
-                </KeyedProperty>
+                <KeyedProperty propertyKey="14"><KeyFrameDouble value="0" interpolationType="linear"/><KeyFrameDouble value="-2.5" interpolationType="linear" frame="90"/><KeyFrameDouble value="0" interpolationType="linear" frame="180"/></KeyedProperty>
+                <KeyedProperty propertyKey="15"><KeyFrameDouble value="0.008" interpolationType="linear"/><KeyFrameDouble value="-0.008" interpolationType="linear" frame="90"/><KeyFrameDouble value="0.008" interpolationType="linear" frame="180"/></KeyedProperty>
             </KeyedObject>
-            <KeyedObject objectId="0:290">
-                <KeyedProperty propertyKey="15">
-                    <KeyFrameDouble value="-0.012" interpolationType="linear"/>
-                    <KeyFrameDouble value="0.012" interpolationType="linear" frame="90"/>
-                    <KeyFrameDouble value="-0.012" interpolationType="linear" frame="180"/>
-                </KeyedProperty>
-            </KeyedObject>
-            <KeyedObject objectId="0:291">
-                <KeyedProperty propertyKey="15">
-                    <KeyFrameDouble value="0.012" interpolationType="linear"/>
-                    <KeyFrameDouble value="-0.012" interpolationType="linear" frame="90"/>
-                    <KeyFrameDouble value="0.012" interpolationType="linear" frame="180"/>
-                </KeyedProperty>
-            </KeyedObject>
+            <KeyedObject objectId="0:290"><KeyedProperty propertyKey="15"><KeyFrameDouble value="-0.012" interpolationType="linear"/><KeyFrameDouble value="0.012" interpolationType="linear" frame="90"/><KeyFrameDouble value="-0.012" interpolationType="linear" frame="180"/></KeyedProperty></KeyedObject>
+            <KeyedObject objectId="0:291"><KeyedProperty propertyKey="15"><KeyFrameDouble value="0.012" interpolationType="linear"/><KeyFrameDouble value="-0.012" interpolationType="linear" frame="90"/><KeyFrameDouble value="0.012" interpolationType="linear" frame="180"/></KeyedProperty></KeyedObject>
         </LinearAnimation>
 
         <LinearAnimation loopValue="loop" duration="240" name="Blink" id="0:91">
             <KeyedObject objectId="0:220">
-                <KeyedProperty propertyKey="17">
-                    <KeyFrameDouble value="1" interpolationType="linear"/>
-                    <KeyFrameDouble value="1" interpolationType="linear" frame="152"/>
-                    <KeyFrameDouble value="0.07" interpolationType="linear" frame="157"/>
-                    <KeyFrameDouble value="1" interpolationType="linear" frame="164"/>
-                    <KeyFrameDouble value="1" interpolationType="linear" frame="240"/>
-                </KeyedProperty>
+                <KeyedProperty propertyKey="17"><KeyFrameDouble value="1" interpolationType="linear"/><KeyFrameDouble value="1" interpolationType="linear" frame="152"/><KeyFrameDouble value="0.07" interpolationType="linear" frame="157"/><KeyFrameDouble value="1" interpolationType="linear" frame="164"/><KeyFrameDouble value="1" interpolationType="linear" frame="240"/></KeyedProperty>
             </KeyedObject>
         </LinearAnimation>
     </Artboard>
@@ -297,58 +273,24 @@
 
     <ViewModel defaultInstanceId="0:801" name="KiroVM" id="0:800">
         <ViewModelPropertyBoolean name="speaking" id="0:802"/>
-        <ViewModelPropertyNumber name="gazeX" id="0:803"/>
-        <ViewModelPropertyNumber name="gazeY" id="0:804"/>
-        <ViewModelPropertyNumber name="mouthOpen" id="0:805"/>
-        <ViewModelPropertyNumber name="mouthWidth" id="0:806"/>
-        <ViewModelPropertyNumber name="mouthRound" id="0:807"/>
-        <ViewModelPropertyNumber name="speechEnergy" id="0:808"/>
-        <ViewModelPropertyNumber name="lipPress" id="0:809"/>
-        <ViewModelPropertyNumber name="lowerLipBite" id="0:810"/>
-        <ViewModelPropertyNumber name="teeth" id="0:811"/>
-        <ViewModelPropertyNumber name="tongue" id="0:812"/>
-        <ViewModelPropertyNumber name="cornerPull" id="0:813"/>
-        <ViewModelPropertyNumber name="bodyX" id="0:814"/>
-        <ViewModelPropertyNumber name="bodyY" id="0:815"/>
-        <ViewModelPropertyNumber name="bodyLean" id="0:816"/>
-        <ViewModelPropertyNumber name="headX" id="0:817"/>
-        <ViewModelPropertyNumber name="headY" id="0:818"/>
-        <ViewModelPropertyNumber name="headTilt" id="0:819"/>
-        <ViewModelPropertyNumber name="leftShoulder" id="0:820"/>
-        <ViewModelPropertyNumber name="leftElbow" id="0:821"/>
-        <ViewModelPropertyNumber name="rightShoulder" id="0:822"/>
-        <ViewModelPropertyNumber name="rightElbow" id="0:823"/>
-        <ViewModelPropertyNumber name="eyeScale" id="0:824"/>
-        <ViewModelPropertyNumber name="browY" id="0:825"/>
-        <ViewModelPropertyNumber name="smileOpacity" id="0:826"/>
-        <ViewModelPropertyNumber name="neutralOpacity" id="0:827"/>
+        <ViewModelPropertyNumber name="gazeX" id="0:803"/><ViewModelPropertyNumber name="gazeY" id="0:804"/>
+        <ViewModelPropertyNumber name="mouthOpen" id="0:805"/><ViewModelPropertyNumber name="mouthWidth" id="0:806"/><ViewModelPropertyNumber name="mouthRound" id="0:807"/>
+        <ViewModelPropertyNumber name="speechEnergy" id="0:808"/><ViewModelPropertyNumber name="lipPress" id="0:809"/><ViewModelPropertyNumber name="lowerLipBite" id="0:810"/><ViewModelPropertyNumber name="teeth" id="0:811"/><ViewModelPropertyNumber name="tongue" id="0:812"/><ViewModelPropertyNumber name="cornerPull" id="0:813"/>
+        <ViewModelPropertyNumber name="bodyX" id="0:814"/><ViewModelPropertyNumber name="bodyY" id="0:815"/><ViewModelPropertyNumber name="bodyLean" id="0:816"/>
+        <ViewModelPropertyNumber name="headX" id="0:817"/><ViewModelPropertyNumber name="headY" id="0:818"/><ViewModelPropertyNumber name="headTilt" id="0:819"/>
+        <ViewModelPropertyNumber name="leftShoulder" id="0:820"/><ViewModelPropertyNumber name="leftElbow" id="0:821"/><ViewModelPropertyNumber name="rightShoulder" id="0:822"/><ViewModelPropertyNumber name="rightElbow" id="0:823"/>
+        <ViewModelPropertyNumber name="eyeScale" id="0:824"/><ViewModelPropertyNumber name="browY" id="0:825"/><ViewModelPropertyNumber name="smileOpacity" id="0:826"/><ViewModelPropertyNumber name="neutralOpacity" id="0:827"/>
+        <ViewModelPropertyNumber name="leftHandX" id="0:828"/><ViewModelPropertyNumber name="leftHandY" id="0:829"/><ViewModelPropertyNumber name="rightHandX" id="0:830"/><ViewModelPropertyNumber name="rightHandY" id="0:831"/><ViewModelPropertyNumber name="ikStrength" id="0:832"/>
         <ViewModelInstance exports="true" name="Default" id="0:801">
             <ViewModelInstanceBoolean propertyValue="false" viewModelPropertyId="0:802"/>
-            <ViewModelInstanceNumber propertyValue="0" viewModelPropertyId="0:803"/>
-            <ViewModelInstanceNumber propertyValue="0" viewModelPropertyId="0:804"/>
-            <ViewModelInstanceNumber propertyValue="0.06" viewModelPropertyId="0:805"/>
-            <ViewModelInstanceNumber propertyValue="0.4" viewModelPropertyId="0:806"/>
-            <ViewModelInstanceNumber propertyValue="0.06" viewModelPropertyId="0:807"/>
-            <ViewModelInstanceNumber propertyValue="0" viewModelPropertyId="0:808"/>
-            <ViewModelInstanceNumber propertyValue="0.08" viewModelPropertyId="0:809"/>
-            <ViewModelInstanceNumber propertyValue="0" viewModelPropertyId="0:810"/>
-            <ViewModelInstanceNumber propertyValue="0" viewModelPropertyId="0:811"/>
-            <ViewModelInstanceNumber propertyValue="0" viewModelPropertyId="0:812"/>
-            <ViewModelInstanceNumber propertyValue="0.1" viewModelPropertyId="0:813"/>
-            <ViewModelInstanceNumber propertyValue="0" viewModelPropertyId="0:814"/>
-            <ViewModelInstanceNumber propertyValue="0" viewModelPropertyId="0:815"/>
-            <ViewModelInstanceNumber propertyValue="0" viewModelPropertyId="0:816"/>
-            <ViewModelInstanceNumber propertyValue="0" viewModelPropertyId="0:817"/>
-            <ViewModelInstanceNumber propertyValue="0" viewModelPropertyId="0:818"/>
-            <ViewModelInstanceNumber propertyValue="0" viewModelPropertyId="0:819"/>
-            <ViewModelInstanceNumber propertyValue="1.72" viewModelPropertyId="0:820"/>
-            <ViewModelInstanceNumber propertyValue="-0.78" viewModelPropertyId="0:821"/>
-            <ViewModelInstanceNumber propertyValue="1.4215927" viewModelPropertyId="0:822"/>
-            <ViewModelInstanceNumber propertyValue="0.78" viewModelPropertyId="0:823"/>
-            <ViewModelInstanceNumber propertyValue="1" viewModelPropertyId="0:824"/>
-            <ViewModelInstanceNumber propertyValue="-55" viewModelPropertyId="0:825"/>
-            <ViewModelInstanceNumber propertyValue="0" viewModelPropertyId="0:826"/>
-            <ViewModelInstanceNumber propertyValue="1" viewModelPropertyId="0:827"/>
+            <ViewModelInstanceNumber propertyValue="0" viewModelPropertyId="0:803"/><ViewModelInstanceNumber propertyValue="0" viewModelPropertyId="0:804"/>
+            <ViewModelInstanceNumber propertyValue="0.06" viewModelPropertyId="0:805"/><ViewModelInstanceNumber propertyValue="0.4" viewModelPropertyId="0:806"/><ViewModelInstanceNumber propertyValue="0.06" viewModelPropertyId="0:807"/>
+            <ViewModelInstanceNumber propertyValue="0" viewModelPropertyId="0:808"/><ViewModelInstanceNumber propertyValue="0.08" viewModelPropertyId="0:809"/><ViewModelInstanceNumber propertyValue="0" viewModelPropertyId="0:810"/><ViewModelInstanceNumber propertyValue="0" viewModelPropertyId="0:811"/><ViewModelInstanceNumber propertyValue="0" viewModelPropertyId="0:812"/><ViewModelInstanceNumber propertyValue="0.1" viewModelPropertyId="0:813"/>
+            <ViewModelInstanceNumber propertyValue="0" viewModelPropertyId="0:814"/><ViewModelInstanceNumber propertyValue="0" viewModelPropertyId="0:815"/><ViewModelInstanceNumber propertyValue="0" viewModelPropertyId="0:816"/>
+            <ViewModelInstanceNumber propertyValue="0" viewModelPropertyId="0:817"/><ViewModelInstanceNumber propertyValue="0" viewModelPropertyId="0:818"/><ViewModelInstanceNumber propertyValue="0" viewModelPropertyId="0:819"/>
+            <ViewModelInstanceNumber propertyValue="1.72" viewModelPropertyId="0:820"/><ViewModelInstanceNumber propertyValue="-0.78" viewModelPropertyId="0:821"/><ViewModelInstanceNumber propertyValue="1.4215927" viewModelPropertyId="0:822"/><ViewModelInstanceNumber propertyValue="0.78" viewModelPropertyId="0:823"/>
+            <ViewModelInstanceNumber propertyValue="1" viewModelPropertyId="0:824"/><ViewModelInstanceNumber propertyValue="-55" viewModelPropertyId="0:825"/><ViewModelInstanceNumber propertyValue="0" viewModelPropertyId="0:826"/><ViewModelInstanceNumber propertyValue="1" viewModelPropertyId="0:827"/>
+            <ViewModelInstanceNumber propertyValue="-70" viewModelPropertyId="0:828"/><ViewModelInstanceNumber propertyValue="116" viewModelPropertyId="0:829"/><ViewModelInstanceNumber propertyValue="70" viewModelPropertyId="0:830"/><ViewModelInstanceNumber propertyValue="116" viewModelPropertyId="0:831"/><ViewModelInstanceNumber propertyValue="1" viewModelPropertyId="0:832"/>
         </ViewModelInstance>
     </ViewModel>
 </Rive>
