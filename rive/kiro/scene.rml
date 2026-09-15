@@ -1,0 +1,120 @@
+<Rive version="1" kind="fragment">
+    <Artboard defaultStateMachineId="0:100" width="800" height="800" name="Kiro" id="0:1">
+        <Fill name="Background">
+            <SolidColor colorValue="FF0C0D12" name="Color"/>
+        </Fill>
+
+        <!-- Kiro is intentionally built from native Rive vector primitives. -->
+        <Shape x="400" y="535" name="Torso" id="0:10">
+            <Triangle originX="0.5" originY="0.5" width="330" height="330" name="TorsoPath"/>
+            <Fill name="TorsoFill">
+                <SolidColor colorValue="FFEEF1F7" name="Color"/>
+            </Fill>
+        </Shape>
+
+        <Shape x="400" y="285" name="Head" id="0:20">
+            <Triangle originX="0.5" originY="0.5" width="315" height="285" name="HeadPath"/>
+            <Fill name="HeadFill">
+                <SolidColor colorValue="FFF7F8FC" name="Color"/>
+            </Fill>
+        </Shape>
+
+        <Shape x="252" y="286" rotation="-0.35" name="LeftEar" id="0:21">
+            <Triangle originX="0.5" originY="0.5" width="92" height="132" name="LeftEarPath"/>
+            <Fill name="LeftEarFill">
+                <SolidColor colorValue="FFBFC7D8" name="Color"/>
+            </Fill>
+        </Shape>
+
+        <Shape x="548" y="286" rotation="0.35" name="RightEar" id="0:22">
+            <Triangle originX="0.5" originY="0.5" width="92" height="132" name="RightEarPath"/>
+            <Fill name="RightEarFill">
+                <SolidColor colorValue="FFBFC7D8" name="Color"/>
+            </Fill>
+        </Shape>
+
+        <Shape x="347" y="282" rotation="3.1415927" name="LeftEye" id="0:30">
+            <Triangle originX="0.5" originY="0.5" width="38" height="30" name="LeftEyePath"/>
+            <Fill name="LeftEyeFill">
+                <SolidColor colorValue="FF11131A" name="Color"/>
+            </Fill>
+        </Shape>
+
+        <Shape x="453" y="282" rotation="3.1415927" name="RightEye" id="0:31">
+            <Triangle originX="0.5" originY="0.5" width="38" height="30" name="RightEyePath"/>
+            <Fill name="RightEyeFill">
+                <SolidColor colorValue="FF11131A" name="Color"/>
+            </Fill>
+        </Shape>
+
+        <Shape x="400" y="349" rotation="3.1415927" name="MouthRest" id="0:40">
+            <Triangle originX="0.5" originY="0.5" width="76" height="20" name="MouthRestPath"/>
+            <Fill name="MouthRestFill">
+                <SolidColor colorValue="FF11131A" name="Color"/>
+            </Fill>
+        </Shape>
+
+        <Shape x="400" y="446" rotation="3.1415927" name="Core" id="0:50">
+            <Triangle originX="0.5" originY="0.5" width="86" height="74" name="CorePath"/>
+            <Fill name="CoreFill">
+                <SolidColor colorValue="FF8B7CFF" name="Color"/>
+            </Fill>
+        </Shape>
+
+        <Shape x="236" y="535" rotation="-0.72" name="LeftArm" id="0:60">
+            <Triangle originX="0.5" originY="0.5" width="105" height="265" name="LeftArmPath"/>
+            <Fill name="LeftArmFill">
+                <SolidColor colorValue="FFDCE1EC" name="Color"/>
+            </Fill>
+        </Shape>
+
+        <Shape x="564" y="535" rotation="0.72" name="RightArm" id="0:61">
+            <Triangle originX="0.5" originY="0.5" width="105" height="265" name="RightArmPath"/>
+            <Fill name="RightArmFill">
+                <SolidColor colorValue="FFDCE1EC" name="Color"/>
+            </Fill>
+        </Shape>
+
+        <Shape x="400" y="117" name="Antenna" id="0:70">
+            <Triangle originX="0.5" originY="0.5" width="48" height="105" name="AntennaPath"/>
+            <Fill name="AntennaFill">
+                <SolidColor colorValue="FF8B7CFF" name="Color"/>
+            </Fill>
+        </Shape>
+
+        <StateMachine name="KiroMachine" id="0:100">
+            <StateMachineLayer name="Ambient" id="0:101">
+                <AnyState x="200" y="-120"/>
+                <ExitState x="400" y="-120"/>
+                <EntryState>
+                    <StateTransition stateToId="0:103"/>
+                </EntryState>
+                <AnimationState x="200" animationId="0:90" id="0:103"/>
+            </StateMachineLayer>
+        </StateMachine>
+
+        <LinearAnimation loopValue="loop" duration="180" name="Idle" id="0:90">
+            <KeyedObject objectId="0:60">
+                <KeyedProperty propertyKey="15">
+                    <KeyFrameDouble value="-0.72" interpolationType="linear"/>
+                    <KeyFrameDouble value="-0.66" interpolationType="linear" frame="90"/>
+                    <KeyFrameDouble value="-0.72" interpolationType="linear" frame="180"/>
+                </KeyedProperty>
+            </KeyedObject>
+            <KeyedObject objectId="0:61">
+                <KeyedProperty propertyKey="15">
+                    <KeyFrameDouble value="0.72" interpolationType="linear"/>
+                    <KeyFrameDouble value="0.66" interpolationType="linear" frame="90"/>
+                    <KeyFrameDouble value="0.72" interpolationType="linear" frame="180"/>
+                </KeyedProperty>
+            </KeyedObject>
+            <KeyedObject objectId="0:70">
+                <KeyedProperty propertyKey="15">
+                    <KeyFrameDouble value="-0.055" interpolationType="linear"/>
+                    <KeyFrameDouble value="0.055" interpolationType="linear" frame="90"/>
+                    <KeyFrameDouble value="-0.055" interpolationType="linear" frame="180"/>
+                </KeyedProperty>
+            </KeyedObject>
+        </LinearAnimation>
+    </Artboard>
+</Rive>
