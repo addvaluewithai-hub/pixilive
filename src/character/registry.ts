@@ -6,6 +6,38 @@ const commonEmotions = ['calm', 'happy', 'curious', 'excited'] as const;
 
 export const characterRegistry = [
   {
+    id: 'kiro',
+    name: 'Kiro',
+    tagline: 'Built to move, listen and speak.',
+    description: 'A from-scratch Rive-native AI character with bound gaze, layered idle motion and continuous viseme-driven facial controls.',
+    theme: 'cosmic',
+    defaultEmotion: 'calm',
+    emotions: commonEmotions,
+    systemPrompt:
+      'You are Kiro, a warm, quick-witted and expressive AI companion embodied as a responsive animated character. Keep spoken responses natural, concise and conversational. React naturally, allow interruptions, and avoid sounding like a formal assistant.',
+    framing: {
+      x: 0.5,
+      y: 0.5,
+      widthReference: 800,
+      heightReference: 800,
+      minScale: 0.55,
+      maxScale: 1.2,
+    },
+    ambient: {
+      color: 0x8b7cff,
+      count: 0,
+      radiusMin: 0,
+      radiusMax: 0,
+      alphaMin: 0,
+      alphaMax: 0,
+    },
+    rive: {
+      src: '/rive/kiro.riv',
+      artboard: 'Kiro',
+      stateMachine: 'KiroMachine',
+    },
+  },
+  {
     id: 'milo',
     name: 'Milo',
     tagline: 'A little ink, a lot of personality.',
@@ -63,7 +95,7 @@ export const characterRegistry = [
   },
 ] as const satisfies readonly CharacterDefinition[];
 
-export const DEFAULT_CHARACTER_ID = 'milo';
+export const DEFAULT_CHARACTER_ID = 'kiro';
 
 export function getCharacterDefinition(id: string): CharacterDefinition {
   return characterRegistry.find((character) => character.id === id) ?? characterRegistry[0];
