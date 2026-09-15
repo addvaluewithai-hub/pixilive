@@ -21,6 +21,8 @@ export interface AgentMotionOffsets {
   leftHandY: number;
   rightHandX: number;
   rightHandY: number;
+  eyeScale: number;
+  browY: number;
   gesture: AgentGesture;
   beat: number;
   energy: number;
@@ -64,8 +66,8 @@ export function inferAgentGesture(text: string, emotion: Emotion): AgentGesture 
   }
 
   if (
-    contains(normalized, /\b(don't worry|do not worry|no problem|of course|sure|absolutely|we can|it's okay|it is okay)\b/) ||
-    contains(normalized, /(?:متقلقش|ما تقلقش|مافيش مشكلة|مفيش مشكلة|طبعاً|طبعا|أكيد|اكيد|هنقدر|نقدر)/)
+    contains(normalized, /\b(don't worry|do not worry|no problem|of course|sure|absolutely|we can|it's okay|it is okay|sorry)\b/) ||
+    contains(normalized, /(?:متقلقش|ما تقلقش|مافيش مشكلة|مفيش مشكلة|طبعاً|طبعا|أكيد|اكيد|هنقدر|نقدر|آسف|اسف)/)
   ) {
     return 'reassure';
   }
@@ -77,7 +79,14 @@ export function inferAgentGesture(text: string, emotion: Emotion): AgentGesture 
     return 'explain';
   }
 
-  if (emotion === 'happy') return 'warm';
+  if (
+    contains(normalized, /\b(great|awesome|amazing|love|lovely|glad|perfect|nice|wonderful|excellent)\b/) ||
+    contains(normalized, /(?:جميل|حلو|عظيم|جامد|ممتاز|رائع|مبسوط|فرحان|حبيبي|تمام أوي|تمام اوي)/) ||
+    emotion === 'happy'
+  ) {
+    return 'warm';
+  }
+
   return 'conversational';
 }
 
@@ -157,6 +166,8 @@ export function stepAgentMotion(input: AgentMotionInput, state: AgentMotionState
   let leftHandY = 0;
   let rightHandX = 0;
   let rightHandY = 0;
+  let eyeScale = 0;
+  let browY = 0;
 
   if (input.speaking) bodyLean += 0.012 * engagement;
 
@@ -164,6 +175,8 @@ export function stepAgentMotion(input: AgentMotionInput, state: AgentMotionState
     case 'question': {
       headTilt += (0.038 + 0.018 * beatEnvelope) * side;
       bodyLean += 0.012 * engagement;
+      eyeScale += 0.035 + 0.025 * beatEnvelope;
+      browY -= 2.5 + 2.5 * beatEnvelope;
       if (side < 0) {
         leftHandX -= 14 * beatEnvelope;
         leftHandY -= 28 * beatEnvelope;
@@ -178,6 +191,7 @@ export function stepAgentMotion(input: AgentMotionInput, state: AgentMotionState
     case 'explain': {
       headTilt += side * 0.014 * beatEnvelope;
       bodyLean += 0.01 * speechEnergy;
+      browY -= 1.8 * beatEnvelope;
       if (side < 0) {
         leftHandX -= 20 * beatEnvelope;
         leftHandY -= 34 * beatEnvelope;
@@ -194,6 +208,8 @@ export function stepAgentMotion(input: AgentMotionInput, state: AgentMotionState
       bodyLean += 0.025 * beatEnvelope;
       headY -= 3.5 * beatEnvelope;
       headTilt += side * 0.024 * beatEnvelope;
+      eyeScale += 0.05 * beatEnvelope;
+      browY -= 3.5 * beatEnvelope;
       leftHandX -= 11 * beatEnvelope;
       rightHandX += 11 * beatEnvelope;
       leftHandY -= 26 * beatEnvelope;
@@ -203,6 +219,8 @@ export function stepAgentMotion(input: AgentMotionInput, state: AgentMotionState
     case 'reassure': {
       bodyLean -= 0.006 * speechEnergy;
       headTilt += side * 0.011 * beatEnvelope;
+      eyeScale -= 0.025 * speechEnergy;
+      browY += 1.2 * speechEnergy;
       if (side < 0) {
         leftHandX += 10 * beatEnvelope;
         leftHandY -= 20 * beatEnvelope;
@@ -217,6 +235,8 @@ export function stepAgentMotion(input: AgentMotionInput, state: AgentMotionState
     case 'warm': {
       bodyLean += 0.008 * engagement;
       headTilt += side * 0.012 * beatEnvelope;
+      eyeScale -= 0.045 * (0.35 + beatEnvelope);
+      browY -= 1.2 * beatEnvelope;
       leftHandX -= 8 * beatEnvelope;
       rightHandX += 8 * beatEnvelope;
       leftHandY -= 15 * beatEnvelope;
@@ -225,6 +245,7 @@ export function stepAgentMotion(input: AgentMotionInput, state: AgentMotionState
     }
     default: {
       headTilt += side * 0.012 * beatEnvelope;
+      browY -= 1.1 * beatEnvelope;
       if (side < 0) {
         leftHandX -= 10 * beatEnvelope;
         leftHandY -= 20 * beatEnvelope;
@@ -239,6 +260,7 @@ export function stepAgentMotion(input: AgentMotionInput, state: AgentMotionState
 
   const emotionScale = input.emotion === 'excited' ? 1.22 : input.emotion === 'happy' ? 1.08 : input.emotion === 'curious' ? 1.04 : 0.92;
   const scale = strength * emotionScale;
+  const faceScale = Math.min(1.15, strength);
 
   return {
     bodyY: bodyY * scale,
@@ -249,6 +271,8 @@ export function stepAgentMotion(input: AgentMotionInput, state: AgentMotionState
     leftHandY: leftHandY * scale,
     rightHandX: rightHandX * scale,
     rightHandY: rightHandY * scale,
+    eyeScale: eyeScale * faceScale,
+    browY: browY * faceScale,
     gesture,
     beat: beatEnvelope,
     energy: state.smoothedEnergy,
