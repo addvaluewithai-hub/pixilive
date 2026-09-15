@@ -1,5 +1,7 @@
 <Rive version="1" kind="fragment">
-    <Artboard defaultStateMachineId="0:100" width="800" height="800" name="Kiro" id="0:1">
+    <Artboard defaultStateMachineId="0:100" styleId="0:5" width="800" height="800" name="Kiro" id="0:1">
+        <LayoutComponentStyle name="Kiro Artboard Style" id="0:5"/>
+
         <Fill name="Background">
             <SolidColor colorValue="FF0C0D12" name="Color"/>
         </Fill>
