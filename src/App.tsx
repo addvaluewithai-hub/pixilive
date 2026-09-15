@@ -128,6 +128,7 @@ export function App() {
             emotion={emotion}
             mouth={mouth}
             speaking={speaking}
+            speechText={outputTranscript}
           />
         </div>
       </section>
