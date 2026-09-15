@@ -52,17 +52,17 @@ const defaultRig: RigState = {
   rightHandX: 70,
   rightHandY: 116,
   ikStrength: 1,
-  eyeScale: 1,
-  browY: -55,
+  eyeScale: 0.92,
+  browY: -53,
   smileOpacity: 0,
   neutralOpacity: 1,
 };
 
 const emotionFace: Record<Emotion, Partial<RigState>> = {
-  calm: { eyeScale: 1, browY: -55, smileOpacity: 0.05, neutralOpacity: 1, headTilt: 0 },
-  happy: { eyeScale: 0.82, browY: -62, smileOpacity: 1, neutralOpacity: 0, headTilt: 0.035 },
-  curious: { eyeScale: 1.08, browY: -64, smileOpacity: 0.16, neutralOpacity: 0.95, headTilt: -0.12 },
-  excited: { eyeScale: 1.14, browY: -66, smileOpacity: 1, neutralOpacity: 0, headTilt: 0.065 },
+  calm: { eyeScale: 0.92, browY: -53, smileOpacity: 0.04, neutralOpacity: 1, headTilt: 0 },
+  happy: { eyeScale: 0.76, browY: -60, smileOpacity: 1, neutralOpacity: 0, headTilt: 0.045 },
+  curious: { eyeScale: 1.02, browY: -63, smileOpacity: 0.18, neutralOpacity: 0.9, headTilt: -0.13 },
+  excited: { eyeScale: 1.08, browY: -66, smileOpacity: 1, neutralOpacity: 0, headTilt: 0.075 },
 };
 
 interface RigSliderProps {
@@ -103,6 +103,7 @@ export function RiveCharacterStage({ character, emotion, mouth, speaking }: Rive
   });
 
   const viewModelInstance = rive?.viewModelInstance;
+  const bindingsReady = Boolean(viewModelInstance);
   const [rig, setRig] = useState<RigState>(defaultRig);
   const [labOpen, setLabOpen] = useState(false);
   const [motionSweep, setMotionSweep] = useState(false);
@@ -304,17 +305,17 @@ export function RiveCharacterStage({ character, emotion, mouth, speaking }: Rive
         aria-label="Rive motion playground"
       >
         <button className="motion-lab-toggle" type="button" onClick={() => setLabOpen((value) => !value)}>
-          <span><i /> Motion lab</span>
+          <span><i className={bindingsReady ? 'bound' : 'unbound'} /> Motion lab <em>{bindingsReady ? 'BOUND' : 'NOT BOUND'}</em></span>
           <b>{labOpen ? 'hide' : 'show'}</b>
         </button>
 
         {labOpen && (
           <div className="motion-lab-body">
             <div className="motion-lab-actions">
-              <button type="button" className={motionSweep ? 'active' : ''} onClick={() => setMotionSweep((value) => !value)}>
+              <button type="button" className={motionSweep ? 'active' : ''} onClick={() => setMotionSweep((value) => !value)} disabled={!bindingsReady}>
                 {motionSweep ? 'Stop motion sweep' : 'Run motion sweep'}
               </button>
-              <button type="button" onClick={() => patchRig(defaultRig)}>Reset rig</button>
+              <button type="button" onClick={() => patchRig(defaultRig)} disabled={!bindingsReady}>Reset rig</button>
             </div>
 
             <div className="rig-grid">
@@ -335,7 +336,11 @@ export function RiveCharacterStage({ character, emotion, mouth, speaking }: Rive
               <RigSlider label="Brow height" value={rig.browY} min={-74} max={-42} step={1} onChange={(value) => updateRig('browY', value)} />
             </div>
 
-            <p className="motion-lab-note">IK = 1: move the hand targets and let Rive solve shoulder + elbow. IK = 0: use the manual joint sliders. Move the pointer for gaze and click the character for a recoil test.</p>
+            <p className="motion-lab-note">
+              {bindingsReady
+                ? 'IK = 1: move the hand targets and let Rive solve shoulder + elbow. IK = 0: use the manual joint sliders. Move the pointer for gaze and click the character for a recoil test.'
+                : 'Rive ViewModel is not bound yet. Controls are intentionally reporting this instead of silently doing nothing.'}
+            </p>
           </div>
         )}
       </section>
