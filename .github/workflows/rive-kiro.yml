@@ -1,0 +1,76 @@
+name: Rive Kiro
+
+on:
+  push:
+    branches:
+      - feat/rive-native-character
+    paths:
+      - 'rive/kiro/**'
+      - '.github/workflows/rive-kiro.yml'
+  workflow_dispatch:
+
+jobs:
+  verify-build-render:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rive CLI
+        shell: bash
+        run: |
+          curl -fsSL https://releases.rive.app/cli/install.sh | sh
+          echo "$HOME/.rive/bin" >> "$GITHUB_PATH"
+
+      - name: Show CLI version
+        run: rive --version
+
+      - name: Prepare output directory
+        run: mkdir -p rive/kiro/build
+
+      - name: Verify RML
+        run: rive rive/kiro --verify --format=json | tee rive/kiro/build/verify.json
+
+      - name: Build unsigned runtime asset
+        run: rive rive/kiro --once --format=json | tee rive/kiro/build/build.json
+
+      - name: Inspect resolved scene
+        run: rive inspect rive/kiro --json > rive/kiro/build/inspect.json
+
+      - name: Render two-second preview
+        run: rive rive/kiro --screenshot=rive/kiro/build/kiro.png --advance=2s
+
+      - name: Capture schemas for the next rig iteration
+        shell: bash
+        run: |
+          {
+            echo '=== Ellipse ==='
+            rive schema Ellipse || true
+            echo
+            echo '=== Rectangle ==='
+            rive schema Rectangle || true
+            echo
+            echo '=== Group ==='
+            rive schema Group || true
+            echo
+            echo '=== Solo ==='
+            rive schema Solo || true
+            echo
+            echo '=== ViewModel ==='
+            rive schema ViewModel || true
+            echo
+            echo '=== Data binding docs ==='
+            rive docs --search 'view model' || true
+          } > rive/kiro/build/schema-notes.txt
+
+      - name: Upload Rive artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: kiro-rive-build
+          path: |
+            rive/kiro/build/
+          if-no-files-found: warn
