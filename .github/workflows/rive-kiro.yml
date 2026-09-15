@@ -84,6 +84,46 @@ jobs:
           rive create /tmp/kiro-scaffold
           cp /tmp/kiro-scaffold/scene.rml rive/kiro/build/scaffold-scene.rml
           cp /tmp/kiro-scaffold/rive.yaml rive/kiro/build/scaffold-rive.yaml
+          rive /tmp/kiro-scaffold --screenshot=rive/kiro/build/scaffold.png
+
+      - name: Render official triangle probe
+        shell: bash
+        run: |
+          rm -rf /tmp/rive-probe
+          mkdir -p /tmp/rive-probe
+          cat > /tmp/rive-probe/rive.yaml <<'EOF'
+          name: probe
+          EOF
+          cat > /tmp/rive-probe/scene.rml <<'EOF'
+          <Rive version="1" kind="fragment">
+              <Artboard defaultStateMachineId="0:7" styleId="0:5" width="500" height="500" name="Artboard" id="0:2">
+                  <LayoutComponentStyle name="Artboard Style" id="0:5"/>
+                  <Fill name="Background"><SolidColor colorValue="FF1D1D1D" name="Color"/></Fill>
+                  <Shape x="250" y="250" name="Triangle" id="0:14">
+                      <Triangle originX="0.5" originY="0.5" width="220" height="200" name="Path"/>
+                      <Fill name="Fill"><SolidColor colorValue="FF57A5E0" name="Color"/></Fill>
+                  </Shape>
+                  <StateMachine name="State Machine 1" id="0:7">
+                      <StateMachineLayer name="Layer 1" id="0:8">
+                          <AnyState x="200" y="-120"/>
+                          <ExitState x="400" y="-120"/>
+                          <EntryState><StateTransition stateToId="0:12"/></EntryState>
+                          <AnimationState x="200" animationId="0:6" id="0:12"/>
+                      </StateMachineLayer>
+                  </StateMachine>
+                  <LinearAnimation loopValue="loop" duration="120" name="Spin" id="0:6">
+                      <KeyedObject objectId="0:14">
+                          <KeyedProperty propertyKey="15">
+                              <KeyFrameDouble value="0" interpolationType="linear"/>
+                              <KeyFrameDouble value="6.2831855" interpolationType="linear" frame="120"/>
+                          </KeyedProperty>
+                      </KeyedObject>
+                  </LinearAnimation>
+              </Artboard>
+          </Rive>
+          EOF
+          rive /tmp/rive-probe --verify --format=json > rive/kiro/build/probe-verify.json
+          rive /tmp/rive-probe --screenshot=rive/kiro/build/probe.png --advance=1s
 
       - name: Upload Rive artifacts
         if: always()
