@@ -32,18 +32,23 @@ export interface AgentMotionState {
   smoothedEnergy: number;
   previousEnergy: number;
   wasSpeaking: boolean;
-  speechStartedAt: number;
   lastBeatAt: number;
   beatStartedAt: number;
   beatDurationMs: number;
   beatStrength: number;
   beatSide: -1 | 1;
   beatIndex: number;
+  activeGesture: AgentGesture;
+  previousGesture: AgentGesture;
+  previousText: string;
 }
 
 const clamp = (value: number, min = 0, max = 1) => Math.max(min, Math.min(max, value));
-
 const contains = (text: string, pattern: RegExp) => pattern.test(text);
+const smoothstep = (value: number) => {
+  const t = clamp(value);
+  return t * t * (3 - 2 * t);
+};
 
 export function inferAgentGesture(text: string, emotion: Emotion): AgentGesture {
   const normalized = text.trim().toLowerCase();
@@ -52,40 +57,30 @@ export function inferAgentGesture(text: string, emotion: Emotion): AgentGesture 
     contains(normalized, /[?؟]/) ||
     contains(normalized, /\b(why|how|what|when|where|who|can|could|would|do|does|is|are)\b/) ||
     contains(normalized, /(?:^|\s)(هل|ليه|لماذا|ازاي|إزاي|كيف|متى|فين|أين|مين)(?:\s|$)/)
-  ) {
-    return 'question';
-  }
+  ) return 'question';
 
   if (
     contains(normalized, /!{1,}/) ||
     contains(normalized, /\b(important|must|exactly|definitely|really|key point|the point is)\b/) ||
     contains(normalized, /(?:مهم|لازم|بالظبط|بالضبط|فعلاً|فعلا|جداً|جدا|النقطة)/) ||
     emotion === 'excited'
-  ) {
-    return 'emphasis';
-  }
+  ) return 'emphasis';
 
   if (
     contains(normalized, /\b(don't worry|do not worry|no problem|of course|sure|absolutely|we can|it's okay|it is okay|sorry)\b/) ||
     contains(normalized, /(?:متقلقش|ما تقلقش|مافيش مشكلة|مفيش مشكلة|طبعاً|طبعا|أكيد|اكيد|هنقدر|نقدر|آسف|اسف)/)
-  ) {
-    return 'reassure';
-  }
+  ) return 'reassure';
 
   if (
     contains(normalized, /\b(first|second|third|because|so|basically|for example|for instance|step|then|means|in other words)\b/) ||
     contains(normalized, /(?:أول|اولا|أولاً|ثاني|ثانياً|ثانيا|لأن|علشان|يعني|ببساطة|مثلاً|مثلا|خطوة|بعد كده|بمعنى)/)
-  ) {
-    return 'explain';
-  }
+  ) return 'explain';
 
   if (
     contains(normalized, /\b(great|awesome|amazing|love|lovely|glad|perfect|nice|wonderful|excellent)\b/) ||
     contains(normalized, /(?:جميل|حلو|عظيم|جامد|ممتاز|رائع|مبسوط|فرحان|حبيبي|تمام أوي|تمام اوي)/) ||
     emotion === 'happy'
-  ) {
-    return 'warm';
-  }
+  ) return 'warm';
 
   return 'conversational';
 }
@@ -95,23 +90,56 @@ export function createAgentMotionState(): AgentMotionState {
     smoothedEnergy: 0,
     previousEnergy: 0,
     wasSpeaking: false,
-    speechStartedAt: 0,
     lastBeatAt: -10_000,
     beatStartedAt: -10_000,
-    beatDurationMs: 430,
+    beatDurationMs: 720,
     beatStrength: 0,
-    beatSide: -1,
+    beatSide: 1,
     beatIndex: 0,
+    activeGesture: 'conversational',
+    previousGesture: 'conversational',
+    previousText: '',
   };
 }
 
-function triggerBeat(state: AgentMotionState, nowMs: number, rawEnergy: number, emotion: Emotion) {
+function chooseSide(index: number): -1 | 1 {
+  // Deliberately non-alternating so the character does not look metronomic.
+  const sequence: Array<-1 | 1> = [1, 1, -1, 1, -1, -1, 1];
+  return sequence[index % sequence.length];
+}
+
+function triggerBeat(
+  state: AgentMotionState,
+  nowMs: number,
+  rawEnergy: number,
+  gesture: AgentGesture,
+  onset = false,
+) {
   state.beatIndex += 1;
-  state.beatSide = state.beatSide === -1 ? 1 : -1;
+  state.beatSide = chooseSide(state.beatIndex);
   state.lastBeatAt = nowMs;
   state.beatStartedAt = nowMs;
-  state.beatDurationMs = emotion === 'excited' ? 360 : emotion === 'calm' ? 470 : 420;
-  state.beatStrength = clamp(0.48 + rawEnergy * 0.72, 0.48, 1.2);
+  state.activeGesture = gesture;
+  state.beatDurationMs = gesture === 'emphasis' ? 620 : gesture === 'question' ? 820 : 740;
+  const base = onset ? 0.42 : 0.5;
+  state.beatStrength = clamp(base + rawEnergy * 0.55, 0.38, 0.95);
+}
+
+function gestureEnvelope(state: AgentMotionState, nowMs: number) {
+  const age = nowMs - state.beatStartedAt;
+  if (age < 0 || age >= state.beatDurationMs) return 0;
+  const progress = age / state.beatDurationMs;
+
+  // Quick attack, a short readable hold, then a longer release back to neutral.
+  if (progress < 0.22) return smoothstep(progress / 0.22) * state.beatStrength;
+  if (progress < 0.5) return state.beatStrength;
+  return (1 - smoothstep((progress - 0.5) / 0.5)) * state.beatStrength;
+}
+
+function newPunctuationArrived(previous: string, current: string) {
+  if (!current || current === previous) return false;
+  const fresh = current.startsWith(previous) ? current.slice(previous.length) : current;
+  return /[,.!?؟،؛:]/.test(fresh);
 }
 
 export function stepAgentMotion(input: AgentMotionInput, state: AgentMotionState): AgentMotionOffsets {
@@ -119,49 +147,43 @@ export function stepAgentMotion(input: AgentMotionInput, state: AgentMotionState
   const dt = clamp(input.dtSeconds, 0.001, 0.05);
   const strength = clamp(input.strength, 0, 1.5);
   const rawEnergy = input.speaking ? clamp(input.energy, 0, 1) : 0;
-  const energyFollow = 1 - Math.exp(-dt * (input.speaking ? 11 : 5));
+  const energyFollow = 1 - Math.exp(-dt * (input.speaking ? 8 : 4));
   state.smoothedEnergy += (rawEnergy - state.smoothedEnergy) * energyFollow;
 
+  const gesture = inferAgentGesture(input.text, input.emotion);
   const speechOnset = input.speaking && !state.wasSpeaking;
+  const semanticChange = input.speaking && gesture !== state.previousGesture;
+  const punctuationBeat = input.speaking && newPunctuationArrived(state.previousText, input.text);
+  const risingEnergy = rawEnergy - state.previousEnergy;
+  const strongEnergyPeak = rawEnergy > 0.42 && risingEnergy > 0.075;
+  const cooldown = input.emotion === 'excited' ? 620 : 820;
+  const canBeat = nowMs - state.lastBeatAt > cooldown;
+
   if (speechOnset) {
-    state.speechStartedAt = nowMs;
-    state.lastBeatAt = nowMs - 900;
-    triggerBeat(state, nowMs, Math.max(rawEnergy, 0.28), input.emotion);
+    // One small acknowledgement at speech onset. No continuous movement follows it.
+    triggerBeat(state, nowMs, Math.max(rawEnergy, 0.2), gesture, true);
+  } else if (canBeat && (semanticChange || punctuationBeat || strongEnergyPeak)) {
+    triggerBeat(state, nowMs, rawEnergy, gesture);
   }
 
   if (!input.speaking && state.wasSpeaking) {
     state.beatStrength = 0;
   }
 
-  const risingEnergy = rawEnergy - state.previousEnergy;
-  const beatCooldown = input.emotion === 'excited' ? 330 : 430;
-  const overdueBeat = input.speaking && nowMs - state.lastBeatAt > 860 && state.smoothedEnergy > 0.07;
-  const energyPeak = rawEnergy > 0.18 && risingEnergy > 0.035;
-  if (input.speaking && nowMs - state.lastBeatAt > beatCooldown && (energyPeak || overdueBeat)) {
-    triggerBeat(state, nowMs, rawEnergy, input.emotion);
-  }
-
   state.wasSpeaking = input.speaking;
   state.previousEnergy = rawEnergy;
+  state.previousGesture = gesture;
+  state.previousText = input.text;
 
-  const beatAge = nowMs - state.beatStartedAt;
-  const beatProgress = clamp(beatAge / Math.max(1, state.beatDurationMs));
-  const beatEnvelope = beatAge >= 0 && beatProgress < 1
-    ? Math.pow(Math.sin(Math.PI * beatProgress), 1.15) * state.beatStrength
-    : 0;
-
-  const gesture = inferAgentGesture(input.text, input.emotion);
-  const phase = nowMs / 1000;
-  const speechEnergy = input.speaking ? clamp(0.14 + state.smoothedEnergy * 1.25) : 0;
-  const breath = Math.sin(phase * 1.35) * (input.speaking ? 0.8 : 1.35);
-  const speechRhythm = Math.sin(phase * 2.6 + 0.7) * speechEnergy;
-  const engagement = input.speaking ? clamp((nowMs - state.speechStartedAt) / 240) : 0;
+  const beat = gestureEnvelope(state, nowMs);
+  const activeGesture = beat > 0 ? state.activeGesture : gesture;
   const side = state.beatSide;
 
-  let bodyY = breath + speechRhythm * 1.15 - speechEnergy * 1.1;
-  let bodyLean = Math.sin(phase * 0.82) * 0.006 * speechEnergy;
-  let headY = -speechEnergy * 1.8 + Math.sin(phase * 2.15 + 0.4) * 0.8 * speechEnergy;
-  let headTilt = Math.sin(phase * 1.08 + 1.2) * 0.014 * (0.35 + speechEnergy);
+  // Neutral is intentionally still. Rive's authored idle can own breathing/blinks.
+  let bodyY = 0;
+  let bodyLean = 0;
+  let headY = 0;
+  let headTilt = 0;
   let leftHandX = 0;
   let leftHandY = 0;
   let rightHandX = 0;
@@ -169,98 +191,88 @@ export function stepAgentMotion(input: AgentMotionInput, state: AgentMotionState
   let eyeScale = 0;
   let browY = 0;
 
-  if (input.speaking) bodyLean += 0.012 * engagement;
-
-  switch (gesture) {
-    case 'question': {
-      headTilt += (0.038 + 0.018 * beatEnvelope) * side;
-      bodyLean += 0.012 * engagement;
-      eyeScale += 0.035 + 0.025 * beatEnvelope;
-      browY -= 2.5 + 2.5 * beatEnvelope;
-      if (side < 0) {
-        leftHandX -= 14 * beatEnvelope;
-        leftHandY -= 28 * beatEnvelope;
-        rightHandY -= 5 * beatEnvelope;
-      } else {
-        rightHandX += 14 * beatEnvelope;
-        rightHandY -= 28 * beatEnvelope;
-        leftHandY -= 5 * beatEnvelope;
+  if (beat > 0 && input.speaking) {
+    switch (activeGesture) {
+      case 'question': {
+        headTilt = side * 0.034 * beat;
+        eyeScale = 0.045 * beat;
+        browY = -3.2 * beat;
+        if (side < 0) {
+          leftHandX = -10 * beat;
+          leftHandY = -18 * beat;
+        } else {
+          rightHandX = 10 * beat;
+          rightHandY = -18 * beat;
+        }
+        break;
       }
-      break;
-    }
-    case 'explain': {
-      headTilt += side * 0.014 * beatEnvelope;
-      bodyLean += 0.01 * speechEnergy;
-      browY -= 1.8 * beatEnvelope;
-      if (side < 0) {
-        leftHandX -= 20 * beatEnvelope;
-        leftHandY -= 34 * beatEnvelope;
-        rightHandY -= 7 * beatEnvelope;
-      } else {
-        rightHandX += 20 * beatEnvelope;
-        rightHandY -= 34 * beatEnvelope;
-        leftHandY -= 7 * beatEnvelope;
+      case 'explain': {
+        bodyLean = 0.01 * beat;
+        headTilt = side * 0.009 * beat;
+        browY = -1.4 * beat;
+        if (side < 0) {
+          leftHandX = -17 * beat;
+          leftHandY = -24 * beat;
+        } else {
+          rightHandX = 17 * beat;
+          rightHandY = -24 * beat;
+        }
+        break;
       }
-      break;
-    }
-    case 'emphasis': {
-      bodyY -= 2.5 * beatEnvelope;
-      bodyLean += 0.025 * beatEnvelope;
-      headY -= 3.5 * beatEnvelope;
-      headTilt += side * 0.024 * beatEnvelope;
-      eyeScale += 0.05 * beatEnvelope;
-      browY -= 3.5 * beatEnvelope;
-      leftHandX -= 11 * beatEnvelope;
-      rightHandX += 11 * beatEnvelope;
-      leftHandY -= 26 * beatEnvelope;
-      rightHandY -= 26 * beatEnvelope;
-      break;
-    }
-    case 'reassure': {
-      bodyLean -= 0.006 * speechEnergy;
-      headTilt += side * 0.011 * beatEnvelope;
-      eyeScale -= 0.025 * speechEnergy;
-      browY += 1.2 * speechEnergy;
-      if (side < 0) {
-        leftHandX += 10 * beatEnvelope;
-        leftHandY -= 20 * beatEnvelope;
-        rightHandY -= 4 * beatEnvelope;
-      } else {
-        rightHandX -= 10 * beatEnvelope;
-        rightHandY -= 20 * beatEnvelope;
-        leftHandY -= 4 * beatEnvelope;
+      case 'emphasis': {
+        bodyLean = 0.018 * beat;
+        headY = -1.2 * beat;
+        eyeScale = 0.025 * beat;
+        browY = -2.3 * beat;
+        leftHandX = -7 * beat;
+        rightHandX = 7 * beat;
+        leftHandY = -16 * beat;
+        rightHandY = -16 * beat;
+        break;
       }
-      break;
-    }
-    case 'warm': {
-      bodyLean += 0.008 * engagement;
-      headTilt += side * 0.012 * beatEnvelope;
-      eyeScale -= 0.045 * (0.35 + beatEnvelope);
-      browY -= 1.2 * beatEnvelope;
-      leftHandX -= 8 * beatEnvelope;
-      rightHandX += 8 * beatEnvelope;
-      leftHandY -= 15 * beatEnvelope;
-      rightHandY -= 15 * beatEnvelope;
-      break;
-    }
-    default: {
-      headTilt += side * 0.012 * beatEnvelope;
-      browY -= 1.1 * beatEnvelope;
-      if (side < 0) {
-        leftHandX -= 10 * beatEnvelope;
-        leftHandY -= 20 * beatEnvelope;
-        rightHandY -= 4 * beatEnvelope;
-      } else {
-        rightHandX += 10 * beatEnvelope;
-        rightHandY -= 20 * beatEnvelope;
-        leftHandY -= 4 * beatEnvelope;
+      case 'reassure': {
+        headTilt = side * 0.01 * beat;
+        eyeScale = -0.018 * beat;
+        browY = 0.8 * beat;
+        if (side < 0) {
+          leftHandX = 6 * beat;
+          leftHandY = -12 * beat;
+        } else {
+          rightHandX = -6 * beat;
+          rightHandY = -12 * beat;
+        }
+        break;
+      }
+      case 'warm': {
+        headTilt = side * 0.009 * beat;
+        eyeScale = -0.025 * beat;
+        browY = -0.8 * beat;
+        // Soft open posture, but no vertical bouncing.
+        leftHandX = -5 * beat;
+        rightHandX = 5 * beat;
+        leftHandY = -8 * beat;
+        rightHandY = -8 * beat;
+        break;
+      }
+      default: {
+        // Normal speech should mostly stay still. Only some beats get a tiny one-hand cue.
+        headY = -0.7 * beat;
+        if (state.beatIndex % 3 === 0) {
+          if (side < 0) {
+            leftHandX = -6 * beat;
+            leftHandY = -9 * beat;
+          } else {
+            rightHandX = 6 * beat;
+            rightHandY = -9 * beat;
+          }
+        }
       }
     }
   }
 
-  const emotionScale = input.emotion === 'excited' ? 1.22 : input.emotion === 'happy' ? 1.08 : input.emotion === 'curious' ? 1.04 : 0.92;
+  const emotionScale = input.emotion === 'excited' ? 1.08 : input.emotion === 'happy' ? 1.02 : 0.96;
   const scale = strength * emotionScale;
-  const faceScale = Math.min(1.15, strength);
+  const faceScale = Math.min(1.05, strength);
 
   return {
     bodyY: bodyY * scale,
@@ -274,7 +286,7 @@ export function stepAgentMotion(input: AgentMotionInput, state: AgentMotionState
     eyeScale: eyeScale * faceScale,
     browY: browY * faceScale,
     gesture,
-    beat: beatEnvelope,
+    beat,
     energy: state.smoothedEnergy,
   };
 }
