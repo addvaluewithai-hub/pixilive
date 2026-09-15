@@ -64,14 +64,26 @@ jobs:
               rive schema "$TYPE" || true
               echo
             done
-            echo '=== Drawing docs ==='
+            echo '=== Drawing docs search ==='
             rive docs --search 'SolidColor' || true
             echo
-            echo '=== Data binding docs ==='
+            echo '=== Data binding docs search ==='
             rive docs --search 'ViewModelPropertyNumber' || true
             echo
             rive docs --search 'viewModelId' || true
           } > rive/kiro/build/schema-notes.txt
+
+      - name: Capture CLI authoring docs and scaffold
+        shell: bash
+        run: |
+          rive docs skeleton > rive/kiro/build/docs-skeleton.txt
+          rive docs drawing > rive/kiro/build/docs-drawing.txt
+          rive docs data > rive/kiro/build/docs-data.txt
+          rive docs rigging > rive/kiro/build/docs-rigging.txt
+          rm -rf /tmp/kiro-scaffold
+          rive create /tmp/kiro-scaffold
+          cp /tmp/kiro-scaffold/scene.rml rive/kiro/build/scaffold-scene.rml
+          cp /tmp/kiro-scaffold/rive.yaml rive/kiro/build/scaffold-rive.yaml
 
       - name: Upload Rive artifacts
         if: always()
