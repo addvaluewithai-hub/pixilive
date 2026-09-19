@@ -1,7 +1,21 @@
 import { createMascotPerformanceAdapter } from './mascotPerformanceAdapter';
 
+const neutralFace = {
+  eyeScale: 1,
+  browY: 0,
+  smileOpacity: 0,
+  neutralOpacity: 1,
+  frownOpacity: 0,
+  expressionMouthOpacity: 0,
+  tearOpacity: 0,
+  sparkleOpacity: 0,
+  blushOpacity: 0.62,
+  browTilt: 0,
+  tailTilt: 0,
+} as const;
+
 export const foxyPerformanceAdapter = createMascotPerformanceAdapter({
-  id: 'foxy-v4',
+  id: 'foxy-v4.1',
   base: {
     bodyY: 0,
     bodyLean: 0,
@@ -11,17 +25,7 @@ export const foxyPerformanceAdapter = createMascotPerformanceAdapter({
     leftHandY: 58,
     rightHandX: 88,
     rightHandY: 58,
-    eyeScale: 1,
-    browY: 0,
-    smileOpacity: 0.03,
-    neutralOpacity: 1,
-    frownOpacity: 0,
-    expressionMouthOpacity: 0,
-    tearOpacity: 0,
-    sparkleOpacity: 0,
-    blushOpacity: 0.62,
-    browTilt: 0,
-    tailTilt: 0,
+    ...neutralFace,
   },
   // Compact at rest, with enough range for clear staged reactions.
   armX: 58,
@@ -37,39 +41,13 @@ export const foxyPerformanceAdapter = createMascotPerformanceAdapter({
   thinkHandX: -48,
   thinkHandY: -102,
   motionCharacter: 'nimble',
+  // The universal mood/action pack owns the acting. These legacy four emotion
+  // aliases stay deliberately neutral so Angry never inherits an Excited smile,
+  // and Thinking never stacks two different face recipes.
   emotion: {
-    calm: {
-      eyeScale: 1,
-      smileOpacity: 0.03,
-      neutralOpacity: 1,
-      blushOpacity: 0.62,
-    },
-    happy: {
-      // Emotion overrides are absolute base values, not deltas.
-      eyeScale: 0.94,
-      smileOpacity: 0.86,
-      neutralOpacity: 0.04,
-      expressionMouthOpacity: 0.16,
-      blushOpacity: 0.9,
-      tailTilt: 0.15,
-      headTilt: 0.025,
-    },
-    curious: {
-      eyeScale: 1.08,
-      browY: -3,
-      headTilt: -0.055,
-      browTilt: 0.12,
-      smileOpacity: 0.08,
-      neutralOpacity: 0.9,
-    },
-    excited: {
-      eyeScale: 1.08,
-      smileOpacity: 0.94,
-      neutralOpacity: 0,
-      expressionMouthOpacity: 0.34,
-      blushOpacity: 1,
-      tailTilt: 0.24,
-      headTilt: 0.02,
-    },
+    calm: { ...neutralFace },
+    happy: { ...neutralFace },
+    curious: { ...neutralFace },
+    excited: { ...neutralFace },
   },
 });
