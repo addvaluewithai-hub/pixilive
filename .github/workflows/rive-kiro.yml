@@ -9,6 +9,7 @@ on:
       - 'src/**'
       - 'scripts/generate-rive-mascots.mjs'
       - 'scripts/generate-foxy-v4.mjs'
+      - 'scripts/normalize-foxy-v4-ids.mjs'
       - 'scripts/capture-rive-kiro.mjs'
       - 'scripts/capture-foxy-quality.mjs'
       - 'package.json'
@@ -39,6 +40,7 @@ jobs:
         run: |
           node scripts/generate-rive-mascots.mjs
           node scripts/generate-foxy-v4.mjs
+          node scripts/normalize-foxy-v4-ids.mjs
 
       - name: Install Rive Linux dependencies
         shell: bash
