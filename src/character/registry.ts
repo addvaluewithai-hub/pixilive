@@ -1,3 +1,4 @@
+import { kiroPerformanceAdapter } from './kiroPerformanceAdapter';
 import { MiloVisemeCharacter } from './MiloVisemeCharacter';
 import { NovaCharacter } from './NovaCharacter';
 import type { CharacterDefinition } from './runtime';
@@ -33,13 +34,11 @@ export const characterRegistry = [
       alphaMax: 0,
     },
     rive: {
-      // This is a fast-moving authored asset during the character lab phase.
-      // Give each page load a fresh URL so an old cached .riv can never pair
-      // with newer React controls/ViewModel bindings.
       src: kiroAssetUrl,
       artboard: 'Kiro',
       stateMachine: 'KiroMachine',
     },
+    performanceAdapter: kiroPerformanceAdapter,
   },
   {
     id: 'milo',
