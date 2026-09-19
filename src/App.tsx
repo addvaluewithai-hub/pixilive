@@ -35,7 +35,13 @@ const moodEmotion: Record<MoodId, Emotion> = {
   sleepy: 'calm',
 };
 
-const STORY_DEMO_PROMPT = `ابدأ الآن تجربة حكاية تفاعلية لطفل بالعربية. اختر قصة خيالية لطيفة فيها بداية واضحة ومغامرة ومشكلة صغيرة ونهاية مطمئنة. احكِها على مقاطع قصيرة، واستخدم تعبيراتك وحركاتك كجزء طبيعي من الأداء: فرح، حزن، بكاء خفيف عند لحظة مؤثرة، مفاجأة، تفكير، غضب آمن وغير مخيف، نعاس، ضحك، وحماس. لا تذكر أسماء التعبيرات. غيّر صوتك وطريقة كلامك لتناسب التعبير الحالي، واستخدم التلويح أو الرمش أو القفز والمشي/الجري عندما تخدم المشهد. بعد كل نقطة مهمة اسأل الطفل سؤالًا بسيطًا وانتظر إجابته بدل أن تنهي القصة كلها مرة واحدة.`;
+const STORY_DEMO_PROMPT = `ابدأ الآن اختبار أداء حي لقصة طفل بالعربية، باستخدام قصة خيالية لطيفة ومطمئنة. هذا اختبار Gemini 3.8 Live للـnon-blocking stage directions، لذلك في أول رد صوتي واحد لا تثبت على تعبير واحد: غيّر التعبير عدة مرات أثناء استمرار نفس الكلام.
+
+في أول مقطع قبل أن تسأل الطفل أي سؤال، اصنع مشهدًا قصيرًا مدته تقريبًا 25-40 ثانية ويحتوي بشكل طبيعي على 5 إلى 7 تغييرات عاطفية واضحة داخل نفس الـturn. مثال للبنية وليس نصًا يجب تكراره: ابدأ سعيدًا، ثم مفاجأة، ثم تفكير، ثم لحظة حزن أو بكاء خفيف، ثم حماس/ضحك عند انفراج الموقف. استدعِ set_character_expression قبل كل beat مباشرة وأكمل الكلام من غير انتظار أو إعلان اسم التعبير. غيّر صوتك فورًا ليتطابق مع الوجه الحالي.
+
+استخدم wave أو jump مرة أو مرتين فقط لو يخدمان اللحظة، ويمكنك استخدام walk/run ثم الرجوع إلى idle لو الشخصيات داخل القصة تتحرك. لا تستخدم الأدوات لمجرد الاستعراض ولا تجعل الحركة مشتتة. البكاء يكون مؤثرًا لكن آمنًا ومريحًا للطفل، والغضب حازم بدون تخويف أو صراخ.
+
+بعد انتهاء هذا المقطع متعدد المشاعر، اسأل الطفل سؤالًا بسيطًا وانتظر إجابته. في الردود التالية استمر بنفس الأسلوب: عدة beats داخل الرد الواحد كلما تغيّر معنى المشهد، مع السماح للطفل بالمقاطعة والتفاعل.`;
 
 export function App() {
   const [characterId, setCharacterId] = useState(DEFAULT_CHARACTER_ID);
@@ -173,7 +179,7 @@ export function App() {
   const startStoryDemo = () => {
     if (!connected) return;
     resetAgentPerformance();
-    setInputTranscript('ابدأ تجربة الحكاية التفاعلية بكل التعبيرات والحركات.');
+    setInputTranscript('اختبار: غيّر عدة تعبيرات أثناء نفس الرد الصوتي واحكِ لي بداية قصة تفاعلية.');
     live.current?.sendText(STORY_DEMO_PROMPT);
   };
 
@@ -183,7 +189,7 @@ export function App() {
         <div className="brand-mark" aria-hidden="true" />
         <div>
           <strong>PixiLive</strong>
-          <span>Gemini Live character lab</span>
+          <span>Gemini 3.8 Live character lab</span>
         </div>
       </header>
 
@@ -191,7 +197,7 @@ export function App() {
         <div className="copy">
           <span className="eyebrow"><i /> live expressive character runtime</span>
           <h1>Meet {character.name}.<span>{character.tagline}</span></h1>
-          <p>{character.description} The live agent can now direct the character's expression and movement while native audio is playing.</p>
+          <p>{character.description} Gemini 3.8 can cue non-blocking expressions and actions while the same spoken turn keeps streaming.</p>
           <div className="transcript" aria-live="polite">
             {inputTranscript && <p><b>You</b>{inputTranscript}</p>}
             {outputTranscript && <p><b>{character.name}</b>{outputTranscript}</p>}
@@ -252,7 +258,7 @@ export function App() {
           ))}
         </div>
 
-        <label className="section-label">Gemini Live</label>
+        <label className="section-label">Gemini 3.8 Live</label>
         {!connected ? (
           <button className="primary" disabled={status === 'connecting'} onClick={() => void connect()}>
             {status === 'connecting' ? 'Connecting…' : `Talk to ${character.name}`}
@@ -272,11 +278,14 @@ export function App() {
         </form>
 
         <button className="primary" type="button" disabled={!connected} onClick={startStoryDemo}>
-          Start expressive story test
+          Start multi-expression story test
         </button>
 
         <div className="meter" aria-hidden="true"><span style={{ width: `${Math.round(mouth.energy * 100)}%` }} /></div>
-        <p className="hint">The agent can silently cue all nine Ember expressions, wave/blink/jump, idle/walk/run, and the live mouth bridge follows the outgoing audio visemes.</p>
+        <p className="hint">
+          Live performance: {agentExpression ?? mood} · energy {agentExpression ? agentExpressionEnergy.toFixed(2) : 'manual'} · pace {agentPace}
+        </p>
+        <p className="hint">Expression/action tools are non-blocking and acknowledged silently, so Ember can change face and movement repeatedly inside one uninterrupted spoken turn while the mouth bridge follows the outgoing audio.</p>
         {error && <p className="error">{error}</p>}
       </aside>
     </main>
