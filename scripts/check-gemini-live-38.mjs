@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises';
 const client = await readFile(new URL('../src/live/GeminiLiveClient.ts', import.meta.url), 'utf8');
 const token = await readFile(new URL('../functions/api/gemini-token.ts', import.meta.url), 'utf8');
 const app = await readFile(new URL('../src/App.tsx', import.meta.url), 'utf8');
+const scriptPerformance = await readFile(new URL('../src/live/scriptPerformance.ts', import.meta.url), 'utf8');
 
 const assert = (condition, message) => {
   if (!condition) throw new Error(message);
@@ -14,14 +15,23 @@ assert(!client.includes('gemini-3.1-flash-live-preview'), 'Legacy Gemini 3.1 mod
 assert(!token.includes('gemini-3.1-flash-live-preview'), 'Legacy Gemini 3.1 model remains in the token issuer');
 assert(client.includes('v1beta.GenerativeService.BidiGenerateContentConstrained'), 'Ephemeral-token WebSocket is not using the required v1beta constrained endpoint');
 assert(!client.includes('v1alpha.GenerativeService.BidiGenerateContentConstrained'), 'Legacy v1alpha ephemeral-token endpoint remains in the client');
-assert(token.includes('liveConnectConstraints'), 'Ephemeral token is not using liveConnectConstraints');
-assert(token.includes("responseModalities: ['AUDIO']"), 'Ephemeral token is not constrained to AUDIO output');
+assert(token.includes('liveConnectConstraints'), 'Preferred ephemeral token path no longer attempts liveConnectConstraints');
+assert(token.includes("responseModalities: ['AUDIO']"), 'Preferred ephemeral token is not constrained to AUDIO output');
 
 const nonBlockingCount = (client.match(/behavior:\s*'NON_BLOCKING'/g) ?? []).length;
 assert(nonBlockingCount >= 3, `Expected at least 3 NON_BLOCKING character tools, found ${nonBlockingCount}`);
 assert(client.includes("scheduling: 'SILENT'"), 'Character tool responses are not SILENT');
-assert(client.includes('multiple times inside the SAME spoken turn'), 'Performance protocol does not explicitly require intra-turn expression changes');
-assert(app.includes('5 إلى 7 تغييرات عاطفية واضحة داخل نفس الـturn'), 'Story stress test no longer requires multiple emotional beats in one turn');
-assert(app.includes('Cue timeline:'), 'Demo no longer exposes the intra-turn stage-direction timeline');
+assert(client.includes('multiple times inside the SAME spoken turn'), 'Freeform performance protocol does not explicitly require intra-turn expression changes');
 
-console.log('Gemini 3.8 Live migration is locked: model, v1beta ephemeral transport, liveConnectConstraints, NON_BLOCKING tools, SILENT scheduling, and multi-expression story choreography.');
+assert(scriptPerformance.includes('parsePerformanceScript'), 'Tagged performance script parser is missing');
+assert(scriptPerformance.includes('buildScriptPerformancePrompt'), 'Tagged performance prompt builder is missing');
+assert(scriptPerformance.includes('ScriptPerformanceDirector'), 'Transcript-synced script director is missing');
+assert(scriptPerformance.includes('ONE continuous spoken turn'), 'Tagged script prompt does not require a single continuous spoken turn');
+assert(scriptPerformance.includes('NEVER pronounce'), 'Tagged script prompt does not explicitly keep stage tags silent');
+assert(app.includes('[surprised]'), 'Tagged demo no longer covers surprised');
+assert(app.includes('[crying]'), 'Tagged demo no longer covers crying');
+assert(app.includes('[pace:run]'), 'Tagged demo no longer covers locomotion changes');
+assert(app.includes('Run tagged story — one live turn'), 'Tagged story control is missing from the demo UI');
+assert(app.includes('Cue timeline:'), 'Demo no longer exposes the performance cue timeline');
+
+console.log('Gemini 3.8 Live performance contract is locked: async freeform tools plus deterministic tagged-script choreography inside one spoken turn.');
