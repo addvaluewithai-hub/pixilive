@@ -1,12 +1,13 @@
-name: Rive Kiro
+name: Rive Character Library
 
 on:
   push:
     branches:
       - feat/rive-native-character
     paths:
-      - 'rive/kiro/**'
+      - 'rive/**'
       - 'src/**'
+      - 'scripts/generate-rive-mascots.mjs'
       - 'scripts/capture-rive-kiro.mjs'
       - 'package.json'
       - '.github/workflows/rive-kiro.yml'
@@ -32,6 +33,9 @@ jobs:
       - name: Install app dependencies
         run: npm install --no-audit --no-fund
 
+      - name: Generate code-first mascot RML
+        run: node scripts/generate-rive-mascots.mjs
+
       - name: Install Rive Linux dependencies
         shell: bash
         run: |
@@ -47,39 +51,46 @@ jobs:
       - name: Show CLI version
         run: rive --version
 
-      - name: Prepare output directory
-        run: mkdir -p rive/kiro/build visual-artifacts public/rive
-
-      - name: Verify RML
+      - name: Prepare output directories
         shell: bash
         run: |
-          set -o pipefail
-          rive rive/kiro --verify --format=json | tee rive/kiro/build/verify.json
+          mkdir -p public/rive visual-artifacts
+          for CHARACTER in benny dino foxy kiro; do
+            mkdir -p "rive/$CHARACTER/build"
+          done
 
-      - name: Build unsigned runtime asset
+      - name: Verify all RML projects
         shell: bash
         run: |
-          set -o pipefail
-          rive rive/kiro --once --format=json | tee rive/kiro/build/build.json
+          set -euo pipefail
+          for CHARACTER in benny dino foxy kiro; do
+            echo "=== verify $CHARACTER ==="
+            rive "rive/$CHARACTER" --verify --format=json | tee "rive/$CHARACTER/build/verify.json"
+          done
 
-      - name: Inspect resolved scene
-        run: rive inspect rive/kiro --json > rive/kiro/build/inspect.json
+      - name: Build all runtime assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          for CHARACTER in benny dino foxy kiro; do
+            echo "=== build $CHARACTER ==="
+            rive "rive/$CHARACTER" --once --format=json | tee "rive/$CHARACTER/build/build.json"
+            rive inspect "rive/$CHARACTER" --json > "rive/$CHARACTER/build/inspect.json"
+            cp "rive/$CHARACTER/build/$CHARACTER.riv" "public/rive/$CHARACTER.riv"
+          done
 
-      - name: Use the freshly built Rive asset in the app
-        run: cp rive/kiro/build/kiro.riv public/rive/kiro.riv
-
-      - name: Keep committed runtime asset in sync
+      - name: Keep committed runtime assets in sync
         if: github.event_name == 'push'
         shell: bash
         run: |
-          if git diff --quiet -- public/rive/kiro.riv; then
-            echo "Committed Kiro runtime is already current."
+          if git diff --quiet -- public/rive/benny.riv public/rive/dino.riv public/rive/foxy.riv public/rive/kiro.riv; then
+            echo "Committed Rive runtimes are already current."
             exit 0
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add public/rive/kiro.riv
-          git commit -m "build(rive): sync Kiro runtime [skip ci]"
+          git add public/rive/benny.riv public/rive/dino.riv public/rive/foxy.riv public/rive/kiro.riv
+          git commit -m "build(rive): sync character library runtimes [skip ci]"
           git push origin "HEAD:${GITHUB_REF_NAME}"
 
       - name: Typecheck and build app
@@ -103,15 +114,20 @@ jobs:
           cat /tmp/pixilive-rive-preview.log || true
           exit 1
 
-      - name: Capture Kiro browser states
+      - name: Capture library browser states
         env:
           PIXILIVE_PREVIEW_URL: http://127.0.0.1:4173
         run: node scripts/capture-rive-kiro.mjs
 
-      - name: Render two-second CLI preview
-        run: rive rive/kiro --screenshot=rive/kiro/build/kiro-cli.png --advance=2s
+      - name: Render CLI previews
+        shell: bash
+        run: |
+          set -euo pipefail
+          for CHARACTER in benny dino foxy kiro; do
+            rive "rive/$CHARACTER" --screenshot="rive/$CHARACTER/build/$CHARACTER-cli.png" --advance=2s
+          done
 
-      - name: Capture schemas for the next rig iteration
+      - name: Capture schemas for next rig iterations
         shell: bash
         run: |
           {
@@ -120,76 +136,17 @@ jobs:
               rive schema "$TYPE" || true
               echo
             done
-            echo '=== Drawing docs search ==='
-            rive docs --search 'SolidColor' || true
-            echo
-            echo '=== Data binding docs search ==='
-            rive docs --search 'ViewModelPropertyNumber' || true
-            echo
-            rive docs --search 'viewModelId' || true
-            echo
-            echo '=== Joystick docs search ==='
-            rive docs --search 'joystick' || true
           } > rive/kiro/build/schema-notes.txt
 
-      - name: Capture CLI authoring docs and scaffold
-        shell: bash
-        run: |
-          rive docs skeleton > rive/kiro/build/docs-skeleton.txt
-          rive docs drawing > rive/kiro/build/docs-drawing.txt
-          rive docs data > rive/kiro/build/docs-data.txt
-          rive docs rigging > rive/kiro/build/docs-rigging.txt
-          rm -rf /tmp/kiro-scaffold
-          rive create /tmp/kiro-scaffold
-          cp /tmp/kiro-scaffold/scene.rml rive/kiro/build/scaffold-scene.rml
-          cp /tmp/kiro-scaffold/rive.yaml rive/kiro/build/scaffold-rive.yaml
-          rive /tmp/kiro-scaffold --screenshot=rive/kiro/build/scaffold.png
-
-      - name: Render official triangle probe
-        shell: bash
-        run: |
-          rm -rf /tmp/rive-probe
-          mkdir -p /tmp/rive-probe
-          cat > /tmp/rive-probe/rive.yaml <<'EOF'
-          name: probe
-          EOF
-          cat > /tmp/rive-probe/scene.rml <<'EOF'
-          <Rive version="1" kind="fragment">
-              <Artboard defaultStateMachineId="0:7" styleId="0:5" width="500" height="500" name="Artboard" id="0:2">
-                  <LayoutComponentStyle name="Artboard Style" id="0:5"/>
-                  <Fill name="Background"><SolidColor colorValue="FF1D1D1D" name="Color"/></Fill>
-                  <Shape x="250" y="250" name="Triangle" id="0:14">
-                      <Triangle originX="0.5" originY="0.5" width="220" height="200" name="Path"/>
-                      <Fill name="Fill"><SolidColor colorValue="FF57A5E0" name="Color"/></Fill>
-                  </Shape>
-                  <StateMachine name="State Machine 1" id="0:7">
-                      <StateMachineLayer name="Layer 1" id="0:8">
-                          <AnyState x="200" y="-120"/>
-                          <ExitState x="400" y="-120"/>
-                          <EntryState><StateTransition stateToId="0:12"/></EntryState>
-                          <AnimationState x="200" animationId="0:6" id="0:12"/>
-                      </StateMachineLayer>
-                  </StateMachine>
-                  <LinearAnimation loopValue="loop" duration="120" name="Spin" id="0:6">
-                      <KeyedObject objectId="0:14">
-                          <KeyedProperty propertyKey="15">
-                              <KeyFrameDouble value="0" interpolationType="linear"/>
-                              <KeyFrameDouble value="6.2831855" interpolationType="linear" frame="120"/>
-                          </KeyedProperty>
-                      </KeyedObject>
-                  </LinearAnimation>
-              </Artboard>
-          </Rive>
-          EOF
-          rive /tmp/rive-probe --verify --format=json > rive/kiro/build/probe-verify.json
-          rive /tmp/rive-probe --screenshot=rive/kiro/build/probe.png --advance=1s
-
-      - name: Upload Rive artifacts
+      - name: Upload Rive library artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: kiro-rive-build
+          name: rive-character-library-build
           path: |
+            rive/benny/build/
+            rive/dino/build/
+            rive/foxy/build/
             rive/kiro/build/
-            visual-artifacts/kiro-*.png
+            visual-artifacts/*.png
           if-no-files-found: warn
