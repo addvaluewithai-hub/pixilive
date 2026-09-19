@@ -1,6 +1,13 @@
 import { type ChangeEvent, type FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { MicrophonePcmStream } from './audio/MicrophonePcmStream';
 import { PcmPlaybackQueue } from './audio/PcmPlaybackQueue';
+import {
+  actionPacks,
+  moodPacks,
+  type ActionCommand,
+  type ActionId,
+  type MoodId,
+} from './character/behaviorPacks';
 import { characterRegistry, DEFAULT_CHARACTER_ID, getCharacterDefinition } from './character/registry';
 import type { Emotion, MouthPose } from './character/types';
 import { CharacterStage } from './components/CharacterStage';
@@ -9,9 +16,23 @@ import type { LiveStatus } from './live/types';
 
 const restingMouth: MouthPose = { open: 0.045, width: 0.37, round: 0.08, energy: 0, viseme: 'REST' };
 
+const moodEmotion: Record<MoodId, Emotion> = {
+  calm: 'calm',
+  happy: 'happy',
+  sad: 'calm',
+  thinking: 'curious',
+  curious: 'curious',
+  excited: 'excited',
+  worried: 'curious',
+  listening: 'calm',
+  confident: 'happy',
+};
+
 export function App() {
   const [characterId, setCharacterId] = useState(DEFAULT_CHARACTER_ID);
   const [emotion, setEmotion] = useState<Emotion>('calm');
+  const [mood, setMood] = useState<MoodId>('calm');
+  const [action, setAction] = useState<ActionCommand | null>(null);
   const [mouth, setMouth] = useState<MouthPose>(restingMouth);
   const [status, setStatus] = useState<LiveStatus>('idle');
   const [inputTranscript, setInputTranscript] = useState('');
@@ -65,11 +86,22 @@ export function App() {
     if (sessionLocked) return;
     const next = getCharacterDefinition(event.target.value);
     setCharacterId(next.id);
+    setMood('calm');
     setEmotion(next.defaultEmotion);
+    setAction(null);
     setMouth(restingMouth);
     setInputTranscript('');
     setOutputTranscript('');
     setError('');
+  };
+
+  const selectMood = (nextMood: MoodId) => {
+    setMood(nextMood);
+    setEmotion(moodEmotion[nextMood]);
+  };
+
+  const runAction = (id: ActionId) => {
+    setAction((current) => ({ id, nonce: (current?.nonce ?? 0) + 1 }));
   };
 
   const connect = async () => {
@@ -113,9 +145,9 @@ export function App() {
 
       <section className="hero">
         <div className="copy">
-          <span className="eyebrow"><i /> procedural character runtime</span>
+          <span className="eyebrow"><i /> universal performance runtime</span>
           <h1>Meet {character.name}.<span>{character.tagline}</span></h1>
-          <p>{character.description} Everything visible is rendered and animated from code.</p>
+          <p>{character.description} Universal behavior packs stay reusable across every character rig.</p>
           <div className="transcript" aria-live="polite">
             {inputTranscript && <p><b>You</b>{inputTranscript}</p>}
             {outputTranscript && <p><b>{character.name}</b>{outputTranscript}</p>}
@@ -129,6 +161,8 @@ export function App() {
             mouth={mouth}
             speaking={speaking}
             speechText={outputTranscript}
+            mood={mood}
+            action={action}
           />
         </div>
       </section>
@@ -146,14 +180,25 @@ export function App() {
           ))}
         </select>
         <p className="character-description">
-          {character.description}
+          Same behavior vocabulary, different character adapter.
           {sessionLocked && <span> End the voice session to switch characters.</span>}
         </p>
 
-        <label className="section-label">Emotion</label>
-        <div className="emotion-grid">
-          {character.emotions.map((item) => (
-            <button key={item} className={emotion === item ? 'active' : ''} onClick={() => setEmotion(item)}>{item}</button>
+        <label className="section-label">Mood packs</label>
+        <div className="behavior-grid mood-pack-grid">
+          {moodPacks.map((pack) => (
+            <button key={pack.id} className={mood === pack.id ? 'active' : ''} onClick={() => selectMood(pack.id)} title={pack.id}>
+              <span>{pack.emoji}</span>{pack.label}
+            </button>
+          ))}
+        </div>
+
+        <label className="section-label">Reaction packs</label>
+        <div className="behavior-grid action-pack-grid">
+          {actionPacks.map((pack) => (
+            <button key={pack.id} onClick={() => runAction(pack.id)} title={`Play ${pack.label}`}>
+              <span>{pack.emoji}</span>{pack.label}
+            </button>
           ))}
         </div>
 
@@ -177,7 +222,7 @@ export function App() {
         </form>
 
         <div className="meter" aria-hidden="true"><span style={{ width: `${Math.round(mouth.energy * 100)}%` }} /></div>
-        <p className="hint">Each character owns its art, motion, framing and Gemini persona. Shared audio and Live infrastructure stays reusable.</p>
+        <p className="hint">Packages express intent (celebrate, think, cry, agree…). Each character translates that intent through its own adapter and can ignore capabilities it does not have.</p>
         {error && <p className="error">{error}</p>}
       </aside>
     </main>
