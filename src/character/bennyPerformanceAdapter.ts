@@ -1,0 +1,30 @@
+import { createMascotPerformanceAdapter } from './mascotPerformanceAdapter';
+
+export const bennyPerformanceAdapter = createMascotPerformanceAdapter({
+  id: 'benny-bear-v1',
+  base: {
+    bodyY: 0,
+    bodyLean: 0,
+    headY: 0,
+    headTilt: 0,
+    leftHandX: -146,
+    leftHandY: 74,
+    rightHandX: 146,
+    rightHandY: 74,
+    eyeScale: 0.94,
+    browY: -50,
+    smileOpacity: 0.06,
+    neutralOpacity: 1,
+  },
+  armX: 42,
+  armY: 66,
+  bodyLift: 14,
+  bodyLean: 0.052,
+  headLift: 12,
+  headTilt: 0.15,
+  eyeScale: 0.22,
+  browLift: 8,
+  thinkHandX: -42,
+  thinkHandY: -76,
+  motionCharacter: 'soft',
+});
