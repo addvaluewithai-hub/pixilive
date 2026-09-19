@@ -1,4 +1,5 @@
 import type { PerformanceIntent } from './behaviorPacks';
+import type { Emotion } from './types';
 
 export interface PerformanceSampleContext {
   weight: number;
@@ -6,10 +7,8 @@ export interface PerformanceSampleContext {
 }
 
 /**
- * Standard runtime pose consumed by the shared Rive stage.
- * Every character adapter may translate the same semantic intent differently,
- * but it outputs these normalized runtime offsets. Unsupported anatomy simply
- * returns zero for the corresponding channel.
+ * Shared runtime channels consumed by the generic Rive stage. The values can mean
+ * different things visually for different characters; an adapter owns that mapping.
  */
 export interface StandardPerformancePose {
   bodyY: number;
@@ -42,12 +41,14 @@ export const zeroPerformancePose: StandardPerformancePose = {
 };
 
 /**
- * Behavior packs stay universal; a character adapter only translates semantic
- * channels into its own performance language. This is the only character-specific
- * layer required when a new mascot/robot/animal/cloud is added.
+ * Behavior packs stay universal. Adding a character means supplying this adapter:
+ * base rig values, how its four legacy facial emotions map, and how abstract
+ * performance intent maps to the shared runtime channels.
  */
 export interface CharacterPerformanceAdapter {
   readonly id: string;
+  readonly base: StandardPerformancePose;
+  emotion(emotion: Emotion): Partial<StandardPerformancePose>;
   sample(intent: PerformanceIntent, context: PerformanceSampleContext): StandardPerformancePose;
   applyPattern?(pose: StandardPerformancePose, pattern: string, phase: number): StandardPerformancePose;
 }
