@@ -35,9 +35,12 @@ async function issueGeminiToken(env: Env) {
       uses: 1,
       expireTime,
       newSessionExpireTime,
-      fieldMask: 'model',
-      bidiGenerateContentSetup: {
+      liveConnectConstraints: {
         model: `models/${MODEL}`,
+        config: {
+          sessionResumption: {},
+          responseModalities: ['AUDIO'],
+        },
       },
     }),
   });
