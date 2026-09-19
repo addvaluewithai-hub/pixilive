@@ -5,11 +5,24 @@ import {
 } from '@rive-app/react-webgl2';
 import { useEffect, useRef, useState } from 'react';
 import {
+  actionEnvelope,
+  getActionPack,
+  getMoodPack,
+  type ActionCommand,
+  type MoodId,
+} from '../character/behaviorPacks';
+import {
   createAgentMotionState,
   inferAgentGesture,
   stepAgentMotion,
   type AgentGesture,
 } from '../character/agentMotion';
+import {
+  applyKiroPattern,
+  kiroPerformanceAdapter,
+  zeroKiroPerformancePose,
+  type KiroPerformancePose,
+} from '../character/kiroPerformanceAdapter';
 import type { CharacterDefinition } from '../character/runtime';
 import type { Emotion, MouthPose } from '../character/types';
 
@@ -19,6 +32,8 @@ interface RiveCharacterStageProps {
   mouth: MouthPose;
   speaking: boolean;
   speechText: string;
+  mood: MoodId;
+  action: ActionCommand | null;
 }
 
 type RigState = {
@@ -43,10 +58,7 @@ type RigState = {
   neutralOpacity: number;
 };
 
-type AutoPose = Pick<
-  RigState,
-  'bodyY' | 'bodyLean' | 'headY' | 'headTilt' | 'leftHandX' | 'leftHandY' | 'rightHandX' | 'rightHandY' | 'eyeScale' | 'browY'
->;
+type AutoPose = KiroPerformancePose;
 
 const defaultRig: RigState = {
   bodyX: 0,
@@ -70,57 +82,46 @@ const defaultRig: RigState = {
   neutralOpacity: 1,
 };
 
-const zeroAutoPose: AutoPose = {
-  bodyY: 0,
-  bodyLean: 0,
-  headY: 0,
-  headTilt: 0,
-  leftHandX: 0,
-  leftHandY: 0,
-  rightHandX: 0,
-  rightHandY: 0,
-  eyeScale: 0,
-  browY: 0,
-};
-
 const emotionFace: Record<Emotion, Partial<RigState>> = {
   calm: { eyeScale: 0.92, browY: -53, smileOpacity: 0.04, neutralOpacity: 1, headTilt: 0 },
-  happy: { eyeScale: 0.76, browY: -60, smileOpacity: 1, neutralOpacity: 0, headTilt: 0.045 },
-  curious: { eyeScale: 1.02, browY: -63, smileOpacity: 0.18, neutralOpacity: 0.9, headTilt: -0.13 },
-  excited: { eyeScale: 1.08, browY: -66, smileOpacity: 1, neutralOpacity: 0, headTilt: 0.075 },
+  happy: { eyeScale: 0.8, browY: -58, smileOpacity: 0.7, neutralOpacity: 0.25, headTilt: 0.025 },
+  curious: { eyeScale: 1.0, browY: -61, smileOpacity: 0.12, neutralOpacity: 0.9, headTilt: -0.08 },
+  excited: { eyeScale: 1.04, browY: -63, smileOpacity: 0.82, neutralOpacity: 0.18, headTilt: 0.045 },
 };
-
-interface RigSliderProps {
-  label: string;
-  value: number;
-  min: number;
-  max: number;
-  step: number;
-  onChange: (value: number) => void;
-}
-
-function RigSlider({ label, value, min, max, step, onChange }: RigSliderProps) {
-  return (
-    <label className="rig-slider">
-      <span>{label}<b>{value.toFixed(step < 0.1 ? 2 : 1)}</b></span>
-      <input
-        type="range"
-        min={min}
-        max={max}
-        step={step}
-        value={value}
-        onChange={(event) => onChange(Number(event.target.value))}
-      />
-    </label>
-  );
-}
 
 const smoothToward = (current: number, target: number, response: number, dt: number) => {
   const alpha = 1 - Math.exp(-Math.min(0.05, dt) * response);
   return current + (target - current) * alpha;
 };
 
-export function RiveCharacterStage({ character, emotion, mouth, speaking, speechText }: RiveCharacterStageProps) {
+const addPose = (...poses: KiroPerformancePose[]): KiroPerformancePose =>
+  poses.reduce<KiroPerformancePose>(
+    (sum, pose) => ({
+      bodyY: sum.bodyY + pose.bodyY,
+      bodyLean: sum.bodyLean + pose.bodyLean,
+      headY: sum.headY + pose.headY,
+      headTilt: sum.headTilt + pose.headTilt,
+      leftHandX: sum.leftHandX + pose.leftHandX,
+      leftHandY: sum.leftHandY + pose.leftHandY,
+      rightHandX: sum.rightHandX + pose.rightHandX,
+      rightHandY: sum.rightHandY + pose.rightHandY,
+      eyeScale: sum.eyeScale + pose.eyeScale,
+      browY: sum.browY + pose.browY,
+      smileOpacity: sum.smileOpacity + pose.smileOpacity,
+      neutralOpacity: sum.neutralOpacity + pose.neutralOpacity,
+    }),
+    { ...zeroKiroPerformancePose },
+  );
+
+export function RiveCharacterStage({
+  character,
+  emotion,
+  mouth,
+  speaking,
+  speechText,
+  mood,
+  action,
+}: RiveCharacterStageProps) {
   const source = character.rive;
   if (!source) throw new Error(`${character.name} is missing its Rive source configuration.`);
 
@@ -136,20 +137,26 @@ export function RiveCharacterStage({ character, emotion, mouth, speaking, speech
   const bindingsReady = Boolean(viewModelInstance);
   const [rig, setRig] = useState<RigState>(defaultRig);
   const [labOpen, setLabOpen] = useState(false);
-  const [motionSweep, setMotionSweep] = useState(false);
   const [agentMotionEnabled, setAgentMotionEnabled] = useState(true);
   const [gestureStrength, setGestureStrength] = useState(1);
   const [agentGesture, setAgentGesture] = useState<AgentGesture>('conversational');
-  const reactionTimer = useRef<number | null>(null);
-  const reactionStartedAt = useRef(-10_000);
+  const [activeAction, setActiveAction] = useState<string>('none');
+
   const rigRef = useRef<RigState>(defaultRig);
-  const autoPoseRef = useRef<AutoPose>({ ...zeroAutoPose });
+  const autoPoseRef = useRef<AutoPose>({ ...zeroKiroPerformancePose });
   const agentMotionStateRef = useRef(createAgentMotionState());
   const gestureRef = useRef<AgentGesture>('conversational');
   const speechRef = useRef({ speaking, energy: mouth.energy, emotion, text: speechText, strength: gestureStrength });
+  const moodRef = useRef(mood);
+  const actionRef = useRef<ActionCommand | null>(action);
+  const actionStartedAt = useRef(-10_000);
+  const lastActionNonce = useRef(-1);
+  const reactionStartedAt = useRef(-10_000);
 
   rigRef.current = rig;
   speechRef.current = { speaking, energy: mouth.energy, emotion, text: speechText, strength: gestureStrength };
+  moodRef.current = mood;
+  actionRef.current = action;
 
   const { setValue: setSpeaking } = useViewModelInstanceBoolean('speaking', viewModelInstance);
   const { setValue: setGazeX } = useViewModelInstanceNumber('gazeX', viewModelInstance);
@@ -164,67 +171,18 @@ export function RiveCharacterStage({ character, emotion, mouth, speaking, speech
   const { setValue: setTongue } = useViewModelInstanceNumber('tongue', viewModelInstance);
   const { setValue: setCornerPull } = useViewModelInstanceNumber('cornerPull', viewModelInstance);
 
-  const { setValue: setBodyX } = useViewModelInstanceNumber('bodyX', viewModelInstance);
   const { setValue: setBodyY } = useViewModelInstanceNumber('bodyY', viewModelInstance);
   const { setValue: setBodyLean } = useViewModelInstanceNumber('bodyLean', viewModelInstance);
-  const { setValue: setHeadX } = useViewModelInstanceNumber('headX', viewModelInstance);
   const { setValue: setHeadY } = useViewModelInstanceNumber('headY', viewModelInstance);
   const { setValue: setHeadTilt } = useViewModelInstanceNumber('headTilt', viewModelInstance);
-  const { setValue: setLeftShoulder } = useViewModelInstanceNumber('leftShoulder', viewModelInstance);
-  const { setValue: setLeftElbow } = useViewModelInstanceNumber('leftElbow', viewModelInstance);
-  const { setValue: setRightShoulder } = useViewModelInstanceNumber('rightShoulder', viewModelInstance);
-  const { setValue: setRightElbow } = useViewModelInstanceNumber('rightElbow', viewModelInstance);
   const { setValue: setLeftHandX } = useViewModelInstanceNumber('leftHandX', viewModelInstance);
   const { setValue: setLeftHandY } = useViewModelInstanceNumber('leftHandY', viewModelInstance);
   const { setValue: setRightHandX } = useViewModelInstanceNumber('rightHandX', viewModelInstance);
   const { setValue: setRightHandY } = useViewModelInstanceNumber('rightHandY', viewModelInstance);
-  const { setValue: setIkStrength } = useViewModelInstanceNumber('ikStrength', viewModelInstance);
   const { setValue: setEyeScale } = useViewModelInstanceNumber('eyeScale', viewModelInstance);
   const { setValue: setBrowY } = useViewModelInstanceNumber('browY', viewModelInstance);
   const { setValue: setSmileOpacity } = useViewModelInstanceNumber('smileOpacity', viewModelInstance);
   const { setValue: setNeutralOpacity } = useViewModelInstanceNumber('neutralOpacity', viewModelInstance);
-
-  const applyRig = (next: RigState) => {
-    setBodyX(next.bodyX);
-    setBodyY(next.bodyY);
-    setBodyLean(next.bodyLean);
-    setHeadX(next.headX);
-    setHeadY(next.headY);
-    setHeadTilt(next.headTilt);
-    setLeftShoulder(next.leftShoulder);
-    setLeftElbow(next.leftElbow);
-    setRightShoulder(next.rightShoulder);
-    setRightElbow(next.rightElbow);
-    setLeftHandX(next.leftHandX);
-    setLeftHandY(next.leftHandY);
-    setRightHandX(next.rightHandX);
-    setRightHandY(next.rightHandY);
-    setIkStrength(next.ikStrength);
-    setEyeScale(next.eyeScale);
-    setBrowY(next.browY);
-    setSmileOpacity(speaking ? 0 : next.smileOpacity);
-    setNeutralOpacity(speaking ? 0 : next.neutralOpacity);
-  };
-
-  const updateRig = (key: keyof RigState, value: number) => {
-    const next = { ...rig, [key]: value };
-    setRig(next);
-    rigRef.current = next;
-    applyRig(next);
-  };
-
-  const patchRig = (patch: Partial<RigState>) => {
-    const next = { ...rig, ...patch };
-    setRig(next);
-    rigRef.current = next;
-    applyRig(next);
-  };
-
-  useEffect(() => {
-    applyRig(rigRef.current);
-    // Re-apply the authored pose after the Rive ViewModel instance becomes available.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [viewModelInstance]);
 
   useEffect(() => {
     const face = emotionFace[emotion];
@@ -233,12 +191,7 @@ export function RiveCharacterStage({ character, emotion, mouth, speaking, speech
       rigRef.current = next;
       return next;
     });
-    if (face.eyeScale !== undefined) setEyeScale(face.eyeScale);
-    if (face.browY !== undefined) setBrowY(face.browY);
-    if (face.smileOpacity !== undefined) setSmileOpacity(speaking ? 0 : face.smileOpacity);
-    if (face.neutralOpacity !== undefined) setNeutralOpacity(speaking ? 0 : face.neutralOpacity);
-    if (face.headTilt !== undefined) setHeadTilt(face.headTilt);
-  }, [emotion, setBrowY, setEyeScale, setHeadTilt, setNeutralOpacity, setSmileOpacity, speaking]);
+  }, [emotion]);
 
   useEffect(() => {
     setSpeaking(speaking);
@@ -251,20 +204,14 @@ export function RiveCharacterStage({ character, emotion, mouth, speaking, speech
     setTeeth(speaking ? (mouth.teeth ?? 0) : 0);
     setTongue(speaking ? (mouth.tongue ?? 0) : 0);
     setCornerPull(speaking ? (mouth.cornerPull ?? 0.1) : 0.1);
-    setSmileOpacity(speaking ? 0 : rig.smileOpacity);
-    setNeutralOpacity(speaking ? 0 : rig.neutralOpacity);
   }, [
     mouth,
-    rig.neutralOpacity,
-    rig.smileOpacity,
     setCornerPull,
     setLipPress,
     setLowerLipBite,
     setMouthOpen,
     setMouthRound,
     setMouthWidth,
-    setNeutralOpacity,
-    setSmileOpacity,
     setSpeaking,
     setSpeechEnergy,
     setTeeth,
@@ -273,10 +220,18 @@ export function RiveCharacterStage({ character, emotion, mouth, speaking, speech
   ]);
 
   useEffect(() => {
-    if (!viewModelInstance || !agentMotionEnabled || motionSweep) return;
+    if (action && action.nonce !== lastActionNonce.current) {
+      lastActionNonce.current = action.nonce;
+      actionStartedAt.current = performance.now();
+      setActiveAction(action.id);
+    }
+  }, [action]);
+
+  useEffect(() => {
+    if (!viewModelInstance) return;
 
     agentMotionStateRef.current = createAgentMotionState();
-    autoPoseRef.current = { ...zeroAutoPose };
+    autoPoseRef.current = { ...zeroKiroPerformancePose };
     let previousTime = performance.now();
     let frame = 0;
 
@@ -285,126 +240,110 @@ export function RiveCharacterStage({ character, emotion, mouth, speaking, speech
       previousTime = now;
       const speech = speechRef.current;
       const base = rigRef.current;
-      const target = stepAgentMotion(
-        {
-          nowMs: now,
-          dtSeconds: dt,
-          speaking: speech.speaking,
-          energy: speech.energy,
-          emotion: speech.emotion,
-          text: speech.text,
-          strength: speech.strength,
-        },
-        agentMotionStateRef.current,
-      );
+
+      let speechPose = { ...zeroKiroPerformancePose };
+      if (agentMotionEnabled) {
+        const target = stepAgentMotion(
+          {
+            nowMs: now,
+            dtSeconds: dt,
+            speaking: speech.speaking,
+            energy: speech.energy,
+            emotion: speech.emotion,
+            text: speech.text,
+            strength: speech.strength,
+          },
+          agentMotionStateRef.current,
+        );
+        speechPose = {
+          ...zeroKiroPerformancePose,
+          bodyY: target.bodyY,
+          bodyLean: target.bodyLean,
+          headY: target.headY,
+          headTilt: target.headTilt,
+          leftHandX: target.leftHandX,
+          leftHandY: target.leftHandY,
+          rightHandX: target.rightHandX,
+          rightHandY: target.rightHandY,
+          eyeScale: target.eyeScale,
+          browY: target.browY,
+        };
+        if (target.gesture !== gestureRef.current) {
+          gestureRef.current = target.gesture;
+          setAgentGesture(target.gesture);
+        }
+      }
+
+      const moodPack = getMoodPack(moodRef.current);
+      const moodPose = kiroPerformanceAdapter.sample(moodPack.intent, { weight: 1, phase: 0 });
+
+      let actionPose = { ...zeroKiroPerformancePose };
+      const currentAction = actionRef.current;
+      if (currentAction) {
+        const pack = getActionPack(currentAction.id);
+        const elapsed = now - actionStartedAt.current;
+        const duration = pack.durationMs ?? 1000;
+        const envelope = actionEnvelope(pack.pattern, elapsed, duration);
+        if (envelope.weight > 0) {
+          actionPose = applyKiroPattern(
+            kiroPerformanceAdapter.sample(pack.intent, envelope),
+            pack.pattern,
+            envelope.phase,
+          );
+        } else if (activeAction !== 'none') {
+          setActiveAction('none');
+        }
+      }
 
       const reactionAge = now - reactionStartedAt.current;
       const reactionProgress = Math.max(0, Math.min(1, reactionAge / 260));
       const reactionPulse = reactionAge >= 0 && reactionProgress < 1 ? Math.sin(Math.PI * reactionProgress) : 0;
-      target.bodyY -= 8 * reactionPulse;
-      target.headY -= 4 * reactionPulse;
-      target.headTilt += 0.065 * reactionPulse;
+      const reactionPose: KiroPerformancePose = {
+        ...zeroKiroPerformancePose,
+        bodyY: -5 * reactionPulse,
+        headY: -3 * reactionPulse,
+        headTilt: 0.045 * reactionPulse,
+      };
 
+      const targetPose = addPose(moodPose, actionPose, speechPose, reactionPose);
       const pose = autoPoseRef.current;
-      const bodyResponse = speech.speaking ? 9 : 5;
-      const handResponse = speech.speaking ? 7 : 4;
-      pose.bodyY = smoothToward(pose.bodyY, target.bodyY, bodyResponse, dt);
-      pose.bodyLean = smoothToward(pose.bodyLean, target.bodyLean, bodyResponse, dt);
-      pose.headY = smoothToward(pose.headY, target.headY, bodyResponse + 1, dt);
-      pose.headTilt = smoothToward(pose.headTilt, target.headTilt, bodyResponse + 1, dt);
-      pose.leftHandX = smoothToward(pose.leftHandX, target.leftHandX, handResponse, dt);
-      pose.leftHandY = smoothToward(pose.leftHandY, target.leftHandY, handResponse, dt);
-      pose.rightHandX = smoothToward(pose.rightHandX, target.rightHandX, handResponse, dt);
-      pose.rightHandY = smoothToward(pose.rightHandY, target.rightHandY, handResponse, dt);
-      pose.eyeScale = smoothToward(pose.eyeScale, target.eyeScale, bodyResponse, dt);
-      pose.browY = smoothToward(pose.browY, target.browY, bodyResponse, dt);
+      const bodyResponse = activeAction !== 'none' ? 10 : speech.speaking ? 8 : 5;
+      const handResponse = activeAction !== 'none' ? 9 : speech.speaking ? 7 : 5;
+
+      pose.bodyY = smoothToward(pose.bodyY, targetPose.bodyY, bodyResponse, dt);
+      pose.bodyLean = smoothToward(pose.bodyLean, targetPose.bodyLean, bodyResponse, dt);
+      pose.headY = smoothToward(pose.headY, targetPose.headY, bodyResponse + 1, dt);
+      pose.headTilt = smoothToward(pose.headTilt, targetPose.headTilt, bodyResponse + 1, dt);
+      pose.leftHandX = smoothToward(pose.leftHandX, targetPose.leftHandX, handResponse, dt);
+      pose.leftHandY = smoothToward(pose.leftHandY, targetPose.leftHandY, handResponse, dt);
+      pose.rightHandX = smoothToward(pose.rightHandX, targetPose.rightHandX, handResponse, dt);
+      pose.rightHandY = smoothToward(pose.rightHandY, targetPose.rightHandY, handResponse, dt);
+      pose.eyeScale = smoothToward(pose.eyeScale, targetPose.eyeScale, bodyResponse, dt);
+      pose.browY = smoothToward(pose.browY, targetPose.browY, bodyResponse, dt);
+      pose.smileOpacity = smoothToward(pose.smileOpacity, targetPose.smileOpacity, bodyResponse, dt);
+      pose.neutralOpacity = smoothToward(pose.neutralOpacity, targetPose.neutralOpacity, bodyResponse, dt);
 
       setBodyY(base.bodyY + pose.bodyY);
       setBodyLean(base.bodyLean + pose.bodyLean);
       setHeadY(base.headY + pose.headY);
       setHeadTilt(base.headTilt + pose.headTilt);
-      setEyeScale(base.eyeScale + pose.eyeScale);
+      setLeftHandX(base.leftHandX + pose.leftHandX);
+      setLeftHandY(base.leftHandY + pose.leftHandY);
+      setRightHandX(base.rightHandX + pose.rightHandX);
+      setRightHandY(base.rightHandY + pose.rightHandY);
+      setEyeScale(Math.max(0.45, base.eyeScale + pose.eyeScale));
       setBrowY(base.browY + pose.browY);
-
-      if (base.ikStrength > 0.5) {
-        setLeftHandX(base.leftHandX + pose.leftHandX);
-        setLeftHandY(base.leftHandY + pose.leftHandY);
-        setRightHandX(base.rightHandX + pose.rightHandX);
-        setRightHandY(base.rightHandY + pose.rightHandY);
-      }
-
-      if (target.gesture !== gestureRef.current) {
-        gestureRef.current = target.gesture;
-        setAgentGesture(target.gesture);
-      }
+      setSmileOpacity(speech.speaking ? 0 : Math.max(0, Math.min(1, base.smileOpacity + pose.smileOpacity)));
+      setNeutralOpacity(speech.speaking ? 0 : Math.max(0, Math.min(1, base.neutralOpacity - pose.smileOpacity + pose.neutralOpacity)));
 
       frame = requestAnimationFrame(tick);
     };
 
     frame = requestAnimationFrame(tick);
-    return () => {
-      cancelAnimationFrame(frame);
-      autoPoseRef.current = { ...zeroAutoPose };
-      agentMotionStateRef.current = createAgentMotionState();
-      const base = rigRef.current;
-      setBodyY(base.bodyY);
-      setBodyLean(base.bodyLean);
-      setHeadY(base.headY);
-      setHeadTilt(base.headTilt);
-      setEyeScale(base.eyeScale);
-      setBrowY(base.browY);
-      if (base.ikStrength > 0.5) {
-        setLeftHandX(base.leftHandX);
-        setLeftHandY(base.leftHandY);
-        setRightHandX(base.rightHandX);
-        setRightHandY(base.rightHandY);
-      }
-    };
-    // Speech/energy/text are consumed through refs so this RAF is not restarted on every viseme.
+    return () => cancelAnimationFrame(frame);
+    // Live values are consumed through refs to avoid restarting the RAF on every viseme/transcript update.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [agentMotionEnabled, motionSweep, viewModelInstance]);
-
-  useEffect(() => {
-    if (!motionSweep || !viewModelInstance) return;
-
-    const base = rigRef.current;
-    const started = performance.now();
-    let frame = 0;
-
-    const tick = (now: number) => {
-      const t = (now - started) / 1000;
-      setBodyY(base.bodyY + Math.sin(t * 1.4) * 3);
-      setBodyLean(base.bodyLean + Math.sin(t * 0.8) * 0.035);
-      setHeadTilt(base.headTilt + Math.sin(t * 1.1 + 0.5) * 0.08);
-
-      if (base.ikStrength > 0.5) {
-        const reachX = Math.sin(t * 1.15) * 34;
-        const reachY = Math.cos(t * 0.9) * 24;
-        setLeftHandX(base.leftHandX + reachX);
-        setLeftHandY(base.leftHandY + reachY);
-        setRightHandX(base.rightHandX - reachX);
-        setRightHandY(base.rightHandY + reachY);
-      } else {
-        setLeftShoulder(base.leftShoulder + Math.sin(t * 0.9) * 0.18);
-        setRightShoulder(base.rightShoulder - Math.sin(t * 0.9) * 0.18);
-        setLeftElbow(base.leftElbow + Math.sin(t * 1.2 + 1) * 0.2);
-        setRightElbow(base.rightElbow - Math.sin(t * 1.2 + 1) * 0.2);
-      }
-      frame = requestAnimationFrame(tick);
-    };
-
-    frame = requestAnimationFrame(tick);
-    return () => {
-      cancelAnimationFrame(frame);
-      applyRig(base);
-    };
-    // Motion sweep deliberately snapshots the current pose when it starts.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [motionSweep, viewModelInstance]);
-
-  useEffect(() => () => {
-    if (reactionTimer.current !== null) window.clearTimeout(reactionTimer.current);
-  }, []);
+  }, [viewModelInstance, agentMotionEnabled]);
 
   useEffect(() => {
     const inferred = inferAgentGesture(speechText, emotion);
@@ -422,25 +361,10 @@ export function RiveCharacterStage({ character, emotion, mouth, speaking, speech
     setGazeY(Math.max(-1, Math.min(1, y)));
   };
 
-  const react = () => {
-    if (agentMotionEnabled && !motionSweep) {
-      reactionStartedAt.current = performance.now();
-      return;
-    }
-    if (reactionTimer.current !== null) window.clearTimeout(reactionTimer.current);
-    setBodyY(rig.bodyY - 10);
-    setHeadY(rig.headY - 5);
-    setHeadTilt(rig.headTilt + 0.09);
-    reactionTimer.current = window.setTimeout(() => {
-      applyRig(rigRef.current);
-      reactionTimer.current = null;
-    }, 170);
-  };
-
   const bodyAiLabel = !bindingsReady
     ? 'NOT BOUND'
     : agentMotionEnabled
-      ? `BODY AI · ${speaking ? agentGesture.toUpperCase() : 'IDLE'}`
+      ? `BODY AI · ${speaking ? agentGesture.toUpperCase() : mood.toUpperCase()}`
       : 'BODY AI · OFF';
 
   return (
@@ -451,7 +375,7 @@ export function RiveCharacterStage({ character, emotion, mouth, speaking, speech
         setGazeX(0);
         setGazeY(0);
       }}
-      onPointerDown={react}
+      onPointerDown={() => { reactionStartedAt.current = performance.now(); }}
       aria-label={`${character.name} animated Rive character`}
     >
       <RiveComponent style={{ width: '100%', height: '100%' }} />
@@ -460,10 +384,10 @@ export function RiveCharacterStage({ character, emotion, mouth, speaking, speech
         className={`rive-motion-lab ${labOpen ? 'open' : ''}`}
         onPointerMove={(event) => event.stopPropagation()}
         onPointerDown={(event) => event.stopPropagation()}
-        aria-label="Rive motion playground"
+        aria-label="Rive behavior playground"
       >
         <button className="motion-lab-toggle" type="button" onClick={() => setLabOpen((value) => !value)}>
-          <span><i className={bindingsReady ? 'bound' : 'unbound'} /> Motion lab <em>{bodyAiLabel}</em></span>
+          <span><i className={bindingsReady ? 'bound' : 'unbound'} /> Performance engine <em>{bodyAiLabel}</em></span>
           <b>{labOpen ? 'hide' : 'show'}</b>
         </button>
 
@@ -476,37 +400,22 @@ export function RiveCharacterStage({ character, emotion, mouth, speaking, speech
                 onClick={() => setAgentMotionEnabled((value) => !value)}
                 disabled={!bindingsReady}
               >
-                Body AI {agentMotionEnabled ? 'on' : 'off'}
+                Speech motion {agentMotionEnabled ? 'on' : 'off'}
               </button>
-              <button type="button" className={motionSweep ? 'active' : ''} onClick={() => setMotionSweep((value) => !value)} disabled={!bindingsReady}>
-                {motionSweep ? 'Stop sweep' : 'Motion sweep'}
+              <button type="button" disabled>
+                Action: {activeAction}
               </button>
-              <button type="button" onClick={() => patchRig(defaultRig)} disabled={!bindingsReady}>Reset rig</button>
             </div>
 
-            <div className="rig-grid">
-              <RigSlider label="Gesture power" value={gestureStrength} min={0} max={1.5} step={0.05} onChange={setGestureStrength} />
-              <RigSlider label="IK strength" value={rig.ikStrength} min={0} max={1} step={0.01} onChange={(value) => updateRig('ikStrength', value)} />
-              <RigSlider label="Body lean" value={rig.bodyLean} min={-0.18} max={0.18} step={0.01} onChange={(value) => updateRig('bodyLean', value)} />
-              <RigSlider label="Head tilt" value={rig.headTilt} min={-0.3} max={0.3} step={0.01} onChange={(value) => updateRig('headTilt', value)} />
-              <RigSlider label="Head X" value={rig.headX} min={-35} max={35} step={1} onChange={(value) => updateRig('headX', value)} />
-              <RigSlider label="Head Y" value={rig.headY} min={-25} max={25} step={1} onChange={(value) => updateRig('headY', value)} />
-              <RigSlider label="L hand X" value={rig.leftHandX} min={-170} max={20} step={1} onChange={(value) => updateRig('leftHandX', value)} />
-              <RigSlider label="L hand Y" value={rig.leftHandY} min={20} max={210} step={1} onChange={(value) => updateRig('leftHandY', value)} />
-              <RigSlider label="R hand X" value={rig.rightHandX} min={-20} max={170} step={1} onChange={(value) => updateRig('rightHandX', value)} />
-              <RigSlider label="R hand Y" value={rig.rightHandY} min={20} max={210} step={1} onChange={(value) => updateRig('rightHandY', value)} />
-              <RigSlider label="L shoulder manual" value={rig.leftShoulder} min={1.05} max={2.35} step={0.01} onChange={(value) => updateRig('leftShoulder', value)} />
-              <RigSlider label="L elbow manual" value={rig.leftElbow} min={-1.65} max={0.2} step={0.01} onChange={(value) => updateRig('leftElbow', value)} />
-              <RigSlider label="R shoulder manual" value={rig.rightShoulder} min={0.8} max={2.1} step={0.01} onChange={(value) => updateRig('rightShoulder', value)} />
-              <RigSlider label="R elbow manual" value={rig.rightElbow} min={-0.2} max={1.65} step={0.01} onChange={(value) => updateRig('rightElbow', value)} />
-              <RigSlider label="Eye openness" value={rig.eyeScale} min={0.5} max={1.2} step={0.01} onChange={(value) => updateRig('eyeScale', value)} />
-              <RigSlider label="Brow height" value={rig.browY} min={-74} max={-42} step={1} onChange={(value) => updateRig('browY', value)} />
-            </div>
+            <label className="rig-slider">
+              <span>Speech gesture power <b>{gestureStrength.toFixed(2)}</b></span>
+              <input type="range" min={0} max={1.5} step={0.05} value={gestureStrength} onChange={(event) => setGestureStrength(Number(event.target.value))} />
+            </label>
 
             <p className="motion-lab-note">
               {bindingsReady
-                ? `Body AI reads live speech energy + transcript intent (${agentGesture}) and turns them into smoothed Rive IK beats, head motion, posture and facial micro-expression. Disable it for manual rig testing.`
-                : 'Rive ViewModel is not bound yet. Controls are intentionally reporting this instead of silently doing nothing.'}
+                ? `Universal packs describe intent, not coordinates. Kiro's adapter translates that intent to this rig. Current mood: ${mood}; speech gesture: ${agentGesture}; one-shot action: ${activeAction}.`
+                : 'Rive ViewModel is not bound yet.'}
             </p>
           </div>
         )}
