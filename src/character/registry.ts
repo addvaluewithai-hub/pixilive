@@ -1,6 +1,5 @@
 import { bennyPerformanceAdapter } from './bennyPerformanceAdapter';
 import { dinoPerformanceAdapter } from './dinoPerformanceAdapter';
-import { foxyPerformanceAdapter } from './foxyPerformanceAdapter';
 import { kiroPerformanceAdapter } from './kiroPerformanceAdapter';
 import { MiloVisemeCharacter } from './MiloVisemeCharacter';
 import { NovaCharacter } from './NovaCharacter';
@@ -54,24 +53,23 @@ export const characterRegistry = [
   },
   {
     id: 'foxy',
-    name: 'Foxy',
-    tagline: 'Quick, bright, and a little mischievous.',
-    description: 'An original Rive-native fox with oversized ears, cream markings, a blue scarf and a light-footed motion style.',
+    name: 'Ember',
+    tagline: 'A little fox who can really perform the story.',
+    description: 'Client-supplied SVG character and animation controller, hosted unchanged and driven from the live agent through a separate integration bridge.',
     theme: 'peach',
-    defaultEmotion: 'calm',
+    defaultEmotion: 'happy',
     emotions: commonEmotions,
     systemPrompt:
-      'You are Foxy, a clever, kind and lightly mischievous AI companion. Keep spoken responses concise and conversational. You are embodied as an expressive animated fox: quick reactions are welcome, but never feel frantic or distracting.',
-    framing: { x: 0.5, y: 0.5, widthReference: 800, heightReference: 800, minScale: 0.55, maxScale: 1.2 },
+      'You are Ember, a kind, playful and emotionally expressive fox companion for children. Speak in a warm conversational style, keep content age-appropriate, and make stories interactive rather than lecturing. You are physically embodied and should coordinate your face, movement and vocal delivery with each emotional beat. Let the child interrupt, answer naturally, and use suspense, warmth, humor and reassurance without becoming overwhelming.',
+    framing: { x: 0.5, y: 0.5, widthReference: 640, heightReference: 580, minScale: 0.55, maxScale: 1.35 },
     ambient: { color: 0xf48332, count: 0, radiusMin: 0, radiusMax: 0, alphaMin: 0, alphaMax: 0 },
     authoring: {
       archetype: 'animal',
-      capabilities: ['face', 'arms', 'legs', 'tail', 'ears', 'squashStretch', 'tears', 'sparkle', 'blush', 'accessory'],
+      capabilities: ['face', 'arms', 'legs', 'tail', 'ears', 'squashStretch', 'tears', 'blush', 'accessory'],
       layeredArtwork: true,
-      anatomyNotes: 'Nimble fox proportions, large expressive ears, scarf and tail silhouette. Head motion is slightly stronger than Benny or Dino.',
+      anatomyNotes: 'Client-supplied Ember fox. The supplied SVG and controller remain unchanged; PixiLive controls them through the hosted bridge only.',
     },
-    rive: { src: freshRive('foxy'), artboard: 'Foxy', stateMachine: 'FoxyMachine' },
-    performanceAdapter: foxyPerformanceAdapter,
+    html: { src: '/ember-fox/host.html' },
   },
   {
     id: 'kiro',
@@ -123,7 +121,7 @@ export const characterRegistry = [
   },
 ] as const satisfies readonly CharacterDefinition[];
 
-export const DEFAULT_CHARACTER_ID = 'benny';
+export const DEFAULT_CHARACTER_ID = 'foxy';
 
 export function getCharacterDefinition(id: string): CharacterDefinition {
   return characterRegistry.find((character) => character.id === id) ?? characterRegistry[0];
