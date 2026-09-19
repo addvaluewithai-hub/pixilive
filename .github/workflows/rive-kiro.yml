@@ -8,7 +8,9 @@ on:
       - 'rive/**'
       - 'src/**'
       - 'scripts/generate-rive-mascots.mjs'
+      - 'scripts/generate-foxy-v2.mjs'
       - 'scripts/capture-rive-kiro.mjs'
+      - 'scripts/capture-foxy-quality.mjs'
       - 'package.json'
       - '.github/workflows/rive-kiro.yml'
   workflow_dispatch:
@@ -34,7 +36,9 @@ jobs:
         run: npm install --no-audit --no-fund
 
       - name: Generate code-first mascot RML
-        run: node scripts/generate-rive-mascots.mjs
+        run: |
+          node scripts/generate-rive-mascots.mjs
+          node scripts/generate-foxy-v2.mjs
 
       - name: Install Rive Linux dependencies
         shell: bash
@@ -54,7 +58,7 @@ jobs:
       - name: Prepare output directories
         shell: bash
         run: |
-          mkdir -p public/rive visual-artifacts
+          mkdir -p public/rive visual-artifacts/foxy-v2
           for CHARACTER in benny dino foxy kiro; do
             mkdir -p "rive/$CHARACTER/build"
           done
@@ -92,8 +96,6 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add public/rive/benny.riv public/rive/dino.riv public/rive/foxy.riv public/rive/kiro.riv
-          # Do not use [skip ci] here: deployment providers need this commit so
-          # preview builds include the freshly generated binary .riv assets.
           git commit -m "build(rive): sync character library runtimes"
           git push origin "HEAD:${GITHUB_REF_NAME}"
 
@@ -118,10 +120,15 @@ jobs:
           cat /tmp/pixilive-rive-preview.log || true
           exit 1
 
-      - name: Capture library browser states
+      - name: Capture library browser smoke states
         env:
           PIXILIVE_PREVIEW_URL: http://127.0.0.1:4173
         run: node scripts/capture-rive-kiro.mjs
+
+      - name: Capture Foxy visual QA matrix
+        env:
+          PIXILIVE_PREVIEW_URL: http://127.0.0.1:4173
+        run: node scripts/capture-foxy-quality.mjs
 
       - name: Render CLI previews
         shell: bash
@@ -130,6 +137,7 @@ jobs:
           for CHARACTER in benny dino foxy kiro; do
             rive "rive/$CHARACTER" --screenshot="rive/$CHARACTER/build/$CHARACTER-cli.png" --advance=2s
           done
+          rive "rive/foxy" --screenshot="visual-artifacts/foxy-v2/foxy-cli-neutral.png" --advance=2s
 
       - name: Capture schemas for next rig iterations
         shell: bash
@@ -152,5 +160,5 @@ jobs:
             rive/dino/build/
             rive/foxy/build/
             rive/kiro/build/
-            visual-artifacts/*.png
+            visual-artifacts/**/*.png
           if-no-files-found: warn
