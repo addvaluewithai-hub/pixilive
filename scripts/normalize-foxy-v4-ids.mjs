@@ -52,12 +52,19 @@ for (const name of ['LeftForearmSkin', 'RightForearmSkin']) {
 for (const name of ['LeftPawBridge', 'RightPawBridge']) {
   mutateShape(name, (chunk) => chunk.replace('x="37"', 'x="49"'));
 }
+// Bone-attached paw tips are mechanics only now. The visible mittens are target-bound
+// art below, so elbows/wrists never read as exposed discs.
 for (const name of ['LeftPawTip', 'RightPawTip']) {
   mutateShape(name, (chunk) => chunk
-    .replace('x="48"', 'x="61"')
-    .replace('width="24" height="22"', 'width="30" height="27"')
-    .replace('colorValue="FF63301E"', 'colorValue="FFFF7F2A"'));
+    .replace('<Shape ', '<Shape opacity="0" ')
+    .replace('x="48"', 'x="61"'));
 }
+
+// Draw the visible paws directly on the semantic hand targets. This decouples cute
+// silhouette art from the internal two-bone solver: the arm can bend however it needs
+// while the audience always sees one clean mitten exactly where the performance asks.
+const handArt = `<Node name="LeftHandArt" id="0:560"><DataBindContext sourcePathIds="0:800-0:828" propertyKey="13"/><DataBindContext sourcePathIds="0:800-0:829" propertyKey="14"/><Shape x="-5" y="-6" opacity="0.2" name="LeftHandHighlight" id="0:564"><Ellipse width="15" height="9" originX="0.5" originY="0.5" name="Path"/><Fill name="Fill"><SolidColor colorValue="FFFFB05B" name="Color"/></Fill></Shape><Shape name="LeftHandMitten" id="0:562"><Ellipse width="36" height="32" originX="0.5" originY="0.5" name="Path"/><Fill name="Fill"><SolidColor colorValue="FFFF7F2A" name="Color"/></Fill><Stroke thickness="2.6" cap="round" join="round" name="Outline"><SolidColor colorValue="FF8A421F" name="Color"/></Stroke></Shape></Node><Node name="RightHandArt" id="0:561"><DataBindContext sourcePathIds="0:800-0:830" propertyKey="13"/><DataBindContext sourcePathIds="0:800-0:831" propertyKey="14"/><Shape x="-5" y="-6" opacity="0.2" name="RightHandHighlight" id="0:565"><Ellipse width="15" height="9" originX="0.5" originY="0.5" name="Path"/><Fill name="Fill"><SolidColor colorValue="FFFFB05B" name="Color"/></Fill></Shape><Shape name="RightHandMitten" id="0:563"><Ellipse width="36" height="32" originX="0.5" originY="0.5" name="Path"/><Fill name="Fill"><SolidColor colorValue="FFFF7F2A" name="Color"/></Fill><Stroke thickness="2.6" cap="round" join="round" name="Outline"><SolidColor colorValue="FF8A421F" name="Color"/></Stroke></Shape></Node>`;
+mustReplace('<Node x="0" y="-183" name="HeadAnchor" id="0:181">', `${handArt}<Node x="0" y="-183" name="HeadAnchor" id="0:181">`, 'front hand art insertion');
 
 // Semantic tail tilt owns rotation; remove the idle writer that masks acting.
 const tailIdle = '<KeyedObject objectId="0:430"><KeyedProperty propertyKey="15"><KeyFrameDouble value="-0.18" interpolationType="linear"/><KeyFrameDouble value="-0.145" interpolationType="linear" frame="120"/><KeyFrameDouble value="-0.18" interpolationType="linear" frame="240"/></KeyedProperty></KeyedObject>';
@@ -91,4 +98,4 @@ for (const [from, to] of [
 ]) mustReplace(from, to, `ear apex ${from}`);
 
 await writeFile(url, rml);
-console.log('normalized foxy v4: long hidden arm rig + appeal polish');
+console.log('normalized foxy v4: target-bound mitten art + hidden arm mechanics');
