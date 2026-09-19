@@ -22,6 +22,8 @@ export interface MascotAdapterTuning {
   browTilt?: number;
   tailTilt?: number;
   motionCharacter?: 'soft' | 'bouncy' | 'nimble';
+  oneHandedWave?: boolean;
+  cryWithBothHands?: boolean;
   emotion?: Partial<Record<Emotion, Partial<StandardPerformancePose>>>;
 }
 
@@ -79,6 +81,13 @@ export function createMascotPerformanceAdapter(tuning: MascotAdapterTuning): Cha
         leftHandY -= tuning.armY * 0.08 * handToFace * w;
       }
 
+      if (tears > 0 && tuning.cryWithBothHands) {
+        // Crying is more readable when both paws close around the muzzle instead of
+        // leaving one arm hanging by the body. This stays opt-in per anatomy.
+        leftHandX += Math.abs(tuning.thinkHandX) * tears * w;
+        leftHandY += tuning.thinkHandY * 0.74 * tears * w;
+      }
+
       const nod = Math.abs(headNod) > 0.001
         ? Math.sin(context.phase * Math.PI * 4) * headNod * tuning.headLift * 0.55
         : 0;
@@ -102,7 +111,7 @@ export function createMascotPerformanceAdapter(tuning: MascotAdapterTuning): Cha
         // Negative values intentionally subtract from the authored neutral mouth.
         neutralOpacity: (-mouthOpen * 1.15 + Math.max(0, -smile) * 0.04) * w,
         frownOpacity: Math.max(0, -smile) * closedMouthWeight * w,
-        expressionMouthOpacity: mouthOpen * w,
+        expressionMouthOpacity: Math.min(1, mouthOpen * 1.22) * w,
         tearOpacity: tears * w,
         sparkleOpacity: sparkle * w,
         blushOpacity: blush * w,
@@ -120,8 +129,10 @@ export function createMascotPerformanceAdapter(tuning: MascotAdapterTuning): Cha
         const amount = character === 'nimble' ? 24 : character === 'bouncy' ? 18 : 15;
         return {
           ...pose,
+          leftHandX: tuning.oneHandedWave ? 0 : pose.leftHandX,
+          leftHandY: tuning.oneHandedWave ? 0 : pose.leftHandY,
           rightHandX: pose.rightHandX + pulse(amount, phase, 2.4),
-          rightHandY: pose.rightHandY - Math.abs(pulse(amount * 0.35, phase, 2.4)),
+          rightHandY: pose.rightHandY - 12 - Math.abs(pulse(amount * 0.42, phase, 2.4)),
           tailTilt: (pose.tailTilt ?? 0) + pulse(character === 'nimble' ? 0.1 : 0.06, phase, 1.4),
         };
       }
