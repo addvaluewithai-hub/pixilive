@@ -16,7 +16,7 @@ const neutralFace = {
 } as const;
 
 export const foxyPerformanceAdapter = createMascotPerformanceAdapter({
-  id: 'foxy-v4.2',
+  id: 'foxy-v4.3',
   base: {
     bodyY: 0,
     bodyLean: 0,
@@ -28,9 +28,8 @@ export const foxyPerformanceAdapter = createMascotPerformanceAdapter({
     rightHandY: 58,
     ...neutralFace,
   },
-  // Foxy is compact, but her hands need a large semantic range because the face
-  // sits far above the shoulder root. The IK solver owns the actual joint angles.
-  armX: 46,
+  // Foxy folds long hidden arm chains at rest, then lets IK unfold them for acting.
+  armX: 50,
   armY: 168,
   bodyLift: 18,
   bodyLean: 0.052,
@@ -42,11 +41,11 @@ export const foxyPerformanceAdapter = createMascotPerformanceAdapter({
   tailTilt: 0.64,
   thinkHandX: -50,
   thinkHandY: -238,
+  joyMouthOpen: 0.82,
   oneHandedWave: true,
   cryWithBothHands: true,
   motionCharacter: 'nimble',
-  // The universal mood/action pack owns the acting. These aliases remain neutral
-  // so a pack never stacks on top of a legacy facial recipe.
+  // Universal packs own the full performance; legacy aliases stay neutral.
   emotion: {
     calm: { ...neutralFace },
     happy: { ...neutralFace },
