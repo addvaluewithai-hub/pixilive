@@ -83,8 +83,11 @@ jobs:
             cp "rive/$CHARACTER/build/$CHARACTER.riv" "public/rive/$CHARACTER.riv"
           done
 
+      # Runtime sync is convenient for deployment previews, but it must never prevent
+      # the browser/CLI visual QA loop from running when two pushes race each other.
       - name: Keep committed runtime assets in sync
         if: github.event_name == 'push'
+        continue-on-error: true
         shell: bash
         run: |
           CHANGES="$(git status --porcelain -- public/rive/benny.riv public/rive/dino.riv public/rive/foxy.riv public/rive/kiro.riv)"
