@@ -8,17 +8,51 @@ const base64ToInt16 = (base64: string) => {
   return new Int16Array(bytes.buffer);
 };
 
+export interface PlaybackClockSnapshot {
+  nowSeconds: number;
+  bufferedEndSeconds: number;
+}
+
 export class PcmPlaybackQueue {
   private context: AudioContext | null = null;
   private nextStart = 0;
   private active = new Set<AudioBufferSourceNode>();
   private poseTimers = new Set<number>();
+  private cueTimers = new Set<number>();
   private readonly analyzer = new VisemeAnalyzer();
 
   constructor(private readonly onMouthPose: (pose: MouthPose) => void, private readonly onIdle: () => void) {}
 
   pushTranscript(text: string) {
     this.analyzer.pushTranscript(text);
+  }
+
+  getClock(): PlaybackClockSnapshot | null {
+    if (!this.context) return null;
+    const nowSeconds = this.context.currentTime;
+    return {
+      nowSeconds,
+      bufferedEndSeconds: Math.max(nowSeconds, this.nextStart),
+    };
+  }
+
+  hasPendingAudio() {
+    if (!this.context) return false;
+    return this.active.size > 0 || this.nextStart > this.context.currentTime + 0.015;
+  }
+
+  scheduleAt(audioTimeSeconds: number, callback: () => void) {
+    if (!this.context) {
+      callback();
+      return;
+    }
+
+    const delayMs = Math.max(0, (audioTimeSeconds - this.context.currentTime) * 1000);
+    const timer = window.setTimeout(() => {
+      this.cueTimers.delete(timer);
+      callback();
+    }, delayMs);
+    this.cueTimers.add(timer);
   }
 
   async enqueue(base64: string, sampleRate = 24_000) {
@@ -65,6 +99,8 @@ export class PcmPlaybackQueue {
   interrupt() {
     for (const timer of this.poseTimers) window.clearTimeout(timer);
     this.poseTimers.clear();
+    for (const timer of this.cueTimers) window.clearTimeout(timer);
+    this.cueTimers.clear();
     for (const source of this.active) {
       try {
         source.stop();
