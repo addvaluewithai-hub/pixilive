@@ -8,6 +8,12 @@ function mustReplace(from, to, label = from) {
   rml = rml.replace(from, to);
 }
 
+function replaceExactCount(from, to, count, label = from) {
+  const found = rml.split(from).length - 1;
+  if (found !== count) throw new Error(`Expected ${count} Foxy v4 markers for ${label}, found ${found}`);
+  rml = rml.split(from).join(to);
+}
+
 function mutateShape(name, mutator) {
   const marker = `name="${name}"`;
   const markerIndex = rml.indexOf(marker);
@@ -27,50 +33,56 @@ for (const [from, to] of [
   ['name="LeftEye" id="0:224"', 'name="LeftEye" id="0:244"'],
 ]) mustReplace(from, to);
 
-// Foxy performance is package-driven. Do not let the legacy manual shoulder/elbow
-// bindings fight the two-bone IK solver; authored rotations remain the rest pose.
+// Foxy performance is package-driven. Do not let legacy manual rotations fight IK.
 for (const propertyId of [820, 821, 822, 823]) {
   const binding = `<DataBindContext sourcePathIds="0:800-0:${propertyId}" propertyKey="15"/>`;
   mustReplace(binding, '', `legacy joint binding ${propertyId}`);
 }
 
-// Semantic tail tilt owns the parent rotation. Remove the old idle keyframes that
-// were writing to the same property and masking mood/action tail acting.
+// Fox anatomy needs to reach cheeks/chin while keeping a compact folded rest pose.
+// Increase the hidden bone reach and extend the soft skin with generous overlap.
+replaceExactCount('RootBone length="52"', 'RootBone length="68"', 2, 'upper arm bone length');
+replaceExactCount('Bone length="44"', 'Bone length="58"', 2, 'forearm bone length');
+for (const name of ['LeftUpperArmSkin', 'RightUpperArmSkin']) {
+  mutateShape(name, (chunk) => chunk.replace('x="26"', 'x="34"').replace('width="58"', 'width="76"'));
+}
+for (const name of ['LeftForearmSkin', 'RightForearmSkin']) {
+  mutateShape(name, (chunk) => chunk.replace('x="23"', 'x="30"').replace('width="52"', 'width="66"'));
+}
+for (const name of ['LeftPawBridge', 'RightPawBridge']) {
+  mutateShape(name, (chunk) => chunk.replace('x="37"', 'x="49"'));
+}
+for (const name of ['LeftPawTip', 'RightPawTip']) {
+  mutateShape(name, (chunk) => chunk
+    .replace('x="48"', 'x="61"')
+    .replace('width="24" height="22"', 'width="30" height="27"')
+    .replace('colorValue="FF63301E"', 'colorValue="FFFF7F2A"'));
+}
+
+// Semantic tail tilt owns rotation; remove the idle writer that masks acting.
 const tailIdle = '<KeyedObject objectId="0:430"><KeyedProperty propertyKey="15"><KeyFrameDouble value="-0.18" interpolationType="linear"/><KeyFrameDouble value="-0.145" interpolationType="linear" frame="120"/><KeyFrameDouble value="-0.18" interpolationType="linear" frame="240"/></KeyedProperty></KeyedObject>';
 mustReplace(tailIdle, '', 'tail idle rotation conflict');
 
-// The speech cavity used to leave a dark hairline under the authored resting mouth.
-// Drive its opacity from speech energy as well as its scale from mouthOpen so it is
-// completely absent when Foxy is not speaking.
+// Speech cavity should be absent at rest instead of leaving a dark hairline.
 mustReplace(
   'scaleY="0.04" name="SpeechMouth" id="0:371"><DataBindContext sourcePathIds="0:800-0:805" propertyKey="17"/>',
   'scaleY="0.04" name="SpeechMouth" id="0:371"><DataBindContext sourcePathIds="0:800-0:808" propertyKey="18"/><DataBindContext sourcePathIds="0:800-0:805" propertyKey="17"/>',
   'speech mouth activity opacity',
 );
 
-// Feature-animation readability: brows need to read at thumbnail size. Preserve
-// their curves but make them dark and slightly heavier.
+// Brows must read at thumbnail size.
 for (const name of ['LeftBrow', 'RightBrow']) {
   mutateShape(name, (chunk) => chunk
     .replace('thickness="6"', 'thickness="7.2"')
     .replace('colorValue="FFE85B18"', 'colorValue="FF2A1712"'));
 }
 
-// The hand mechanics stay internal. Dark circular paw tips read like exposed ball
-// joints, so turn them into soft orange mitts and slightly enlarge the overlap.
-for (const name of ['LeftPawTip', 'RightPawTip']) {
-  mutateShape(name, (chunk) => chunk
-    .replace('width="24" height="22"', 'width="30" height="27"')
-    .replace('colorValue="FF63301E"', 'colorValue="FFFF7F2A"'));
-}
-
-// Slightly wider glossy eyes keep the face cute instead of tall/teary in neutral.
+// Wider glossy eyes feel friendlier and less vertically teary in neutral.
 for (const name of ['LeftEye', 'RightEye']) {
   mutateShape(name, (chunk) => chunk.replace('width="44" height="58"', 'width="48" height="54"'));
 }
 
-// The first v4 render exposed a tiny hook at the ear tips. Reduce Bézier handle
-// lengths at the two apex vertices so both ears keep a clean rounded triangle.
+// Clean rounded ear apexes; the generated Bézier handles otherwise make tiny hooks.
 for (const [from, to] of [
   ['x="8" y="-60" rotation="0.08" distance="20"', 'x="5" y="-63" rotation="0.04" distance="8"'],
   ['x="-9" y="-76" rotation="-0.04" distance="18"', 'x="-3" y="-73" rotation="-0.02" distance="8"'],
@@ -79,4 +91,4 @@ for (const [from, to] of [
 ]) mustReplace(from, to, `ear apex ${from}`);
 
 await writeFile(url, rml);
-console.log('normalized foxy v4 ids + performance rig + deep art polish');
+console.log('normalized foxy v4: long hidden arm rig + appeal polish');
