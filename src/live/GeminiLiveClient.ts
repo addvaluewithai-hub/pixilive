@@ -5,32 +5,56 @@ import type {
   LiveCallbacks,
 } from './types';
 
-const MODEL = 'gemini-3.1-flash-live-preview';
+const MODEL = 'gemini-3.8-live';
 const TOKEN_ENDPOINT = '/api/gemini-token';
 const LIVE_ENDPOINT = 'wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1alpha.GenerativeService.BidiGenerateContentConstrained';
 const SETUP_TIMEOUT_MS = 12_000;
 
+const EXPRESSIONS: CharacterExpressionName[] = [
+  'happy',
+  'sad',
+  'crying',
+  'surprised',
+  'thinking',
+  'angry',
+  'sleepy',
+  'laughing',
+  'excited',
+];
+
 const PERFORMANCE_PROTOCOL = `
-You are embodied as a live animated character. Your visual expression and your spoken delivery must tell the same emotional story.
+You are embodied as a live animated character. Your face, body, and spoken delivery are one synchronized performance.
 
-You have these exact visual expressions available through set_character_expression:
-happy, sad, crying, surprised, thinking, angry, sleepy, laughing, excited.
-You also have perform_character_action with wave, blink, jump, and set_character_pace with idle, walk, run.
+AVAILABLE SILENT STAGE TOOLS
+- set_character_expression: happy, sad, crying, surprised, thinking, angry, sleepy, laughing, excited
+- perform_character_action: wave, blink, jump
+- set_character_pace: idle, walk, run
 
-Use the tools as silent stage directions. Never say the tool names, expression labels, or stage directions out loud. Call set_character_expression BEFORE the spoken beat whose emotion it describes, and change it again whenever the emotional beat changes. Use actions and pace only when they help the scene rather than constantly.
+IMPORTANT: these tools are NON-BLOCKING stage directions. They do not end your spoken turn and their responses are SILENT. Continue speaking naturally while using them.
 
-Match your VOICE to the selected expression:
+PERFORMANCE TIMING
+- Do NOT choose one expression for an entire answer.
+- Change expression whenever the emotional beat changes, including multiple times inside the SAME spoken turn.
+- Call set_character_expression immediately BEFORE the words that should carry that emotion.
+- For a substantial story turn, normally use 3-7 meaningful expression changes when the scene genuinely supports them.
+- Keep an expression long enough to read. Do not flicker or spam tools for every word.
+- Actions are accents: wave for greeting/goodbye, blink naturally, jump for a strong joyful or startled beat.
+- Pace is scene movement: use walk/run only while the story is physically moving, then return to idle.
+- Never speak tool names, expression labels, stage directions, or implementation details aloud.
+
+VOICE ACTING MUST MATCH THE CURRENT VISUAL EXPRESSION
 - happy: warm, smiling, buoyant, easy rhythm.
 - sad: gentler, quieter, slightly slower, with sincere pauses.
-- crying: soft and emotionally shaky, a light tremble and broken cadence as if holding back tears; stay intelligible and never make it frightening for a child.
-- surprised: quick bright onset, widened pitch and a short startled breath when natural.
+- crying: soft and emotionally shaky, with a light tremble and broken cadence as if holding back tears; remain intelligible and comforting for a child.
+- surprised: quick bright onset, widened pitch, and a short startled breath when natural.
 - thinking: reflective pacing, small pauses, curious tone.
 - angry: controlled firmness and tension, never shouting at or frightening a child.
 - sleepy: softer, slower, drowsy and relaxed.
-- laughing: genuinely amused, smiling voice, a natural light chuckle when appropriate.
-- excited: brighter, faster and energetic while remaining clear.
+- laughing: genuinely amused, smiling voice, with a natural light chuckle when appropriate.
+- excited: brighter, faster, energetic, and clear.
 
-For children's storytelling, perform rather than narrate emotion labels. Use distinct character voices lightly, pause for suspense, react to the child, and let the child interrupt. In an interactive story, tell the story in short beats and ask simple questions at meaningful moments instead of delivering the whole story as one monologue.
+CHILDREN'S STORYTELLING
+Perform the scene instead of announcing emotions. Tell stories in short interactive beats, use character voices lightly, pause for suspense, let the child interrupt, and ask a simple question at meaningful moments. Within a single spoken response, let the performance evolve naturally as the story beat evolves: for example happy -> surprised -> thinking -> worried/sad -> excited, rather than staying visually frozen until the next user turn.
 `;
 
 const tools = [
@@ -38,22 +62,23 @@ const tools = [
     functionDeclarations: [
       {
         name: 'set_character_expression',
-        description: 'Set the animated character expression before the matching spoken emotional beat. Also match the voice delivery to this expression.',
+        behavior: 'NON_BLOCKING',
+        description: 'Non-blocking silent stage direction. Change the animated expression immediately before the matching spoken emotional beat, including several times during one spoken turn.',
         parameters: {
           type: 'OBJECT',
           properties: {
             expression: {
               type: 'STRING',
-              enum: ['happy', 'sad', 'crying', 'surprised', 'thinking', 'angry', 'sleepy', 'laughing', 'excited'],
-              description: 'The exact visual expression to show.',
+              enum: EXPRESSIONS,
+              description: 'The exact visual expression to show now.',
             },
             intensity: {
               type: 'NUMBER',
-              description: 'Expression strength from 0 to 1. Usually 0.65 to 1 for clear storytelling.',
+              description: 'Expression strength from 0 to 1. Usually 0.65 to 1 for readable storytelling.',
             },
             energy: {
               type: 'NUMBER',
-              description: 'Body animation energy from 0 to 1. Use lower values for sad/sleepy and higher values for excited/laughing.',
+              description: 'Body animation energy from 0 to 1. Keep sad/sleepy lower and excited/laughing higher.',
             },
           },
           required: ['expression'],
@@ -61,14 +86,15 @@ const tools = [
       },
       {
         name: 'perform_character_action',
-        description: 'Perform a short physical action when it naturally supports the spoken moment.',
+        behavior: 'NON_BLOCKING',
+        description: 'Non-blocking silent physical accent that may happen while speech continues.',
         parameters: {
           type: 'OBJECT',
           properties: {
             action: {
               type: 'STRING',
               enum: ['wave', 'blink', 'jump'],
-              description: 'Short physical action to perform.',
+              description: 'Short physical action to perform now.',
             },
           },
           required: ['action'],
@@ -76,7 +102,8 @@ const tools = [
       },
       {
         name: 'set_character_pace',
-        description: 'Set body locomotion for a story beat. Return to idle when movement is no longer useful.',
+        behavior: 'NON_BLOCKING',
+        description: 'Non-blocking silent locomotion direction for the current story beat. Return to idle when movement ends.',
         parameters: {
           type: 'OBJECT',
           properties: {
@@ -132,6 +159,15 @@ const clamp01 = (value: unknown, fallback: number) => {
   const number = typeof value === 'number' ? value : Number(value);
   return Number.isFinite(number) ? Math.max(0, Math.min(1, number)) : fallback;
 };
+
+const silentResponse = (call: FunctionCall, name: string, response: Record<string, unknown>) => ({
+  id: call.id,
+  name,
+  response: {
+    ...response,
+    scheduling: 'SILENT',
+  },
+});
 
 export class GeminiLiveClient {
   private socket: WebSocket | null = null;
@@ -279,6 +315,9 @@ export class GeminiLiveClient {
         }
 
         if (message.toolCall?.functionCalls?.length) {
+          // Gemini 3.8 can keep generating audio while these NON_BLOCKING stage
+          // directions execute. SILENT responses acknowledge the cue without
+          // turning the tool result into a new spoken interruption.
           const functionResponses = message.toolCall.functionCalls.map((call) => this.handleFunctionCall(call));
           this.send({ toolResponse: { functionResponses } });
         }
@@ -345,12 +384,18 @@ export class GeminiLiveClient {
     try {
       if (name === 'set_character_expression') {
         const expression = String(args.expression ?? '') as CharacterExpressionName;
-        const allowed: CharacterExpressionName[] = ['happy', 'sad', 'crying', 'surprised', 'thinking', 'angry', 'sleepy', 'laughing', 'excited'];
-        if (!allowed.includes(expression)) throw new Error(`Unsupported expression: ${expression}`);
+        if (!EXPRESSIONS.includes(expression)) throw new Error(`Unsupported expression: ${expression}`);
         this.callbacks.onCharacterExpression({
           expression,
           intensity: clamp01(args.intensity, 1),
-          energy: clamp01(args.energy, expression === 'sleepy' || expression === 'sad' ? 0.25 : expression === 'excited' || expression === 'laughing' ? 0.85 : 0.5),
+          energy: clamp01(
+            args.energy,
+            expression === 'sleepy' || expression === 'sad' || expression === 'crying'
+              ? 0.25
+              : expression === 'excited' || expression === 'laughing'
+                ? 0.85
+                : 0.5,
+          ),
         });
       } else if (name === 'perform_character_action') {
         const action = String(args.action ?? '') as CharacterActionName;
@@ -363,13 +408,13 @@ export class GeminiLiveClient {
       } else {
         throw new Error(`Unknown character tool: ${name}`);
       }
-      return { id: call.id, name, response: { result: 'ok' } };
+
+      return silentResponse(call, name, { result: 'ok' });
     } catch (error) {
-      return {
-        id: call.id,
-        name,
-        response: { result: 'error', message: error instanceof Error ? error.message : 'Character tool failed' },
-      };
+      return silentResponse(call, name, {
+        result: 'error',
+        message: error instanceof Error ? error.message : 'Character tool failed',
+      });
     }
   }
 
