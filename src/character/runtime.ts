@@ -37,6 +37,10 @@ export interface RiveCharacterSource {
   stateMachine: string;
 }
 
+export interface HtmlCharacterSource {
+  src: string;
+}
+
 export interface CharacterDefinition {
   id: string;
   name: string;
@@ -49,6 +53,7 @@ export interface CharacterDefinition {
   framing: CharacterFraming;
   ambient: CharacterAmbient;
   rive?: RiveCharacterSource;
+  html?: HtmlCharacterSource;
   performanceAdapter?: CharacterPerformanceAdapter;
   authoring?: CharacterAuthoringContract;
   create?: () => CharacterRuntime;
