@@ -92,7 +92,9 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add public/rive/benny.riv public/rive/dino.riv public/rive/foxy.riv public/rive/kiro.riv
-          git commit -m "build(rive): sync character library runtimes [skip ci]"
+          # Do not use [skip ci] here: deployment providers need this commit so
+          # preview builds include the freshly generated binary .riv assets.
+          git commit -m "build(rive): sync character library runtimes"
           git push origin "HEAD:${GITHUB_REF_NAME}"
 
       - name: Typecheck and build app
