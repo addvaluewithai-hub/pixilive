@@ -1,5 +1,6 @@
 import { Application, Container, Graphics, type Ticker } from 'pixi.js';
 import { useEffect, useRef } from 'react';
+import type { ActionCommand, MoodId } from '../character/behaviorPacks';
 import type { CharacterDefinition, CharacterRuntime } from '../character/runtime';
 import type { Emotion, MouthPose } from '../character/types';
 import { RiveCharacterStage } from './RiveCharacterStage';
@@ -10,6 +11,8 @@ interface CharacterStageProps {
   mouth: MouthPose;
   speaking: boolean;
   speechText: string;
+  mood: MoodId;
+  action: ActionCommand | null;
 }
 
 export function CharacterStage(props: CharacterStageProps) {
@@ -17,7 +20,7 @@ export function CharacterStage(props: CharacterStageProps) {
   return <PixiCharacterStage {...props} />;
 }
 
-function PixiCharacterStage({ character, emotion, mouth, speaking }: CharacterStageProps) {
+function PixiCharacterStage({ character, emotion, mouth, speaking, action }: CharacterStageProps) {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const runtimeRef = useRef<CharacterRuntime | null>(null);
 
@@ -74,10 +77,7 @@ function PixiCharacterStage({ character, emotion, mouth, speaking }: CharacterSt
         const height = host.clientHeight;
         runtime.view.position.set(width * framing.x, height * framing.y);
         runtime.view.scale.set(
-          Math.max(
-            framing.minScale,
-            Math.min(width / framing.widthReference, height / framing.heightReference, framing.maxScale),
-          ),
+          Math.max(framing.minScale, Math.min(width / framing.widthReference, height / framing.heightReference, framing.maxScale)),
         );
         for (const particle of particles) {
           if (particle.graphic.x === 0 && particle.graphic.y === 0) {
@@ -129,6 +129,12 @@ function PixiCharacterStage({ character, emotion, mouth, speaking }: CharacterSt
     if (speaking) runtimeRef.current?.setMouth(mouth, true);
     else runtimeRef.current?.settleMouth();
   }, [character, mouth, speaking]);
+
+  // Legacy Pixi characters do not yet implement the universal adapter contract.
+  // They still receive one-shot actions as a generic reaction instead of breaking.
+  useEffect(() => {
+    if (action) runtimeRef.current?.react();
+  }, [action?.nonce]);
 
   return <div className="character-stage" ref={hostRef} aria-label={`${character.name} animated character`} />;
 }
