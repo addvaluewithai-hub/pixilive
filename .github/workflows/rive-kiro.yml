@@ -8,8 +8,7 @@ on:
       - 'rive/**'
       - 'src/**'
       - 'scripts/generate-rive-mascots.mjs'
-      - 'scripts/generate-foxy-v2.mjs'
-      - 'scripts/fix-foxy-v2-ids.mjs'
+      - 'scripts/generate-foxy-v3.mjs'
       - 'scripts/capture-rive-kiro.mjs'
       - 'scripts/capture-foxy-quality.mjs'
       - 'package.json'
@@ -39,8 +38,7 @@ jobs:
       - name: Generate code-first mascot RML
         run: |
           node scripts/generate-rive-mascots.mjs
-          node scripts/generate-foxy-v2.mjs
-          node scripts/fix-foxy-v2-ids.mjs
+          node scripts/generate-foxy-v3.mjs
 
       - name: Install Rive Linux dependencies
         shell: bash
@@ -60,7 +58,7 @@ jobs:
       - name: Prepare output directories
         shell: bash
         run: |
-          mkdir -p public/rive visual-artifacts/foxy-v2
+          mkdir -p public/rive visual-artifacts/foxy-v3
           for CHARACTER in benny dino foxy kiro; do
             mkdir -p "rive/$CHARACTER/build"
           done
@@ -139,7 +137,7 @@ jobs:
           for CHARACTER in benny dino foxy kiro; do
             rive "rive/$CHARACTER" --screenshot="rive/$CHARACTER/build/$CHARACTER-cli.png" --advance=2s
           done
-          rive "rive/foxy" --screenshot="visual-artifacts/foxy-v2/foxy-cli-neutral.png" --advance=2s
+          rive "rive/foxy" --screenshot="visual-artifacts/foxy-v3/foxy-cli-neutral.png" --advance=2s
 
       - name: Capture schemas for next rig iterations
         shell: bash
