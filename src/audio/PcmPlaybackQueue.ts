@@ -11,17 +11,24 @@ const base64ToInt16 = (base64: string) => {
 export interface PlaybackClockSnapshot {
   nowSeconds: number;
   bufferedEndSeconds: number;
+  turnStartSeconds: number;
 }
 
 export class PcmPlaybackQueue {
   private context: AudioContext | null = null;
   private nextStart = 0;
+  private turnStart = 0;
   private active = new Set<AudioBufferSourceNode>();
   private poseTimers = new Set<number>();
   private cueTimers = new Set<number>();
+  private enqueueChain: Promise<void> = Promise.resolve();
   private readonly analyzer = new VisemeAnalyzer();
 
-  constructor(private readonly onMouthPose: (pose: MouthPose) => void, private readonly onIdle: () => void) {}
+  constructor(
+    private readonly onMouthPose: (pose: MouthPose) => void,
+    private readonly onIdle: () => void,
+    private readonly onPlaybackStart?: (clock: PlaybackClockSnapshot) => void,
+  ) {}
 
   pushTranscript(text: string) {
     this.analyzer.pushTranscript(text);
@@ -33,6 +40,7 @@ export class PcmPlaybackQueue {
     return {
       nowSeconds,
       bufferedEndSeconds: Math.max(nowSeconds, this.nextStart),
+      turnStartSeconds: this.turnStart || nowSeconds,
     };
   }
 
@@ -55,7 +63,12 @@ export class PcmPlaybackQueue {
     this.cueTimers.add(timer);
   }
 
-  async enqueue(base64: string, sampleRate = 24_000) {
+  enqueue(base64: string, sampleRate = 24_000) {
+    this.enqueueChain = this.enqueueChain.then(() => this.enqueueInternal(base64, sampleRate));
+    return this.enqueueChain;
+  }
+
+  private async enqueueInternal(base64: string, sampleRate: number) {
     const samples = base64ToInt16(base64);
     const poses = this.analyzer.analyze(samples, sampleRate);
     if (!this.context) this.context = new AudioContext({ sampleRate, latencyHint: 'interactive' });
@@ -71,9 +84,17 @@ export class PcmPlaybackQueue {
     this.active.add(source);
 
     const now = this.context.currentTime;
-    // A small look-ahead gives the analyzer and output transcription time to stay
-    // just ahead of playback without making the conversation feel sluggish.
-    const startAt = Math.max(now + (this.nextStart === 0 ? 0.075 : 0.012), this.nextStart);
+    const startingNewTurn = this.nextStart === 0;
+    const startAt = Math.max(now + (startingNewTurn ? 0.075 : 0.012), this.nextStart);
+
+    if (startingNewTurn) {
+      this.turnStart = startAt;
+      this.onPlaybackStart?.({
+        nowSeconds: now,
+        bufferedEndSeconds: startAt + buffer.duration,
+        turnStartSeconds: startAt,
+      });
+    }
 
     for (const { offsetSeconds, pose } of poses) {
       const delayMs = Math.max(0, (startAt + offsetSeconds - now) * 1000);
@@ -90,6 +111,7 @@ export class PcmPlaybackQueue {
       this.active.delete(source);
       if (this.active.size === 0) {
         this.nextStart = 0;
+        this.turnStart = 0;
         this.analyzer.resetTranscript();
         this.onIdle();
       }
@@ -110,6 +132,8 @@ export class PcmPlaybackQueue {
     }
     this.active.clear();
     this.nextStart = 0;
+    this.turnStart = 0;
+    this.enqueueChain = Promise.resolve();
     this.analyzer.resetTranscript();
     this.onIdle();
   }
