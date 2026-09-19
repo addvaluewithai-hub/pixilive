@@ -23,6 +23,14 @@ export interface StandardPerformancePose {
   browY: number;
   smileOpacity: number;
   neutralOpacity: number;
+  /** Optional universal expression channels. Older rigs may simply omit them. */
+  frownOpacity?: number;
+  expressionMouthOpacity?: number;
+  tearOpacity?: number;
+  sparkleOpacity?: number;
+  blushOpacity?: number;
+  browTilt?: number;
+  tailTilt?: number;
 }
 
 export const zeroPerformancePose: StandardPerformancePose = {
@@ -38,6 +46,13 @@ export const zeroPerformancePose: StandardPerformancePose = {
   browY: 0,
   smileOpacity: 0,
   neutralOpacity: 0,
+  frownOpacity: 0,
+  expressionMouthOpacity: 0,
+  tearOpacity: 0,
+  sparkleOpacity: 0,
+  blushOpacity: 0,
+  browTilt: 0,
+  tailTilt: 0,
 };
 
 /**
