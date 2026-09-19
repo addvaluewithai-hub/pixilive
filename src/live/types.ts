@@ -28,6 +28,7 @@ export interface LiveCallbacks {
   onCharacterExpression: (cue: CharacterExpressionCue) => void;
   onCharacterAction: (action: CharacterActionName) => void;
   onCharacterPace: (pace: CharacterPace) => void;
+  onTurnComplete?: () => void;
   onInterrupted: () => void;
   onError: (message: string) => void;
 }
