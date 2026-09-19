@@ -40,7 +40,7 @@ export class PcmPlaybackQueue {
     return {
       nowSeconds,
       bufferedEndSeconds: Math.max(nowSeconds, this.nextStart),
-      turnStartSeconds: this.turnStart || nowSeconds,
+      turnStartSeconds: this.turnStart,
     };
   }
 
