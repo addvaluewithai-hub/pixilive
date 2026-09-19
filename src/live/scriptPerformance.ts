@@ -157,6 +157,7 @@ export class ScriptPerformanceDirector {
   private script: ParsedPerformanceScript | null = null;
   private running = false;
   private timelineScheduled = false;
+  private playbackPollTimer: number | null = null;
 
   constructor(private readonly callbacks: DirectorCallbacks) {}
 
@@ -165,34 +166,55 @@ export class ScriptPerformanceDirector {
   }
 
   start(script: ParsedPerformanceScript) {
+    this.stopPlaybackPoll();
     this.script = script;
     this.running = true;
     this.timelineScheduled = false;
 
     // Pre-pose before speech begins so the first line never starts on the stale face.
     this.fireBeat(0);
+    this.waitForPlaybackStart();
   }
 
   onPlaybackStart(clock: PlaybackClockSnapshot) {
     this.scheduleTimeline(clock);
   }
 
-  // Transcription is only a wake-up signal. Its text never drives cue timing because
-  // Gemini does not guarantee exact ordering between output transcription and audio.
-  pushTranscript(_chunk: string) {
-    if (!this.running || this.timelineScheduled) return;
-    const clock = this.callbacks.getPlaybackClock();
-    if (clock && clock.turnStartSeconds > 0) this.scheduleTimeline(clock);
-  }
+  // Captions/viseme guidance may still consume the transcript elsewhere, but visual
+  // choreography never depends on transcript text or transcript event ordering.
+  pushTranscript(_chunk: string) {}
 
   stop() {
+    this.stopPlaybackPoll();
     this.running = false;
     this.script = null;
     this.timelineScheduled = false;
   }
 
+  private waitForPlaybackStart() {
+    if (!this.running || this.timelineScheduled) return;
+    const clock = this.callbacks.getPlaybackClock();
+    if (clock && clock.turnStartSeconds > 0 && clock.bufferedEndSeconds > clock.turnStartSeconds) {
+      this.scheduleTimeline(clock);
+      return;
+    }
+
+    this.playbackPollTimer = window.setTimeout(() => {
+      this.playbackPollTimer = null;
+      this.waitForPlaybackStart();
+    }, 25);
+  }
+
+  private stopPlaybackPoll() {
+    if (this.playbackPollTimer !== null) {
+      window.clearTimeout(this.playbackPollTimer);
+      this.playbackPollTimer = null;
+    }
+  }
+
   private scheduleTimeline(clock: PlaybackClockSnapshot) {
     if (!this.running || !this.script || this.timelineScheduled) return;
+    this.stopPlaybackPoll();
     this.timelineScheduled = true;
 
     let currentExpression: CharacterExpressionName = 'happy';
