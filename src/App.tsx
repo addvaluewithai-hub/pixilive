@@ -12,6 +12,11 @@ import { characterRegistry, DEFAULT_CHARACTER_ID, getCharacterDefinition } from 
 import type { Emotion, MouthPose } from './character/types';
 import { CharacterStage } from './components/CharacterStage';
 import { GeminiLiveClient } from './live/GeminiLiveClient';
+import {
+  buildScriptPerformancePrompt,
+  parsePerformanceScript,
+  ScriptPerformanceDirector,
+} from './live/scriptPerformance';
 import type {
   CharacterActionName,
   CharacterExpressionName,
@@ -35,13 +40,43 @@ const moodEmotion: Record<MoodId, Emotion> = {
   sleepy: 'calm',
 };
 
-const STORY_DEMO_PROMPT = `ابدأ الآن اختبار أداء حي لقصة طفل بالعربية، باستخدام قصة خيالية لطيفة ومطمئنة. هذا اختبار Gemini 3.8 Live للـnon-blocking stage directions، لذلك في أول رد صوتي واحد لا تثبت على تعبير واحد: غيّر التعبير عدة مرات أثناء استمرار نفس الكلام.
+const TAGGED_STORY_SCRIPT = `[happy]
+كان يا ما كان، في غابة صغيرة مليانة نور وألوان، كان إمبر الثعلب الصغير بيصحى كل صباح وهو مستعد لمغامرة جديدة.
 
-في أول مقطع قبل أن تسأل الطفل أي سؤال، اصنع مشهدًا قصيرًا مدته تقريبًا 25-40 ثانية ويحتوي بشكل طبيعي على 5 إلى 7 تغييرات عاطفية واضحة داخل نفس الـturn. مثال للبنية وليس نصًا يجب تكراره: ابدأ سعيدًا، ثم مفاجأة، ثم تفكير، ثم لحظة حزن أو بكاء خفيف، ثم حماس/ضحك عند انفراج الموقف. استدعِ set_character_expression قبل كل beat مباشرة وأكمل الكلام من غير انتظار أو إعلان اسم التعبير. غيّر صوتك فورًا ليتطابق مع الوجه الحالي.
+[wave]
+[excited]
+لوّح إمبر لصديقه العصفور وقال: صباح المغامرة! يلا نشوف النهارده مخبي لنا إيه.
 
-استخدم wave أو jump مرة أو مرتين فقط لو يخدمان اللحظة، ويمكنك استخدام walk/run ثم الرجوع إلى idle لو الشخصيات داخل القصة تتحرك. لا تستخدم الأدوات لمجرد الاستعراض ولا تجعل الحركة مشتتة. البكاء يكون مؤثرًا لكن آمنًا ومريحًا للطفل، والغضب حازم بدون تخويف أو صراخ.
+[pace:walk]
+[thinking]
+وبينما كان يمشي بين الأشجار، لاحظ آثار أقدام صغيرة على التراب. وقف لحظة وقال بهدوء: ممم... يا ترى مين عدى من هنا؟
 
-بعد انتهاء هذا المقطع متعدد المشاعر، اسأل الطفل سؤالًا بسيطًا وانتظر إجابته. في الردود التالية استمر بنفس الأسلوب: عدة beats داخل الرد الواحد كلما تغيّر معنى المشهد، مع السماح للطفل بالمقاطعة والتفاعل.`;
+[surprised]
+وفجأة! سمع صوتًا عاليًا جاي من وراء شجرة كبيرة، فنط قلبه من المفاجأة وبص بسرعة ناحية الصوت.
+
+[pace:idle]
+[sad]
+هناك وجد عصفورًا صغيرًا قاعد لوحده، جناحه نازل ووشه حزين لأنه مش عارف يرجع لعيلته.
+
+[crying]
+قال العصفور بصوت مرتعش: أنا حاولت ألاقي الطريق... بس كل الشجر بقى شبه بعضه، وأنا خايف أفضل لوحدي.
+
+[thinking]
+حط إمبر إيده عند دقنه وفكر شوية: لو طلعنا عند الصخرة العالية، يمكن نقدر نشوف العش من فوق.
+
+[pace:run]
+[excited]
+جري إمبر بين الأشجار وهو بيقول: لقيتها! عندي خطة، وتعالى بسرعة قبل ما الشمس تنزل!
+
+[laughing]
+ولما وصلوا للصخرة، ظهر العش قريب جدًا من المكان اللي بدأوا منه، فضحك إمبر وقال: إحنا لفينا لفة كبيرة علشان نوصل لحاجة كانت جنبنا!
+
+[pace:idle]
+[happy]
+[wave]
+رجع العصفور لعيلته، ولوّح إمبر لهم وهو مبتسم وقال: أهم حاجة إننا ما سبناش صاحبنا لوحده.`;
+
+const STORY_DEMO_PROMPT = `ابدأ الآن اختبار أداء حي لقصة طفل بالعربية. في نفس الرد الصوتي الطويل استخدم set_character_expression عدة مرات أثناء الكلام، وليس مرة واحدة في بداية الرد. غيّر التعبير عند تغيّر المعنى، وطابق نبرة صوتك مع الوجه الحالي. احكِ مشهدًا لطيفًا ومطمئنًا ثم اسأل الطفل سؤالًا بسيطًا.`;
 
 export function App() {
   const [characterId, setCharacterId] = useState(DEFAULT_CHARACTER_ID);
@@ -54,6 +89,8 @@ export function App() {
   const [outputTranscript, setOutputTranscript] = useState('');
   const [error, setError] = useState('');
   const [text, setText] = useState('');
+  const [scriptText, setScriptText] = useState(TAGGED_STORY_SCRIPT);
+  const [scriptMode, setScriptMode] = useState(false);
   const [agentExpression, setAgentExpression] = useState<CharacterExpressionName | null>(null);
   const [agentExpressionIntensity, setAgentExpressionIntensity] = useState(1);
   const [agentExpressionEnergy, setAgentExpressionEnergy] = useState(0.5);
@@ -64,8 +101,30 @@ export function App() {
   const microphone = useRef(new MicrophonePcmStream());
   const playback = useRef<PcmPlaybackQueue | null>(null);
   const live = useRef<GeminiLiveClient | null>(null);
+  const liveStatus = useRef<LiveStatus>('idle');
+  const scriptDirector = useRef<ScriptPerformanceDirector | null>(null);
 
   const character = useMemo(() => getCharacterDefinition(characterId), [characterId]);
+
+  const appendCue = (label: string) => {
+    setAgentCueTimeline((current) => [...current.slice(-9), label]);
+  };
+
+  if (!scriptDirector.current) {
+    scriptDirector.current = new ScriptPerformanceDirector({
+      onExpression: (cue) => {
+        setAgentExpression(cue.expression);
+        setAgentExpressionIntensity(cue.intensity);
+        setAgentExpressionEnergy(cue.energy);
+      },
+      onAction: (nextAction) => {
+        setAgentAction(nextAction);
+        setAgentActionNonce((nonce) => nonce + 1);
+      },
+      onPace: setAgentPace,
+      onCue: appendCue,
+    });
+  }
 
   if (!playback.current) {
     playback.current = new PcmPlaybackQueue(
@@ -76,29 +135,45 @@ export function App() {
 
   if (!live.current) {
     live.current = new GeminiLiveClient({
-      onStatus: setStatus,
+      onStatus: (nextStatus) => {
+        const previous = liveStatus.current;
+        liveStatus.current = nextStatus;
+        setStatus(nextStatus);
+        if (nextStatus === 'listening' && previous === 'speaking' && scriptDirector.current?.active) {
+          scriptDirector.current.stop();
+          setScriptMode(false);
+        }
+      },
       onAudio: (audio) => void playback.current?.enqueue(audio),
       onInputTranscript: setInputTranscript,
       onOutputTranscript: (transcript) => {
         setOutputTranscript(transcript);
         playback.current?.pushTranscript(transcript);
+        scriptDirector.current?.pushTranscript(transcript);
       },
       onCharacterExpression: (cue) => {
+        if (scriptDirector.current?.active) return;
         setAgentExpression(cue.expression);
         setAgentExpressionIntensity(cue.intensity);
         setAgentExpressionEnergy(cue.energy);
-        setAgentCueTimeline((current) => [...current.slice(-7), cue.expression]);
+        appendCue(cue.expression);
       },
       onCharacterAction: (nextAction) => {
+        if (scriptDirector.current?.active) return;
         setAgentAction(nextAction);
         setAgentActionNonce((nonce) => nonce + 1);
-        setAgentCueTimeline((current) => [...current.slice(-7), `↗${nextAction}`]);
+        appendCue(`↗${nextAction}`);
       },
       onCharacterPace: (nextPace) => {
+        if (scriptDirector.current?.active) return;
         setAgentPace(nextPace);
-        setAgentCueTimeline((current) => [...current.slice(-7), `pace:${nextPace}`]);
+        appendCue(`pace:${nextPace}`);
       },
-      onInterrupted: () => playback.current?.interrupt(),
+      onInterrupted: () => {
+        scriptDirector.current?.stop();
+        setScriptMode(false);
+        playback.current?.interrupt();
+      },
       onError: setError,
     });
   }
@@ -113,6 +188,7 @@ export function App() {
 
   useEffect(() => {
     return () => {
+      scriptDirector.current?.stop();
       live.current?.close();
       void microphone.current.stop();
       void playback.current?.close();
@@ -120,6 +196,8 @@ export function App() {
   }, []);
 
   const resetAgentPerformance = () => {
+    scriptDirector.current?.stop();
+    setScriptMode(false);
     setAgentExpression(null);
     setAgentExpressionIntensity(1);
     setAgentExpressionEnergy(0.5);
@@ -144,6 +222,8 @@ export function App() {
   };
 
   const selectMood = (nextMood: MoodId) => {
+    scriptDirector.current?.stop();
+    setScriptMode(false);
     setAgentExpression(null);
     setMood(nextMood);
     setEmotion(moodEmotion[nextMood]);
@@ -167,6 +247,8 @@ export function App() {
   };
 
   const disconnect = async () => {
+    scriptDirector.current?.stop();
+    setScriptMode(false);
     live.current?.endAudioStream();
     live.current?.close();
     await microphone.current.stop();
@@ -178,7 +260,7 @@ export function App() {
   const submitText = (event: FormEvent) => {
     event.preventDefault();
     if (!connected || !text.trim()) return;
-    setAgentCueTimeline([]);
+    resetAgentPerformance();
     live.current?.sendText(text);
     setInputTranscript(text.trim());
     setText('');
@@ -187,8 +269,24 @@ export function App() {
   const startStoryDemo = () => {
     if (!connected) return;
     resetAgentPerformance();
-    setInputTranscript('اختبار: غيّر عدة تعبيرات أثناء نفس الرد الصوتي واحكِ لي بداية قصة تفاعلية.');
+    setInputTranscript('Freeform test: Gemini directs its own expressions while speaking.');
     live.current?.sendText(STORY_DEMO_PROMPT);
+  };
+
+  const startTaggedStory = () => {
+    if (!connected) return;
+    setError('');
+    try {
+      const parsed = parsePerformanceScript(scriptText);
+      resetAgentPerformance();
+      setScriptMode(true);
+      setInputTranscript('Tagged script performance: host-synced expressions inside one spoken turn.');
+      setOutputTranscript('');
+      scriptDirector.current?.start(parsed);
+      live.current?.sendText(buildScriptPerformancePrompt(parsed));
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'Could not parse tagged performance script');
+    }
   };
 
   return (
@@ -205,7 +303,7 @@ export function App() {
         <div className="copy">
           <span className="eyebrow"><i /> live expressive character runtime</span>
           <h1>Meet {character.name}.<span>{character.tagline}</span></h1>
-          <p>{character.description} Gemini 3.8 can cue non-blocking expressions and actions while the same spoken turn keeps streaming.</p>
+          <p>{character.description} Tagged scripts can now drive expression changes during the same uninterrupted spoken turn.</p>
           <div className="transcript" aria-live="polite">
             {inputTranscript && <p><b>You</b>{inputTranscript}</p>}
             {outputTranscript && <p><b>{character.name}</b>{outputTranscript}</p>}
@@ -285,18 +383,30 @@ export function App() {
           <button type="submit" disabled={!connected || !text.trim()}>Send</button>
         </form>
 
-        <button className="primary" type="button" disabled={!connected} onClick={startStoryDemo}>
-          Start multi-expression story test
+        <label className="section-label" htmlFor="performance-script">Tagged story script</label>
+        <textarea
+          id="performance-script"
+          className="performance-script"
+          value={scriptText}
+          onChange={(event) => setScriptText(event.target.value)}
+          spellCheck={false}
+          aria-label="Tagged performance script"
+        />
+        <button className="primary" type="button" disabled={!connected || scriptMode} onClick={startTaggedStory}>
+          {scriptMode ? 'Tagged story is performing…' : 'Run tagged story — one live turn'}
+        </button>
+        <button type="button" disabled={!connected || scriptMode} onClick={startStoryDemo}>
+          Freeform Gemini-director test
         </button>
 
         <div className="meter" aria-hidden="true"><span style={{ width: `${Math.round(mouth.energy * 100)}%` }} /></div>
         <p className="hint">
-          Live performance: {agentExpression ?? mood} · energy {agentExpression ? agentExpressionEnergy.toFixed(2) : 'manual'} · pace {agentPace}
+          Mode: {scriptMode ? 'TAGGED SCRIPT' : 'LIVE AGENT'} · expression {agentExpression ?? mood} · energy {agentExpression ? agentExpressionEnergy.toFixed(2) : 'manual'} · pace {agentPace}
         </p>
         <p className="hint" aria-live="polite">
-          Cue timeline: {agentCueTimeline.length ? agentCueTimeline.join(' → ') : 'waiting for live stage directions'}
+          Cue timeline: {agentCueTimeline.length ? agentCueTimeline.join(' → ') : 'waiting for performance cues'}
         </p>
-        <p className="hint">Expression/action tools are non-blocking and acknowledged silently, so Ember can change face and movement repeatedly inside one uninterrupted spoken turn while the mouth bridge follows the outgoing audio.</p>
+        <p className="hint">Script syntax: [happy] [sad] [crying] [surprised] [thinking] [angry] [sleepy] [laughing] [excited], plus [wave] [blink] [jump] and [pace:idle|walk|run]. Tags are silent; Gemini performs only the story text while PixiLive syncs the visual cue at each beat.</p>
         {error && <p className="error">{error}</p>}
       </aside>
     </main>
