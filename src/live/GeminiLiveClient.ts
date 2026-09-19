@@ -7,7 +7,7 @@ import type {
 
 const MODEL = 'gemini-3.8-live';
 const TOKEN_ENDPOINT = '/api/gemini-token';
-const LIVE_ENDPOINT = 'wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1alpha.GenerativeService.BidiGenerateContentConstrained';
+const LIVE_ENDPOINT = 'wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContentConstrained';
 const SETUP_TIMEOUT_MS = 12_000;
 
 const EXPRESSIONS: CharacterExpressionName[] = [
