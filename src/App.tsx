@@ -102,6 +102,7 @@ export function App() {
   const playback = useRef<PcmPlaybackQueue | null>(null);
   const live = useRef<GeminiLiveClient | null>(null);
   const liveStatus = useRef<LiveStatus>('idle');
+  const scriptServerTurnComplete = useRef(false);
   const scriptDirector = useRef<ScriptPerformanceDirector | null>(null);
 
   const character = useMemo(() => getCharacterDefinition(characterId), [characterId]);
@@ -123,13 +124,26 @@ export function App() {
       },
       onPace: setAgentPace,
       onCue: appendCue,
+      getPlaybackClock: () => playback.current?.getClock() ?? null,
+      scheduleAtPlaybackTime: (audioTimeSeconds, callback) => {
+        if (playback.current) playback.current.scheduleAt(audioTimeSeconds, callback);
+        else callback();
+      },
     });
   }
 
   if (!playback.current) {
     playback.current = new PcmPlaybackQueue(
       (pose) => setMouth(pose),
-      () => setMouth(restingMouth),
+      () => {
+        setMouth(restingMouth);
+        if (scriptServerTurnComplete.current && scriptDirector.current?.active) {
+          scriptDirector.current.stop();
+          scriptServerTurnComplete.current = false;
+          setScriptMode(false);
+          setAgentPace('idle');
+        }
+      },
     );
   }
 
@@ -140,8 +154,13 @@ export function App() {
         liveStatus.current = nextStatus;
         setStatus(nextStatus);
         if (nextStatus === 'listening' && previous === 'speaking' && scriptDirector.current?.active) {
-          scriptDirector.current.stop();
-          setScriptMode(false);
+          scriptServerTurnComplete.current = true;
+          if (!playback.current?.hasPendingAudio()) {
+            scriptDirector.current.stop();
+            scriptServerTurnComplete.current = false;
+            setScriptMode(false);
+            setAgentPace('idle');
+          }
         }
       },
       onAudio: (audio) => void playback.current?.enqueue(audio),
@@ -171,6 +190,7 @@ export function App() {
       },
       onInterrupted: () => {
         scriptDirector.current?.stop();
+        scriptServerTurnComplete.current = false;
         setScriptMode(false);
         playback.current?.interrupt();
       },
@@ -197,6 +217,7 @@ export function App() {
 
   const resetAgentPerformance = () => {
     scriptDirector.current?.stop();
+    scriptServerTurnComplete.current = false;
     setScriptMode(false);
     setAgentExpression(null);
     setAgentExpressionIntensity(1);
@@ -223,6 +244,7 @@ export function App() {
 
   const selectMood = (nextMood: MoodId) => {
     scriptDirector.current?.stop();
+    scriptServerTurnComplete.current = false;
     setScriptMode(false);
     setAgentExpression(null);
     setMood(nextMood);
@@ -248,6 +270,7 @@ export function App() {
 
   const disconnect = async () => {
     scriptDirector.current?.stop();
+    scriptServerTurnComplete.current = false;
     setScriptMode(false);
     live.current?.endAudioStream();
     live.current?.close();
@@ -279,8 +302,9 @@ export function App() {
     try {
       const parsed = parsePerformanceScript(scriptText);
       resetAgentPerformance();
+      scriptServerTurnComplete.current = false;
       setScriptMode(true);
-      setInputTranscript('Tagged script performance: host-synced expressions inside one spoken turn.');
+      setInputTranscript('Tagged script performance: playback-synced expressions inside one spoken turn.');
       setOutputTranscript('');
       scriptDirector.current?.start(parsed);
       live.current?.sendText(buildScriptPerformancePrompt(parsed));
@@ -303,7 +327,7 @@ export function App() {
         <div className="copy">
           <span className="eyebrow"><i /> live expressive character runtime</span>
           <h1>Meet {character.name}.<span>{character.tagline}</span></h1>
-          <p>{character.description} Tagged scripts can now drive expression changes during the same uninterrupted spoken turn.</p>
+          <p>{character.description} Tagged scripts can drive expression changes on the actual PCM playback clock during one uninterrupted spoken turn.</p>
           <div className="transcript" aria-live="polite">
             {inputTranscript && <p><b>You</b>{inputTranscript}</p>}
             {outputTranscript && <p><b>{character.name}</b>{outputTranscript}</p>}
@@ -401,12 +425,12 @@ export function App() {
 
         <div className="meter" aria-hidden="true"><span style={{ width: `${Math.round(mouth.energy * 100)}%` }} /></div>
         <p className="hint">
-          Mode: {scriptMode ? 'TAGGED SCRIPT' : 'LIVE AGENT'} · expression {agentExpression ?? mood} · energy {agentExpression ? agentExpressionEnergy.toFixed(2) : 'manual'} · pace {agentPace}
+          Mode: {scriptMode ? 'TAGGED SCRIPT · PCM SYNC' : 'LIVE AGENT'} · expression {agentExpression ?? mood} · energy {agentExpression ? agentExpressionEnergy.toFixed(2) : 'manual'} · pace {agentPace}
         </p>
         <p className="hint" aria-live="polite">
           Cue timeline: {agentCueTimeline.length ? agentCueTimeline.join(' → ') : 'waiting for performance cues'}
         </p>
-        <p className="hint">Script syntax: [happy] [sad] [crying] [surprised] [thinking] [angry] [sleepy] [laughing] [excited], plus [wave] [blink] [jump] and [pace:idle|walk|run]. Tags are silent; Gemini performs only the story text while PixiLive syncs the visual cue at each beat.</p>
+        <p className="hint">Script syntax: [happy] [sad] [crying] [surprised] [thinking] [angry] [sleepy] [laughing] [excited], plus [wave] [blink] [jump] and [pace:idle|walk|run]. Tags are silent; Gemini performs only the story text while PixiLive maps each cue onto the real audio playback timeline.</p>
         {error && <p className="error">{error}</p>}
       </aside>
     </main>
