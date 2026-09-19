@@ -34,59 +34,6 @@ interface RiveCharacterStageProps {
   action: ActionCommand | null;
 }
 
-type RigState = {
-  bodyX: number;
-  bodyY: number;
-  bodyLean: number;
-  headX: number;
-  headY: number;
-  headTilt: number;
-  leftShoulder: number;
-  leftElbow: number;
-  rightShoulder: number;
-  rightElbow: number;
-  leftHandX: number;
-  leftHandY: number;
-  rightHandX: number;
-  rightHandY: number;
-  ikStrength: number;
-  eyeScale: number;
-  browY: number;
-  smileOpacity: number;
-  neutralOpacity: number;
-};
-
-type AutoPose = StandardPerformancePose;
-
-const defaultRig: RigState = {
-  bodyX: 0,
-  bodyY: 0,
-  bodyLean: 0,
-  headX: 0,
-  headY: 0,
-  headTilt: 0,
-  leftShoulder: 1.72,
-  leftElbow: -0.78,
-  rightShoulder: 1.4215927,
-  rightElbow: 0.78,
-  leftHandX: -70,
-  leftHandY: 116,
-  rightHandX: 70,
-  rightHandY: 116,
-  ikStrength: 1,
-  eyeScale: 0.92,
-  browY: -53,
-  smileOpacity: 0,
-  neutralOpacity: 1,
-};
-
-const emotionFace: Record<Emotion, Partial<RigState>> = {
-  calm: { eyeScale: 0.92, browY: -53, smileOpacity: 0.04, neutralOpacity: 1, headTilt: 0 },
-  happy: { eyeScale: 0.8, browY: -58, smileOpacity: 0.7, neutralOpacity: 0.25, headTilt: 0.025 },
-  curious: { eyeScale: 1.0, browY: -61, smileOpacity: 0.12, neutralOpacity: 0.9, headTilt: -0.08 },
-  excited: { eyeScale: 1.04, browY: -63, smileOpacity: 0.82, neutralOpacity: 0.18, headTilt: 0.045 },
-};
-
 const smoothToward = (current: number, target: number, response: number, dt: number) => {
   const alpha = 1 - Math.exp(-Math.min(0.05, dt) * response);
   return current + (target - current) * alpha;
@@ -135,15 +82,14 @@ export function RiveCharacterStage({
 
   const viewModelInstance = rive?.viewModelInstance;
   const bindingsReady = Boolean(viewModelInstance);
-  const [rig, setRig] = useState<RigState>(defaultRig);
   const [labOpen, setLabOpen] = useState(false);
   const [agentMotionEnabled, setAgentMotionEnabled] = useState(true);
   const [gestureStrength, setGestureStrength] = useState(1);
   const [agentGesture, setAgentGesture] = useState<AgentGesture>('conversational');
   const [activeAction, setActiveAction] = useState<string>('none');
 
-  const rigRef = useRef<RigState>(defaultRig);
-  const autoPoseRef = useRef<AutoPose>({ ...zeroPerformancePose });
+  const basePoseRef = useRef<StandardPerformancePose>({ ...performanceAdapter.base });
+  const autoPoseRef = useRef<StandardPerformancePose>({ ...zeroPerformancePose });
   const agentMotionStateRef = useRef(createAgentMotionState());
   const gestureRef = useRef<AgentGesture>('conversational');
   const speechRef = useRef({ speaking, energy: mouth.energy, emotion, text: speechText, strength: gestureStrength });
@@ -154,7 +100,6 @@ export function RiveCharacterStage({
   const activeActionRef = useRef('none');
   const reactionStartedAt = useRef(-10_000);
 
-  rigRef.current = rig;
   speechRef.current = { speaking, energy: mouth.energy, emotion, text: speechText, strength: gestureStrength };
   moodRef.current = mood;
   actionRef.current = action;
@@ -186,13 +131,11 @@ export function RiveCharacterStage({
   const { setValue: setNeutralOpacity } = useViewModelInstanceNumber('neutralOpacity', viewModelInstance);
 
   useEffect(() => {
-    const face = emotionFace[emotion];
-    setRig((current) => {
-      const next = { ...current, ...face };
-      rigRef.current = next;
-      return next;
-    });
-  }, [emotion]);
+    basePoseRef.current = {
+      ...performanceAdapter.base,
+      ...performanceAdapter.emotion(emotion),
+    };
+  }, [emotion, performanceAdapter]);
 
   useEffect(() => {
     setSpeaking(speaking);
@@ -241,7 +184,7 @@ export function RiveCharacterStage({
       const dt = Math.min(0.05, Math.max(0.001, (now - previousTime) / 1000));
       previousTime = now;
       const speech = speechRef.current;
-      const base = rigRef.current;
+      const base = basePoseRef.current;
 
       let speechPose = { ...zeroPerformancePose };
       if (agentMotionEnabled) {
