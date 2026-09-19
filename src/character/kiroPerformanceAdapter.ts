@@ -4,8 +4,31 @@ import type {
   PerformanceSampleContext,
   StandardPerformancePose,
 } from './performanceAdapter';
+import type { Emotion } from './types';
 
 const clamp = (value: number, min = -1, max = 1) => Math.max(min, Math.min(max, value));
+
+const kiroBase: StandardPerformancePose = {
+  bodyY: 0,
+  bodyLean: 0,
+  headY: 0,
+  headTilt: 0,
+  leftHandX: -70,
+  leftHandY: 116,
+  rightHandX: 70,
+  rightHandY: 116,
+  eyeScale: 0.92,
+  browY: -53,
+  smileOpacity: 0,
+  neutralOpacity: 1,
+};
+
+const kiroEmotion: Record<Emotion, Partial<StandardPerformancePose>> = {
+  calm: { eyeScale: 0.92, browY: -53, smileOpacity: 0.04, neutralOpacity: 1, headTilt: 0 },
+  happy: { eyeScale: 0.8, browY: -58, smileOpacity: 0.7, neutralOpacity: 0.25, headTilt: 0.025 },
+  curious: { eyeScale: 1.0, browY: -61, smileOpacity: 0.12, neutralOpacity: 0.9, headTilt: -0.08 },
+  excited: { eyeScale: 1.04, browY: -63, smileOpacity: 0.82, neutralOpacity: 0.18, headTilt: 0.045 },
+};
 
 function pulse(patternValue: number, phase: number, cycles = 1) {
   return patternValue * Math.sin(phase * Math.PI * 2 * cycles);
@@ -13,6 +36,10 @@ function pulse(patternValue: number, phase: number, cycles = 1) {
 
 export const kiroPerformanceAdapter: CharacterPerformanceAdapter = {
   id: 'kiro-v1',
+  base: kiroBase,
+  emotion(emotion: Emotion) {
+    return kiroEmotion[emotion];
+  },
   sample(intent: PerformanceIntent, context: PerformanceSampleContext): StandardPerformancePose {
     const w = context.weight;
     const phase = context.phase;
