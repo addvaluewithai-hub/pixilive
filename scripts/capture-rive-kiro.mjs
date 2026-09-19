@@ -10,40 +10,55 @@ await mkdir(outputDir, { recursive: true });
 const browser = await chromium.launch({ headless: true });
 const page = await browser.newPage({ viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1 });
 
+async function stageFor(id) {
+  if (id === 'foxy') {
+    const stage = page.locator('.ember-character-stage');
+    const iframe = stage.locator('iframe');
+    await iframe.waitFor({ state: 'visible' });
+    await page.waitForFunction(() => {
+      const frame = document.querySelector('.ember-character-stage iframe');
+      return frame instanceof HTMLIFrameElement && Boolean(frame.contentWindow?.EmberHost);
+    });
+    return stage;
+  }
+  const stage = page.locator('.rive-character-stage');
+  await stage.locator('canvas').waitFor({ state: 'visible' });
+  return stage;
+}
+
 async function captureCharacter(id) {
   const characterSelect = page.locator('#character-select');
   await characterSelect.selectOption(id);
-  await page.locator('.rive-character-stage canvas').waitFor({ state: 'visible' });
+  const stage = await stageFor(id);
   await page.waitForTimeout(750);
-  const canvas = page.locator('.rive-character-stage canvas');
 
   await page.locator('.mood-pack-grid button', { hasText: 'Calm' }).click();
   await page.waitForTimeout(220);
-  await canvas.screenshot({ path: path.join(outputDir, `${id}-calm.png`) });
+  await stage.screenshot({ path: path.join(outputDir, `${id}-calm.png`) });
 
   await page.locator('.mood-pack-grid button', { hasText: 'Happy' }).click();
   await page.waitForTimeout(280);
-  await canvas.screenshot({ path: path.join(outputDir, `${id}-happy.png`) });
+  await stage.screenshot({ path: path.join(outputDir, `${id}-happy.png`) });
 
   await page.locator('.mood-pack-grid button', { hasText: 'Thinking' }).click();
   await page.waitForTimeout(300);
-  await canvas.screenshot({ path: path.join(outputDir, `${id}-thinking.png`) });
+  await stage.screenshot({ path: path.join(outputDir, `${id}-thinking.png`) });
 
   await page.locator('.mood-pack-grid button', { hasText: 'Angry' }).click();
   await page.waitForTimeout(260);
-  await canvas.screenshot({ path: path.join(outputDir, `${id}-angry.png`) });
+  await stage.screenshot({ path: path.join(outputDir, `${id}-angry.png`) });
 
   await page.locator('.action-pack-grid button', { hasText: 'Celebrating' }).click();
   await page.waitForTimeout(430);
-  await canvas.screenshot({ path: path.join(outputDir, `${id}-celebrating.png`) });
+  await stage.screenshot({ path: path.join(outputDir, `${id}-celebrating.png`) });
 
   await page.locator('.action-pack-grid button', { hasText: 'Crying' }).click();
   await page.waitForTimeout(600);
-  await canvas.screenshot({ path: path.join(outputDir, `${id}-crying.png`) });
+  await stage.screenshot({ path: path.join(outputDir, `${id}-crying.png`) });
 
   await page.locator('.action-pack-grid button', { hasText: 'Waving' }).click();
   await page.waitForTimeout(420);
-  await canvas.screenshot({ path: path.join(outputDir, `${id}-waving.png`) });
+  await stage.screenshot({ path: path.join(outputDir, `${id}-waving.png`) });
 }
 
 try {
