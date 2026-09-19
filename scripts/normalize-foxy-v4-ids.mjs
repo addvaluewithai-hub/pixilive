@@ -8,6 +8,18 @@ function mustReplace(from, to, label = from) {
   rml = rml.replace(from, to);
 }
 
+function mutateShape(name, mutator) {
+  const marker = `name="${name}"`;
+  const markerIndex = rml.indexOf(marker);
+  if (markerIndex < 0) throw new Error(`Missing ${name}`);
+  const start = rml.lastIndexOf('<Shape', markerIndex);
+  const end = rml.indexOf('</Shape>', markerIndex) + '</Shape>'.length;
+  const before = rml.slice(start, end);
+  const after = mutator(before);
+  if (after === before) throw new Error(`No visual mutation applied to ${name}`);
+  rml = rml.slice(0, start) + after + rml.slice(end);
+}
+
 // Keep helper-local art ids away from face-control ids.
 for (const [from, to] of [
   ['name="LeftEyeShine" id="0:225"', 'name="LeftEyeShine" id="0:245"'],
@@ -39,15 +51,22 @@ mustReplace(
 // Feature-animation readability: brows need to read at thumbnail size. Preserve
 // their curves but make them dark and slightly heavier.
 for (const name of ['LeftBrow', 'RightBrow']) {
-  const marker = `name="${name}"`;
-  const markerIndex = rml.indexOf(marker);
-  if (markerIndex < 0) throw new Error(`Missing ${name}`);
-  const start = rml.lastIndexOf('<Shape', markerIndex);
-  const end = rml.indexOf('</Shape>', markerIndex) + '</Shape>'.length;
-  let chunk = rml.slice(start, end);
-  chunk = chunk.replace('thickness="6"', 'thickness="7.2"');
-  chunk = chunk.replace('colorValue="FFE85B18"', 'colorValue="FF2A1712"');
-  rml = rml.slice(0, start) + chunk + rml.slice(end);
+  mutateShape(name, (chunk) => chunk
+    .replace('thickness="6"', 'thickness="7.2"')
+    .replace('colorValue="FFE85B18"', 'colorValue="FF2A1712"'));
+}
+
+// The hand mechanics stay internal. Dark circular paw tips read like exposed ball
+// joints, so turn them into soft orange mitts and slightly enlarge the overlap.
+for (const name of ['LeftPawTip', 'RightPawTip']) {
+  mutateShape(name, (chunk) => chunk
+    .replace('width="24" height="22"', 'width="30" height="27"')
+    .replace('colorValue="FF63301E"', 'colorValue="FFFF7F2A"'));
+}
+
+// Slightly wider glossy eyes keep the face cute instead of tall/teary in neutral.
+for (const name of ['LeftEye', 'RightEye']) {
+  mutateShape(name, (chunk) => chunk.replace('width="44" height="58"', 'width="48" height="54"'));
 }
 
 // The first v4 render exposed a tiny hook at the ear tips. Reduce Bézier handle
@@ -60,4 +79,4 @@ for (const [from, to] of [
 ]) mustReplace(from, to, `ear apex ${from}`);
 
 await writeFile(url, rml);
-console.log('normalized foxy v4 ids + performance rig + art polish');
+console.log('normalized foxy v4 ids + performance rig + deep art polish');
