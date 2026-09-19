@@ -26,6 +26,8 @@ const moodEmotion: Record<MoodId, Emotion> = {
   worried: 'curious',
   listening: 'calm',
   confident: 'happy',
+  angry: 'excited',
+  sleepy: 'calm',
 };
 
 export function App() {
