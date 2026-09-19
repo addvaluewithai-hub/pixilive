@@ -3,6 +3,8 @@ import { useEffect, useRef } from 'react';
 import type { ActionCommand, MoodId } from '../character/behaviorPacks';
 import type { CharacterDefinition, CharacterRuntime } from '../character/runtime';
 import type { Emotion, MouthPose } from '../character/types';
+import type { CharacterActionName, CharacterExpressionName, CharacterPace } from '../live/types';
+import { EmberFoxStage } from './EmberFoxStage';
 import { RiveCharacterStage } from './RiveCharacterStage';
 
 interface CharacterStageProps {
@@ -13,13 +15,48 @@ interface CharacterStageProps {
   speechText: string;
   mood: MoodId;
   action: ActionCommand | null;
+  agentExpression: CharacterExpressionName | null;
+  agentExpressionIntensity: number;
+  agentExpressionEnergy: number;
+  agentAction: CharacterActionName | null;
+  agentActionNonce: number;
+  agentPace: CharacterPace;
 }
 
 export function CharacterStage(props: CharacterStageProps) {
+  if (props.character.html) {
+    return (
+      <EmberFoxStage
+        key={props.character.id}
+        character={props.character}
+        mouth={props.mouth}
+        speaking={props.speaking}
+        mood={props.mood}
+        action={props.action}
+        agentExpression={props.agentExpression}
+        agentExpressionIntensity={props.agentExpressionIntensity}
+        agentExpressionEnergy={props.agentExpressionEnergy}
+        agentAction={props.agentAction}
+        agentActionNonce={props.agentActionNonce}
+        agentPace={props.agentPace}
+      />
+    );
+  }
   if (props.character.rive) {
     // Rive keeps internal file/view-model state. A character switch must be a true
     // remount, otherwise the new adapter can accidentally drive the previous .riv.
-    return <RiveCharacterStage key={props.character.id} {...props} />;
+    return (
+      <RiveCharacterStage
+        key={props.character.id}
+        character={props.character}
+        emotion={props.emotion}
+        mouth={props.mouth}
+        speaking={props.speaking}
+        speechText={props.speechText}
+        mood={props.mood}
+        action={props.action}
+      />
+    );
   }
   return <PixiCharacterStage {...props} />;
 }
