@@ -2,7 +2,8 @@ import { createMascotPerformanceAdapter } from './mascotPerformanceAdapter';
 
 const neutralFace = {
   eyeScale: 1,
-  browY: 0,
+  // Rive data binding writes absolute Y, so keep the authored eyebrow baseline here.
+  browY: -76,
   smileOpacity: 0,
   neutralOpacity: 1,
   frownOpacity: 0,
@@ -11,11 +12,11 @@ const neutralFace = {
   sparkleOpacity: 0,
   blushOpacity: 0.62,
   browTilt: 0,
-  tailTilt: 0,
+  tailTilt: -0.18,
 } as const;
 
 export const foxyPerformanceAdapter = createMascotPerformanceAdapter({
-  id: 'foxy-v4.1',
+  id: 'foxy-v4.2',
   base: {
     bodyY: 0,
     bodyLean: 0,
@@ -27,23 +28,25 @@ export const foxyPerformanceAdapter = createMascotPerformanceAdapter({
     rightHandY: 58,
     ...neutralFace,
   },
-  // Compact at rest, with enough range for clear staged reactions.
-  armX: 58,
-  armY: 118,
+  // Foxy is compact, but her hands need a large semantic range because the face
+  // sits far above the shoulder root. The IK solver owns the actual joint angles.
+  armX: 46,
+  armY: 168,
   bodyLift: 18,
   bodyLean: 0.052,
   headLift: 16,
   headTilt: 0.18,
-  eyeScale: 0.52,
-  browLift: 16,
-  browTilt: 0.95,
-  tailTilt: 0.58,
-  thinkHandX: -48,
-  thinkHandY: -102,
+  eyeScale: 0.56,
+  browLift: 18,
+  browTilt: 1.08,
+  tailTilt: 0.64,
+  thinkHandX: -50,
+  thinkHandY: -238,
+  oneHandedWave: true,
+  cryWithBothHands: true,
   motionCharacter: 'nimble',
-  // The universal mood/action pack owns the acting. These legacy four emotion
-  // aliases stay deliberately neutral so Angry never inherits an Excited smile,
-  // and Thinking never stacks two different face recipes.
+  // The universal mood/action pack owns the acting. These aliases remain neutral
+  // so a pack never stacks on top of a legacy facial recipe.
   emotion: {
     calm: { ...neutralFace },
     happy: { ...neutralFace },
