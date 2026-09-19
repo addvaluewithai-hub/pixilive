@@ -13,9 +13,9 @@ import type { Emotion, MouthPose } from './character/types';
 import { CharacterStage } from './components/CharacterStage';
 import { GeminiLiveClient } from './live/GeminiLiveClient';
 import {
-  buildScriptPerformancePrompt,
+  buildScriptBeatPrompt,
   parsePerformanceScript,
-  ScriptPerformanceDirector,
+  type ScriptPerformanceBeat,
 } from './live/scriptPerformance';
 import type {
   CharacterActionName,
@@ -78,6 +78,12 @@ const TAGGED_STORY_SCRIPT = `[happy]
 
 const STORY_DEMO_PROMPT = `ابدأ الآن اختبار أداء حي لقصة طفل بالعربية. في نفس الرد الصوتي الطويل استخدم set_character_expression عدة مرات أثناء الكلام، وليس مرة واحدة في بداية الرد. غيّر التعبير عند تغيّر المعنى، وطابق نبرة صوتك مع الوجه الحالي. احكِ مشهدًا لطيفًا ومطمئنًا ثم اسأل الطفل سؤالًا بسيطًا.`;
 
+interface ScriptSession {
+  beats: ScriptPerformanceBeat[];
+  index: number;
+  expression: CharacterExpressionName;
+}
+
 export function App() {
   const [characterId, setCharacterId] = useState(DEFAULT_CHARACTER_ID);
   const [emotion, setEmotion] = useState<Emotion>('happy');
@@ -102,8 +108,9 @@ export function App() {
   const playback = useRef<PcmPlaybackQueue | null>(null);
   const live = useRef<GeminiLiveClient | null>(null);
   const liveStatus = useRef<LiveStatus>('idle');
+  const scriptSession = useRef<ScriptSession | null>(null);
   const scriptServerTurnComplete = useRef(false);
-  const scriptDirector = useRef<ScriptPerformanceDirector | null>(null);
+  const advanceScriptBeatRef = useRef<() => void>(() => undefined);
 
   const character = useMemo(() => getCharacterDefinition(characterId), [characterId]);
 
@@ -111,37 +118,56 @@ export function App() {
     setAgentCueTimeline((current) => [...current.slice(-9), label]);
   };
 
-  if (!scriptDirector.current) {
-    scriptDirector.current = new ScriptPerformanceDirector({
-      onExpression: (cue) => {
-        setAgentExpression(cue.expression);
+  const finishScript = () => {
+    scriptSession.current = null;
+    scriptServerTurnComplete.current = false;
+    setScriptMode(false);
+    setAgentPace('idle');
+  };
+
+  const advanceScriptBeat = () => {
+    const session = scriptSession.current;
+    if (!session) return;
+
+    if (session.index >= session.beats.length) {
+      finishScript();
+      return;
+    }
+
+    const beat = session.beats[session.index];
+    session.index += 1;
+
+    for (const cue of beat.cues) {
+      if (cue.kind === 'expression') {
+        session.expression = cue.value;
+        setAgentExpression(cue.value);
         setAgentExpressionIntensity(cue.intensity);
         setAgentExpressionEnergy(cue.energy);
-      },
-      onAction: (nextAction) => {
-        setAgentAction(nextAction);
+        appendCue(cue.value);
+      } else if (cue.kind === 'action') {
+        setAgentAction(cue.value);
         setAgentActionNonce((nonce) => nonce + 1);
-      },
-      onPace: setAgentPace,
-      onCue: appendCue,
-      getPlaybackClock: () => playback.current?.getClock() ?? null,
-      scheduleAtPlaybackTime: (audioTimeSeconds, callback) => {
-        if (playback.current) playback.current.scheduleAt(audioTimeSeconds, callback);
-        else callback();
-      },
-    });
-  }
+        appendCue(`↗${cue.value}`);
+      } else {
+        setAgentPace(cue.value);
+        appendCue(`pace:${cue.value}`);
+      }
+    }
+
+    scriptServerTurnComplete.current = false;
+    live.current?.sendText(buildScriptBeatPrompt(beat.text, session.expression));
+  };
+
+  advanceScriptBeatRef.current = advanceScriptBeat;
 
   if (!playback.current) {
     playback.current = new PcmPlaybackQueue(
       (pose) => setMouth(pose),
       () => {
         setMouth(restingMouth);
-        if (scriptServerTurnComplete.current && scriptDirector.current?.active) {
-          scriptDirector.current.stop();
+        if (scriptSession.current && scriptServerTurnComplete.current) {
           scriptServerTurnComplete.current = false;
-          setScriptMode(false);
-          setAgentPace('idle');
+          advanceScriptBeatRef.current();
         }
       },
     );
@@ -153,13 +179,12 @@ export function App() {
         const previous = liveStatus.current;
         liveStatus.current = nextStatus;
         setStatus(nextStatus);
-        if (nextStatus === 'listening' && previous === 'speaking' && scriptDirector.current?.active) {
+
+        if (nextStatus === 'listening' && previous === 'speaking' && scriptSession.current) {
           scriptServerTurnComplete.current = true;
           if (!playback.current?.hasPendingAudio()) {
-            scriptDirector.current.stop();
             scriptServerTurnComplete.current = false;
-            setScriptMode(false);
-            setAgentPace('idle');
+            advanceScriptBeatRef.current();
           }
         }
       },
@@ -168,30 +193,27 @@ export function App() {
       onOutputTranscript: (transcript) => {
         setOutputTranscript(transcript);
         playback.current?.pushTranscript(transcript);
-        scriptDirector.current?.pushTranscript(transcript);
       },
       onCharacterExpression: (cue) => {
-        if (scriptDirector.current?.active) return;
+        if (scriptSession.current) return;
         setAgentExpression(cue.expression);
         setAgentExpressionIntensity(cue.intensity);
         setAgentExpressionEnergy(cue.energy);
         appendCue(cue.expression);
       },
       onCharacterAction: (nextAction) => {
-        if (scriptDirector.current?.active) return;
+        if (scriptSession.current) return;
         setAgentAction(nextAction);
         setAgentActionNonce((nonce) => nonce + 1);
         appendCue(`↗${nextAction}`);
       },
       onCharacterPace: (nextPace) => {
-        if (scriptDirector.current?.active) return;
+        if (scriptSession.current) return;
         setAgentPace(nextPace);
         appendCue(`pace:${nextPace}`);
       },
       onInterrupted: () => {
-        scriptDirector.current?.stop();
-        scriptServerTurnComplete.current = false;
-        setScriptMode(false);
+        finishScript();
         playback.current?.interrupt();
       },
       onError: setError,
@@ -208,7 +230,7 @@ export function App() {
 
   useEffect(() => {
     return () => {
-      scriptDirector.current?.stop();
+      scriptSession.current = null;
       live.current?.close();
       void microphone.current.stop();
       void playback.current?.close();
@@ -216,7 +238,7 @@ export function App() {
   }, []);
 
   const resetAgentPerformance = () => {
-    scriptDirector.current?.stop();
+    scriptSession.current = null;
     scriptServerTurnComplete.current = false;
     setScriptMode(false);
     setAgentExpression(null);
@@ -243,7 +265,7 @@ export function App() {
   };
 
   const selectMood = (nextMood: MoodId) => {
-    scriptDirector.current?.stop();
+    scriptSession.current = null;
     scriptServerTurnComplete.current = false;
     setScriptMode(false);
     setAgentExpression(null);
@@ -259,7 +281,9 @@ export function App() {
     setError('');
     try {
       await live.current?.connect(character.systemPrompt);
-      await microphone.current.start((chunk) => live.current?.sendAudio(chunk));
+      await microphone.current.start((chunk) => {
+        if (!scriptSession.current) live.current?.sendAudio(chunk);
+      });
     } catch (reason) {
       setStatus('error');
       setError(reason instanceof Error ? reason.message : 'Could not start Gemini Live');
@@ -269,9 +293,7 @@ export function App() {
   };
 
   const disconnect = async () => {
-    scriptDirector.current?.stop();
-    scriptServerTurnComplete.current = false;
-    setScriptMode(false);
+    finishScript();
     live.current?.endAudioStream();
     live.current?.close();
     await microphone.current.stop();
@@ -302,12 +324,15 @@ export function App() {
     try {
       const parsed = parsePerformanceScript(scriptText);
       resetAgentPerformance();
-      scriptServerTurnComplete.current = false;
+      scriptSession.current = {
+        beats: parsed.beats,
+        index: 0,
+        expression: 'happy',
+      };
       setScriptMode(true);
-      setInputTranscript('Tagged script performance: playback-synced expressions inside one spoken turn.');
+      setInputTranscript('Tagged story performance: each tag directly drives the next spoken beat.');
       setOutputTranscript('');
-      scriptDirector.current?.start(parsed);
-      live.current?.sendText(buildScriptPerformancePrompt(parsed));
+      advanceScriptBeatRef.current();
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Could not parse tagged performance script');
     }
@@ -327,7 +352,7 @@ export function App() {
         <div className="copy">
           <span className="eyebrow"><i /> live expressive character runtime</span>
           <h1>Meet {character.name}.<span>{character.tagline}</span></h1>
-          <p>{character.description} Tagged scripts can drive expression changes on the actual PCM playback clock during one uninterrupted spoken turn.</p>
+          <p>{character.description} Tagged scripts run as direct performance beats: apply the cue, speak the line, then move to the next cue.</p>
           <div className="transcript" aria-live="polite">
             {inputTranscript && <p><b>You</b>{inputTranscript}</p>}
             {outputTranscript && <p><b>{character.name}</b>{outputTranscript}</p>}
@@ -417,7 +442,7 @@ export function App() {
           aria-label="Tagged performance script"
         />
         <button className="primary" type="button" disabled={!connected || scriptMode} onClick={startTaggedStory}>
-          {scriptMode ? 'Tagged story is performing…' : 'Run tagged story — one live turn'}
+          {scriptMode ? 'Tagged story is performing…' : 'Run tagged story — direct beats'}
         </button>
         <button type="button" disabled={!connected || scriptMode} onClick={startStoryDemo}>
           Freeform Gemini-director test
@@ -425,12 +450,12 @@ export function App() {
 
         <div className="meter" aria-hidden="true"><span style={{ width: `${Math.round(mouth.energy * 100)}%` }} /></div>
         <p className="hint">
-          Mode: {scriptMode ? 'TAGGED SCRIPT · PCM SYNC' : 'LIVE AGENT'} · expression {agentExpression ?? mood} · energy {agentExpression ? agentExpressionEnergy.toFixed(2) : 'manual'} · pace {agentPace}
+          Mode: {scriptMode ? 'TAGGED SCRIPT · DIRECT BEATS' : 'LIVE AGENT'} · expression {agentExpression ?? mood} · energy {agentExpression ? agentExpressionEnergy.toFixed(2) : 'manual'} · pace {agentPace}
         </p>
         <p className="hint" aria-live="polite">
           Cue timeline: {agentCueTimeline.length ? agentCueTimeline.join(' → ') : 'waiting for performance cues'}
         </p>
-        <p className="hint">Script syntax: [happy] [sad] [crying] [surprised] [thinking] [angry] [sleepy] [laughing] [excited], plus [wave] [blink] [jump] and [pace:idle|walk|run]. Tags are silent; Gemini performs only the story text while PixiLive maps each cue onto the real audio playback timeline.</p>
+        <p className="hint">Script syntax: [happy] [sad] [crying] [surprised] [thinking] [angry] [sleepy] [laughing] [excited], plus [wave] [blink] [jump] and [pace:idle|walk|run]. Each tag is applied directly before Gemini speaks the following story beat, so visual acting and voice direction stay together without transcript timing.</p>
         {error && <p className="error">{error}</p>}
       </aside>
     </main>
