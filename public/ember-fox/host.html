@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Ember character host</title>
+<style>
+  html,body,#fox-app,#play-area,#fox-slot{width:100%;height:100%;margin:0;padding:0;overflow:hidden;background:transparent}
+  body{user-select:none;-webkit-user-select:none}
+  #fox-slot{display:grid;place-items:center}
+  #fox-slot>svg{display:block;width:100%;height:100%;max-width:100%;max-height:100%;overflow:visible}
+  #controls{display:none!important}
+</style>
+</head>
+<body>
+<main id="fox-app">
+  <div id="play-area"><div id="fox-slot"></div></div>
+  <div id="controls" aria-hidden="true">
+    <span id="current-emotion">مبسوط</span><span id="action-status"></span><span id="motion-note" hidden></span>
+    <button id="pause" type="button" aria-pressed="false">تجميد الحركة</button><button id="reset" type="button">reset</button>
+    <button data-emotion="happy" type="button"></button><button data-emotion="sad" type="button"></button><button data-emotion="crying" type="button"></button><button data-emotion="surprised" type="button"></button><button data-emotion="thinking" type="button"></button><button data-emotion="angry" type="button"></button><button data-emotion="sleepy" type="button"></button><button data-emotion="laughing" type="button"></button><button data-emotion="excited" type="button"></button>
+    <button data-pace="0" type="button"></button><button data-pace="0.5" type="button"></button><button data-pace="1" type="button"></button>
+    <button id="wave-action" type="button"></button><button id="jump-action" type="button"></button><button id="blink-action" type="button"></button>
+    <input id="intensity" type="range" min="0" max="100" value="100"><output id="intensity-value">100%</output>
+    <input id="energy" type="range" min="0" max="100" value="50"><output id="energy-value">50%</output>
+    <input id="walk-speed" type="range" min="0" max="100" value="0"><output id="walk-speed-value">0%</output>
+    <input id="wave" type="range" min="0" max="100" value="0"><output id="wave-value">0%</output>
+    <input id="gaze-x" type="range" min="-100" max="100" value="0"><output id="gaze-x-value">0</output>
+    <input id="gaze-y" type="range" min="-100" max="100" value="0"><output id="gaze-y-value">0</output>
+    <input id="mouse-gaze" type="checkbox" checked>
+  </div>
+</main>
+<script>
+(async () => {
+  const slot = document.getElementById('fox-slot');
+  const response = await fetch('./fox.svg');
+  if (!response.ok) throw new Error('Could not load Ember artwork');
+  slot.innerHTML = await response.text();
+
+  const script = document.createElement('script');
+  script.src = './controller.js';
+  script.onload = () => {
+    const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
+    const setRange = (id, value) => {
+      const input = document.getElementById(id);
+      if (!input) return;
+      input.value = String(Math.round(clamp(value, 0, 1) * 100));
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    };
+    const setExpression = (name, intensity = 1, energy = 0.5) => {
+      const button = document.querySelector(`[data-emotion="${name}"]`);
+      if (button instanceof HTMLButtonElement) button.click();
+      setRange('intensity', intensity);
+      setRange('energy', energy);
+    };
+    const runAction = (name) => {
+      const id = { wave: 'wave-action', blink: 'blink-action', jump: 'jump-action' }[name];
+      const button = id ? document.getElementById(id) : null;
+      if (button instanceof HTMLButtonElement) button.click();
+    };
+    const setPace = (pace) => {
+      const value = pace === 'run' ? 1 : pace === 'walk' ? 0.5 : 0;
+      const button = document.querySelector(`[data-pace="${value}"]`);
+      if (button instanceof HTMLButtonElement) button.click();
+    };
+
+    const mouthState = { speaking: false, open: 0, width: 0.4, round: 0.1, energy: 0 };
+    const mouthNodes = ['mouth-fill', 'mouth-cut', 'mouth-edge', 'tongue', 'teeth'];
+    const applyMouth = () => {
+      const nodes = mouthNodes.map((id) => document.getElementById(id)).filter(Boolean);
+      if (!mouthState.speaking) {
+        nodes.forEach((node) => node.removeAttribute('transform'));
+      } else {
+        const open = clamp(mouthState.open, 0, 1);
+        const width = clamp(mouthState.width, 0, 1);
+        const round = clamp(mouthState.round, 0, 1);
+        const sx = clamp(0.82 + width * 0.48 - round * 0.12, 0.72, 1.28);
+        const sy = clamp(0.72 + open * 1.08, 0.72, 1.8);
+        nodes.forEach((node) => node.setAttribute('transform', `scale(${sx.toFixed(3)} ${sy.toFixed(3)})`));
+      }
+      requestAnimationFrame(applyMouth);
+    };
+
+    window.EmberHost = {
+      setExpression,
+      runAction,
+      setPace,
+      setMouth(pose, speaking) {
+        mouthState.speaking = Boolean(speaking);
+        mouthState.open = Number(pose?.open ?? 0);
+        mouthState.width = Number(pose?.width ?? 0.4);
+        mouthState.round = Number(pose?.round ?? 0.1);
+        mouthState.energy = Number(pose?.energy ?? 0);
+      },
+      reset() { document.getElementById('reset')?.click(); },
+    };
+    requestAnimationFrame(applyMouth);
+    window.parent.postMessage({ type: 'ember-host-ready' }, window.location.origin);
+  };
+  script.onerror = () => { throw new Error('Could not load Ember controller'); };
+  document.body.appendChild(script);
+})();
+</script>
+</body>
+</html>
