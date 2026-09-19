@@ -83,10 +83,12 @@ jobs:
         if: github.event_name == 'push'
         shell: bash
         run: |
-          if git diff --quiet -- public/rive/benny.riv public/rive/dino.riv public/rive/foxy.riv public/rive/kiro.riv; then
+          CHANGES="$(git status --porcelain -- public/rive/benny.riv public/rive/dino.riv public/rive/foxy.riv public/rive/kiro.riv)"
+          if [ -z "$CHANGES" ]; then
             echo "Committed Rive runtimes are already current."
             exit 0
           fi
+          echo "$CHANGES"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add public/rive/benny.riv public/rive/dino.riv public/rive/foxy.riv public/rive/kiro.riv
