@@ -21,6 +21,7 @@ export interface MascotAdapterTuning {
   thinkHandY: number;
   browTilt?: number;
   tailTilt?: number;
+  joyMouthOpen?: number;
   motionCharacter?: 'soft' | 'bouncy' | 'nimble';
   oneHandedWave?: boolean;
   cryWithBothHands?: boolean;
@@ -60,7 +61,9 @@ export function createMascotPerformanceAdapter(tuning: MascotAdapterTuning): Cha
       const browLift = clamp(intent.browLift ?? 0);
       const browTilt = clamp(intent.browTilt ?? 0);
       const smile = clamp(intent.smile ?? 0);
-      const mouthOpen = clamp01(intent.mouthOpen ?? 0);
+      const authoredMouthOpen = clamp01(intent.mouthOpen ?? 0);
+      const joyOpen = Math.max(0, smile - 0.64) * (tuning.joyMouthOpen ?? 0);
+      const mouthOpen = clamp01(Math.max(authoredMouthOpen, joyOpen));
       const armRaise = clamp(intent.armRaise ?? 0);
       const armSpread = clamp(intent.armSpread ?? 0);
       const handToFace = clamp(intent.handToFace ?? 0);
@@ -82,8 +85,7 @@ export function createMascotPerformanceAdapter(tuning: MascotAdapterTuning): Cha
       }
 
       if (tears > 0 && tuning.cryWithBothHands) {
-        // Crying is more readable when both paws close around the muzzle instead of
-        // leaving one arm hanging by the body. This stays opt-in per anatomy.
+        // Crying reads more clearly with both paws closing around the muzzle.
         leftHandX += Math.abs(tuning.thinkHandX) * tears * w;
         leftHandY += tuning.thinkHandY * 0.74 * tears * w;
       }
@@ -92,9 +94,11 @@ export function createMascotPerformanceAdapter(tuning: MascotAdapterTuning): Cha
         ? Math.sin(context.phase * Math.PI * 4) * headNod * tuning.headLift * 0.55
         : 0;
 
-      // Mouth readability rule: when an open-expression mouth is active, the
-      // closed smile/frown shapes fade aggressively instead of ghosting on top.
+      // Closed-mouth drawings should disappear whenever an open performance mouth
+      // is requested. Open-mouth art is an authored solid pose, so treat its channel
+      // as visibility rather than translucent intensity (the old gray-mouth bug).
       const closedMouthWeight = (1 - mouthOpen) * (1 - mouthOpen);
+      const openMouthVisibility = mouthOpen < 0.08 ? 0 : clamp01((mouthOpen - 0.04) * 3.5);
 
       return {
         bodyY: -tuning.bodyLift * bodyLift * w,
@@ -108,10 +112,9 @@ export function createMascotPerformanceAdapter(tuning: MascotAdapterTuning): Cha
         eyeScale: tuning.eyeScale * eyeOpen * w,
         browY: -tuning.browLift * browLift * w,
         smileOpacity: Math.max(0, smile) * closedMouthWeight * w,
-        // Negative values intentionally subtract from the authored neutral mouth.
-        neutralOpacity: (-mouthOpen * 1.15 + Math.max(0, -smile) * 0.04) * w,
+        neutralOpacity: (-mouthOpen * 1.35 + Math.max(0, -smile) * 0.04) * w,
         frownOpacity: Math.max(0, -smile) * closedMouthWeight * w,
-        expressionMouthOpacity: Math.min(1, mouthOpen * 1.22) * w,
+        expressionMouthOpacity: openMouthVisibility * w,
         tearOpacity: tears * w,
         sparkleOpacity: sparkle * w,
         blushOpacity: blush * w,
