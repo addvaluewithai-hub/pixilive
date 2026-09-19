@@ -27,6 +27,15 @@ for (const propertyId of [820, 821, 822, 823]) {
 const tailIdle = '<KeyedObject objectId="0:430"><KeyedProperty propertyKey="15"><KeyFrameDouble value="-0.18" interpolationType="linear"/><KeyFrameDouble value="-0.145" interpolationType="linear" frame="120"/><KeyFrameDouble value="-0.18" interpolationType="linear" frame="240"/></KeyedProperty></KeyedObject>';
 mustReplace(tailIdle, '', 'tail idle rotation conflict');
 
+// The speech cavity used to leave a dark hairline under the authored resting mouth.
+// Drive its opacity from speech energy as well as its scale from mouthOpen so it is
+// completely absent when Foxy is not speaking.
+mustReplace(
+  'scaleY="0.04" name="SpeechMouth" id="0:371"><DataBindContext sourcePathIds="0:800-0:805" propertyKey="17"/>',
+  'scaleY="0.04" name="SpeechMouth" id="0:371"><DataBindContext sourcePathIds="0:800-0:808" propertyKey="18"/><DataBindContext sourcePathIds="0:800-0:805" propertyKey="17"/>',
+  'speech mouth activity opacity',
+);
+
 // Feature-animation readability: brows need to read at thumbnail size. Preserve
 // their curves but make them dark and slightly heavier.
 for (const name of ['LeftBrow', 'RightBrow']) {
