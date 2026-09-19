@@ -1,4 +1,5 @@
 import type { Container, Ticker } from 'pixi.js';
+import type { CharacterAuthoringContract } from './characterContract';
 import type { CharacterPerformanceAdapter } from './performanceAdapter';
 import type { Emotion, MouthPose } from './types';
 
@@ -49,5 +50,6 @@ export interface CharacterDefinition {
   ambient: CharacterAmbient;
   rive?: RiveCharacterSource;
   performanceAdapter?: CharacterPerformanceAdapter;
+  authoring?: CharacterAuthoringContract;
   create?: () => CharacterRuntime;
 }
