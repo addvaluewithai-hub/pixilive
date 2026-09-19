@@ -4,7 +4,6 @@ import type {
   CharacterExpressionName,
   CharacterPace,
 } from './types';
-import type { PlaybackClockSnapshot } from '../audio/PcmPlaybackQueue';
 
 export type ScriptPerformanceCue =
   | { kind: 'expression'; value: CharacterExpressionName; intensity: number; energy: number }
@@ -20,16 +19,6 @@ export interface ScriptPerformanceBeat {
 export interface ParsedPerformanceScript {
   source: string;
   beats: ScriptPerformanceBeat[];
-  spokenText: string;
-}
-
-interface DirectorCallbacks {
-  onExpression: (cue: CharacterExpressionCue) => void;
-  onAction: (action: CharacterActionName) => void;
-  onPace: (pace: CharacterPace) => void;
-  onCue: (label: string) => void;
-  getPlaybackClock: () => PlaybackClockSnapshot | null;
-  scheduleAtPlaybackTime: (audioTimeSeconds: number, callback: () => void) => void;
 }
 
 const EXPRESSIONS = new Set<CharacterExpressionName>([
@@ -59,27 +48,17 @@ const EXPRESSION_DEFAULTS: Record<CharacterExpressionName, Pick<CharacterExpress
   excited: { intensity: 1, energy: 0.92 },
 };
 
-const WORDS_PER_SECOND: Record<CharacterExpressionName, number> = {
-  happy: 3.25,
-  sad: 2.55,
-  crying: 2.2,
-  surprised: 3.1,
-  thinking: 2.6,
-  angry: 2.85,
-  sleepy: 2.35,
-  laughing: 3.0,
-  excited: 3.55,
+const VOICE_DIRECTIONS: Record<CharacterExpressionName, string> = {
+  happy: 'Warm, smiling and buoyant. Keep the rhythm easy and friendly.',
+  sad: 'Gentle, quieter and slightly slower, with sincere soft pauses.',
+  crying: 'Soft shaky voice with a light tremble and tiny broken pauses, as if holding back tears. Stay clear and comforting for a child.',
+  surprised: 'Bright startled onset, slightly higher pitch, then continue naturally.',
+  thinking: 'Reflective and curious, with small thoughtful pauses.',
+  angry: 'Controlled firmness and tension without shouting or sounding frightening.',
+  sleepy: 'Soft, slow, drowsy and relaxed.',
+  laughing: 'Genuinely amused with a smiling voice and a light natural chuckle if it fits.',
+  excited: 'Bright, energetic and quicker while staying clear.',
 };
-
-export const normalizePerformanceText = (value: string) =>
-  value
-    .toLowerCase()
-    .replace(/[\u064b-\u065f\u0670\u0640]/g, '')
-    .replace(/[أإآ]/g, 'ا')
-    .replace(/ى/g, 'ي')
-    .replace(/[“”"'`،؛؟!.,:;(){}<>…\-_/\\]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
 
 const parseTag = (rawTag: string): ScriptPerformanceCue => {
   const tag = rawTag.trim().toLowerCase();
@@ -128,131 +107,12 @@ export function parsePerformanceScript(source: string): ParsedPerformanceScript 
     throw new Error('Add at least one performance tag such as [happy] or [surprised].');
   }
 
-  const finalized = beats.map((beat, index): ScriptPerformanceBeat => ({ ...beat, index }));
   return {
     source,
-    beats: finalized,
-    spokenText: finalized.map((beat) => beat.text).join(' '),
+    beats: beats.map((beat, index) => ({ ...beat, index })),
   };
 }
 
-export function buildScriptPerformancePrompt(script: ParsedPerformanceScript) {
-  return `[SCRIPTED PERFORMANCE]\nRead the tagged Arabic story below as ONE continuous spoken turn.\n\nRULES:\n- Bracketed tags are silent acting directions. NEVER pronounce, describe, translate, or spell the tags.\n- Do NOT call character stage tools while reading this scripted performance; the host application executes the visual tags itself.\n- Read every non-tagged story sentence in the exact written order. Do not paraphrase, skip, add, summarize, or ask a question until the supplied script ends.\n- Change your VOICE ACTING immediately when each expression tag appears and keep that vocal attitude until the next expression tag.\n- Make a tiny natural beat between tagged sections so each emotional change has room to read, but keep the whole story as one continuous turn.\n- [happy] warm and smiling. [sad] quieter and slower. [crying] soft shaky voice with tiny broken pauses, still clear and comforting. [surprised] bright startled onset. [thinking] reflective with small pauses. [angry] controlled firmness without shouting. [sleepy] soft and drowsy. [laughing] genuinely amused with a light natural chuckle. [excited] bright, energetic and quicker.\n- Action tags such as [wave], [blink], [jump] and pace tags such as [pace:walk] are silent visual directions only. Do not say them.\n- Keep speaking continuously through the expression changes.\n\nSCRIPT:\n${script.source.trim()}\n\n[END SCRIPTED PERFORMANCE]`;
-}
-
-const expressionCueInBeat = (beat: ScriptPerformanceBeat) =>
-  beat.cues.find((cue): cue is Extract<ScriptPerformanceCue, { kind: 'expression' }> => cue.kind === 'expression');
-
-const estimateBeatDurationSeconds = (text: string, expression: CharacterExpressionName) => {
-  const normalized = normalizePerformanceText(text);
-  const words = normalized ? normalized.split(' ').filter(Boolean).length : 1;
-  const commaPause = (text.match(/[،,:;]/g) ?? []).length * 0.11;
-  const sentencePause = (text.match(/[.!?؟]/g) ?? []).length * 0.24;
-  const reflectivePause = (text.match(/\.\.\.|…/g) ?? []).length * 0.32;
-  const speechSeconds = words / WORDS_PER_SECOND[expression];
-  return Math.max(0.85, speechSeconds + commaPause + sentencePause + reflectivePause);
-};
-
-export class ScriptPerformanceDirector {
-  private script: ParsedPerformanceScript | null = null;
-  private running = false;
-  private timelineScheduled = false;
-  private playbackPollTimer: number | null = null;
-
-  constructor(private readonly callbacks: DirectorCallbacks) {}
-
-  get active() {
-    return this.running;
-  }
-
-  start(script: ParsedPerformanceScript) {
-    this.stopPlaybackPoll();
-    this.script = script;
-    this.running = true;
-    this.timelineScheduled = false;
-
-    // Pre-pose before speech begins so the first line never starts on the stale face.
-    this.fireBeat(0);
-    this.waitForPlaybackStart();
-  }
-
-  onPlaybackStart(clock: PlaybackClockSnapshot) {
-    this.scheduleTimeline(clock);
-  }
-
-  // Captions/viseme guidance may still consume the transcript elsewhere, but visual
-  // choreography never depends on transcript text or transcript event ordering.
-  pushTranscript(_chunk: string) {}
-
-  stop() {
-    this.stopPlaybackPoll();
-    this.running = false;
-    this.script = null;
-    this.timelineScheduled = false;
-  }
-
-  private waitForPlaybackStart() {
-    if (!this.running || this.timelineScheduled) return;
-    const clock = this.callbacks.getPlaybackClock();
-    if (clock && clock.turnStartSeconds > 0 && clock.bufferedEndSeconds > clock.turnStartSeconds) {
-      this.scheduleTimeline(clock);
-      return;
-    }
-
-    this.playbackPollTimer = window.setTimeout(() => {
-      this.playbackPollTimer = null;
-      this.waitForPlaybackStart();
-    }, 25);
-  }
-
-  private stopPlaybackPoll() {
-    if (this.playbackPollTimer !== null) {
-      window.clearTimeout(this.playbackPollTimer);
-      this.playbackPollTimer = null;
-    }
-  }
-
-  private scheduleTimeline(clock: PlaybackClockSnapshot) {
-    if (!this.running || !this.script || this.timelineScheduled) return;
-    this.stopPlaybackPoll();
-    this.timelineScheduled = true;
-
-    let currentExpression: CharacterExpressionName = 'happy';
-    let elapsedSeconds = 0;
-    const expectedScript = this.script;
-
-    for (let index = 0; index < expectedScript.beats.length; index += 1) {
-      const beat = expectedScript.beats[index];
-      const expressionCue = expressionCueInBeat(beat);
-      if (expressionCue) currentExpression = expressionCue.value;
-
-      if (index > 0) {
-        const cueTime = clock.turnStartSeconds + Math.max(0.12, elapsedSeconds - 0.08);
-        this.callbacks.scheduleAtPlaybackTime(cueTime, () => {
-          if (!this.running || this.script !== expectedScript) return;
-          this.fireBeat(index);
-        });
-      }
-
-      elapsedSeconds += estimateBeatDurationSeconds(beat.text, currentExpression);
-    }
-  }
-
-  private fireBeat(index: number) {
-    const beat = this.script?.beats[index];
-    if (!beat) return;
-
-    for (const cue of beat.cues) {
-      if (cue.kind === 'expression') {
-        this.callbacks.onExpression({ expression: cue.value, intensity: cue.intensity, energy: cue.energy });
-        this.callbacks.onCue(cue.value);
-      } else if (cue.kind === 'action') {
-        this.callbacks.onAction(cue.value);
-        this.callbacks.onCue(`↗${cue.value}`);
-      } else {
-        this.callbacks.onPace(cue.value);
-        this.callbacks.onCue(`pace:${cue.value}`);
-      }
-    }
-  }
+export function buildScriptBeatPrompt(text: string, expression: CharacterExpressionName) {
+  return `[STORY PERFORMANCE BEAT]\nSpeak ONLY the Arabic story line below. Do not add, explain, summarize, greet, or ask a question. This line continues directly from the previous story line.\n\nVOICE ACTING: ${VOICE_DIRECTIONS[expression]}\n\nLINE:\n${text}\n\nRead that line now and stop.`;
 }
