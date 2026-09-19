@@ -33,6 +33,13 @@ export const characterRegistry = [
       alphaMin: 0,
       alphaMax: 0,
     },
+    authoring: {
+      archetype: 'humanoid',
+      capabilities: ['face', 'arms', 'legs', 'squashStretch', 'tears', 'sparkle', 'glow', 'blush'],
+      layeredArtwork: true,
+      suppliedParts: ['body', 'head', 'eyes', 'brows', 'mouth', 'leftArm', 'rightArm', 'leftLeg', 'rightLeg', 'tears', 'sparkles'],
+      anatomyNotes: 'Two-arm humanoid baseline used to prove the universal behavior adapter. Future characters may omit any limb capability.',
+    },
     rive: {
       src: kiroAssetUrl,
       artboard: 'Kiro',
