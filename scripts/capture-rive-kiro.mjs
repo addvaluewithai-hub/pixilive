@@ -19,24 +19,27 @@ try {
   const canvas = page.locator('.rive-character-stage canvas');
   await canvas.screenshot({ path: path.join(outputDir, 'kiro-calm.png') });
 
-  await page.locator('.emotion-grid button', { hasText: 'happy' }).click();
-  await page.waitForTimeout(250);
+  await page.locator('.mood-pack-grid button', { hasText: 'Happy' }).click();
+  await page.waitForTimeout(350);
   await canvas.screenshot({ path: path.join(outputDir, 'kiro-happy.png') });
 
-  await page.locator('.emotion-grid button', { hasText: 'curious' }).click();
-  await page.mouse.move(860, 280);
-  await page.waitForTimeout(250);
-  await canvas.screenshot({ path: path.join(outputDir, 'kiro-curious-gaze.png') });
+  await page.locator('.mood-pack-grid button', { hasText: 'Thinking' }).click();
+  await page.waitForTimeout(350);
+  await canvas.screenshot({ path: path.join(outputDir, 'kiro-thinking.png') });
+
+  await page.locator('.action-pack-grid button', { hasText: 'Celebrate' }).click();
+  await page.waitForTimeout(430);
+  await canvas.screenshot({ path: path.join(outputDir, 'kiro-celebrate.png') });
+
+  await page.locator('.action-pack-grid button', { hasText: 'Cry' }).click();
+  await page.waitForTimeout(600);
+  await canvas.screenshot({ path: path.join(outputDir, 'kiro-cry.png') });
 
   await page.locator('.motion-lab-toggle').click();
-  const bodyAiButton = page.getByRole('button', { name: /Body AI (on|off)/i });
-  await bodyAiButton.waitFor({ state: 'visible' });
-  const motionButton = page.getByRole('button', { name: /Motion sweep/i });
-  await motionButton.click();
-  await page.waitForTimeout(700);
-  await canvas.screenshot({ path: path.join(outputDir, 'kiro-motion-sweep.png') });
+  const speechMotionButton = page.getByRole('button', { name: /Speech motion (on|off)/i });
+  await speechMotionButton.waitFor({ state: 'visible' });
 
-  console.log('Captured clean Kiro calm, happy, curious gaze, and motion sweep states; Body AI control is present.');
+  console.log('Captured calm, happy, thinking, celebrate and cry behavior-pack states; universal performance engine control is present.');
 } finally {
   await browser.close();
 }
