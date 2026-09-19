@@ -1,0 +1,30 @@
+import { createMascotPerformanceAdapter } from './mascotPerformanceAdapter';
+
+export const foxyPerformanceAdapter = createMascotPerformanceAdapter({
+  id: 'foxy-v1',
+  base: {
+    bodyY: 0,
+    bodyLean: 0,
+    headY: 0,
+    headTilt: 0,
+    leftHandX: -142,
+    leftHandY: 70,
+    rightHandX: 142,
+    rightHandY: 70,
+    eyeScale: 0.98,
+    browY: -52,
+    smileOpacity: 0.08,
+    neutralOpacity: 1,
+  },
+  armX: 46,
+  armY: 62,
+  bodyLift: 16,
+  bodyLean: 0.065,
+  headLift: 13,
+  headTilt: 0.19,
+  eyeScale: 0.23,
+  browLift: 8,
+  thinkHandX: -46,
+  thinkHandY: -72,
+  motionCharacter: 'nimble',
+});
