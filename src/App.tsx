@@ -12,7 +12,12 @@ import { characterRegistry, DEFAULT_CHARACTER_ID, getCharacterDefinition } from 
 import type { Emotion, MouthPose } from './character/types';
 import { CharacterStage } from './components/CharacterStage';
 import { GeminiLiveClient } from './live/GeminiLiveClient';
-import type { LiveStatus } from './live/types';
+import type {
+  CharacterActionName,
+  CharacterExpressionName,
+  CharacterPace,
+  LiveStatus,
+} from './live/types';
 
 const restingMouth: MouthPose = { open: 0.045, width: 0.37, round: 0.08, energy: 0, viseme: 'REST' };
 
@@ -30,10 +35,12 @@ const moodEmotion: Record<MoodId, Emotion> = {
   sleepy: 'calm',
 };
 
+const STORY_DEMO_PROMPT = `ابدأ الآن تجربة حكاية تفاعلية لطفل بالعربية. اختر قصة خيالية لطيفة فيها بداية واضحة ومغامرة ومشكلة صغيرة ونهاية مطمئنة. احكِها على مقاطع قصيرة، واستخدم تعبيراتك وحركاتك كجزء طبيعي من الأداء: فرح، حزن، بكاء خفيف عند لحظة مؤثرة، مفاجأة، تفكير، غضب آمن وغير مخيف، نعاس، ضحك، وحماس. لا تذكر أسماء التعبيرات. غيّر صوتك وطريقة كلامك لتناسب التعبير الحالي، واستخدم التلويح أو الرمش أو القفز والمشي/الجري عندما تخدم المشهد. بعد كل نقطة مهمة اسأل الطفل سؤالًا بسيطًا وانتظر إجابته بدل أن تنهي القصة كلها مرة واحدة.`;
+
 export function App() {
   const [characterId, setCharacterId] = useState(DEFAULT_CHARACTER_ID);
-  const [emotion, setEmotion] = useState<Emotion>('calm');
-  const [mood, setMood] = useState<MoodId>('calm');
+  const [emotion, setEmotion] = useState<Emotion>('happy');
+  const [mood, setMood] = useState<MoodId>('happy');
   const [action, setAction] = useState<ActionCommand | null>(null);
   const [mouth, setMouth] = useState<MouthPose>(restingMouth);
   const [status, setStatus] = useState<LiveStatus>('idle');
@@ -41,6 +48,12 @@ export function App() {
   const [outputTranscript, setOutputTranscript] = useState('');
   const [error, setError] = useState('');
   const [text, setText] = useState('');
+  const [agentExpression, setAgentExpression] = useState<CharacterExpressionName | null>(null);
+  const [agentExpressionIntensity, setAgentExpressionIntensity] = useState(1);
+  const [agentExpressionEnergy, setAgentExpressionEnergy] = useState(0.5);
+  const [agentAction, setAgentAction] = useState<CharacterActionName | null>(null);
+  const [agentActionNonce, setAgentActionNonce] = useState(0);
+  const [agentPace, setAgentPace] = useState<CharacterPace>('idle');
   const microphone = useRef(new MicrophonePcmStream());
   const playback = useRef<PcmPlaybackQueue | null>(null);
   const live = useRef<GeminiLiveClient | null>(null);
@@ -63,6 +76,16 @@ export function App() {
         setOutputTranscript(transcript);
         playback.current?.pushTranscript(transcript);
       },
+      onCharacterExpression: (cue) => {
+        setAgentExpression(cue.expression);
+        setAgentExpressionIntensity(cue.intensity);
+        setAgentExpressionEnergy(cue.energy);
+      },
+      onCharacterAction: (nextAction) => {
+        setAgentAction(nextAction);
+        setAgentActionNonce((nonce) => nonce + 1);
+      },
+      onCharacterPace: setAgentPace,
       onInterrupted: () => playback.current?.interrupt(),
       onError: setError,
     });
@@ -84,20 +107,31 @@ export function App() {
     };
   }, []);
 
+  const resetAgentPerformance = () => {
+    setAgentExpression(null);
+    setAgentExpressionIntensity(1);
+    setAgentExpressionEnergy(0.5);
+    setAgentAction(null);
+    setAgentActionNonce(0);
+    setAgentPace('idle');
+  };
+
   const selectCharacter = (event: ChangeEvent<HTMLSelectElement>) => {
     if (sessionLocked) return;
     const next = getCharacterDefinition(event.target.value);
     setCharacterId(next.id);
-    setMood('calm');
+    setMood(next.defaultEmotion === 'happy' ? 'happy' : 'calm');
     setEmotion(next.defaultEmotion);
     setAction(null);
     setMouth(restingMouth);
+    resetAgentPerformance();
     setInputTranscript('');
     setOutputTranscript('');
     setError('');
   };
 
   const selectMood = (nextMood: MoodId) => {
+    setAgentExpression(null);
     setMood(nextMood);
     setEmotion(moodEmotion[nextMood]);
   };
@@ -124,6 +158,7 @@ export function App() {
     live.current?.close();
     await microphone.current.stop();
     playback.current?.interrupt();
+    setAgentPace('idle');
     setStatus('idle');
   };
 
@@ -133,6 +168,13 @@ export function App() {
     live.current?.sendText(text);
     setInputTranscript(text.trim());
     setText('');
+  };
+
+  const startStoryDemo = () => {
+    if (!connected) return;
+    resetAgentPerformance();
+    setInputTranscript('ابدأ تجربة الحكاية التفاعلية بكل التعبيرات والحركات.');
+    live.current?.sendText(STORY_DEMO_PROMPT);
   };
 
   return (
@@ -147,9 +189,9 @@ export function App() {
 
       <section className="hero">
         <div className="copy">
-          <span className="eyebrow"><i /> universal performance runtime</span>
+          <span className="eyebrow"><i /> live expressive character runtime</span>
           <h1>Meet {character.name}.<span>{character.tagline}</span></h1>
-          <p>{character.description} Universal behavior packs stay reusable across every character rig.</p>
+          <p>{character.description} The live agent can now direct the character's expression and movement while native audio is playing.</p>
           <div className="transcript" aria-live="polite">
             {inputTranscript && <p><b>You</b>{inputTranscript}</p>}
             {outputTranscript && <p><b>{character.name}</b>{outputTranscript}</p>}
@@ -165,6 +207,12 @@ export function App() {
             speechText={outputTranscript}
             mood={mood}
             action={action}
+            agentExpression={agentExpression}
+            agentExpressionIntensity={agentExpressionIntensity}
+            agentExpressionEnergy={agentExpressionEnergy}
+            agentAction={agentAction}
+            agentActionNonce={agentActionNonce}
+            agentPace={agentPace}
           />
         </div>
       </section>
@@ -182,14 +230,14 @@ export function App() {
           ))}
         </select>
         <p className="character-description">
-          Same behavior vocabulary, different character adapter.
+          Ember runs the client's supplied SVG/controller unchanged. PixiLive only wraps it with live-agent controls.
           {sessionLocked && <span> End the voice session to switch characters.</span>}
         </p>
 
         <label className="section-label">Mood packs</label>
         <div className="behavior-grid mood-pack-grid">
           {moodPacks.map((pack) => (
-            <button key={pack.id} className={mood === pack.id ? 'active' : ''} onClick={() => selectMood(pack.id)} title={pack.id}>
+            <button key={pack.id} className={mood === pack.id && !agentExpression ? 'active' : ''} onClick={() => selectMood(pack.id)} title={pack.id}>
               <span>{pack.emoji}</span>{pack.label}
             </button>
           ))}
@@ -223,8 +271,12 @@ export function App() {
           <button type="submit" disabled={!connected || !text.trim()}>Send</button>
         </form>
 
+        <button className="primary" type="button" disabled={!connected} onClick={startStoryDemo}>
+          Start expressive story test
+        </button>
+
         <div className="meter" aria-hidden="true"><span style={{ width: `${Math.round(mouth.energy * 100)}%` }} /></div>
-        <p className="hint">Packages express intent (celebrate, think, cry, agree…). Each character translates that intent through its own adapter and can ignore capabilities it does not have.</p>
+        <p className="hint">The agent can silently cue all nine Ember expressions, wave/blink/jump, idle/walk/run, and the live mouth bridge follows the outgoing audio visemes.</p>
         {error && <p className="error">{error}</p>}
       </aside>
     </main>
