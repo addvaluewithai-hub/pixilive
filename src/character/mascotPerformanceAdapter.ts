@@ -95,7 +95,9 @@ export function createMascotPerformanceAdapter(tuning: MascotAdapterTuning): Cha
         eyeScale: tuning.eyeScale * eyeOpen * w,
         browY: -tuning.browLift * browLift * w,
         smileOpacity: Math.max(0, smile) * w,
-        neutralOpacity: Math.max(0, -smile) * 0.12 * w,
+        // Open expression mouths must suppress the resting W-mouth. Negative values
+        // are intentional: the stage adds this channel to the authored base opacity.
+        neutralOpacity: (-mouthOpen * 0.95 + Math.max(0, -smile) * 0.06) * w,
         frownOpacity: Math.max(0, -smile) * w,
         expressionMouthOpacity: mouthOpen * w,
         tearOpacity: tears * w,
