@@ -4,6 +4,7 @@ import type {
   CharacterExpressionName,
   CharacterPace,
 } from './types';
+import type { PlaybackClockSnapshot } from '../audio/PcmPlaybackQueue';
 
 export type ScriptPerformanceCue =
   | { kind: 'expression'; value: CharacterExpressionName; intensity: number; energy: number }
@@ -28,6 +29,8 @@ interface DirectorCallbacks {
   onAction: (action: CharacterActionName) => void;
   onPace: (pace: CharacterPace) => void;
   onCue: (label: string) => void;
+  getPlaybackClock: () => PlaybackClockSnapshot | null;
+  scheduleAtPlaybackTime: (audioTimeSeconds: number, callback: () => void) => void;
 }
 
 const EXPRESSIONS = new Set<CharacterExpressionName>([
@@ -69,7 +72,14 @@ export const normalizePerformanceText = (value: string) =>
 
 const tailAnchor = (text: string) => {
   const words = normalizePerformanceText(text).split(' ').filter(Boolean);
-  return words.slice(-Math.min(5, words.length)).join(' ');
+  return words.slice(-Math.min(3, words.length)).join(' ');
+};
+
+const speechWeight = (text: string) => {
+  const normalized = normalizePerformanceText(text);
+  const wordCount = normalized ? normalized.split(' ').length : 1;
+  const punctuationPauses = (text.match(/[.!?؟…]/g) ?? []).length * 1.5;
+  return Math.max(1, wordCount + punctuationPauses);
 };
 
 const parseTag = (rawTag: string): ScriptPerformanceCue => {
@@ -141,6 +151,7 @@ export class ScriptPerformanceDirector {
   private nextBeatIndex = 0;
   private transcriptBuffer = '';
   private running = false;
+  private lastMappedAudioTime = 0;
 
   constructor(private readonly callbacks: DirectorCallbacks) {}
 
@@ -153,21 +164,25 @@ export class ScriptPerformanceDirector {
     this.nextBeatIndex = 0;
     this.transcriptBuffer = '';
     this.running = true;
+    this.lastMappedAudioTime = 0;
     this.fireBeat(0);
     this.nextBeatIndex = 1;
   }
 
   pushTranscript(chunk: string) {
     if (!this.running || !this.script || !chunk.trim()) return;
-    this.transcriptBuffer = `${this.transcriptBuffer} ${chunk}`.trim();
+    this.mergeTranscript(chunk);
     const normalized = normalizePerformanceText(this.transcriptBuffer);
+    const crossedBeatIndexes: number[] = [];
 
     while (this.nextBeatIndex < this.script.beats.length) {
       const beat = this.script.beats[this.nextBeatIndex];
       if (!beat.triggerAnchor || !normalized.includes(beat.triggerAnchor)) break;
-      this.fireBeat(this.nextBeatIndex);
+      crossedBeatIndexes.push(this.nextBeatIndex);
       this.nextBeatIndex += 1;
     }
+
+    if (crossedBeatIndexes.length) this.scheduleCrossedBeats(crossedBeatIndexes);
   }
 
   stop() {
@@ -175,6 +190,65 @@ export class ScriptPerformanceDirector {
     this.script = null;
     this.nextBeatIndex = 0;
     this.transcriptBuffer = '';
+    this.lastMappedAudioTime = 0;
+  }
+
+  private mergeTranscript(chunk: string) {
+    const incoming = chunk.trim();
+    if (!incoming) return;
+
+    if (!this.transcriptBuffer) {
+      this.transcriptBuffer = incoming;
+      return;
+    }
+
+    if (incoming.startsWith(this.transcriptBuffer)) {
+      this.transcriptBuffer = incoming;
+      return;
+    }
+
+    if (this.transcriptBuffer.endsWith(incoming)) return;
+
+    let overlap = 0;
+    const max = Math.min(this.transcriptBuffer.length, incoming.length);
+    for (let length = max; length > 0; length -= 1) {
+      if (this.transcriptBuffer.slice(-length) === incoming.slice(0, length)) {
+        overlap = length;
+        break;
+      }
+    }
+    this.transcriptBuffer += incoming.slice(overlap);
+  }
+
+  private scheduleCrossedBeats(indexes: number[]) {
+    if (!this.script || !indexes.length) return;
+
+    const clock = this.callbacks.getPlaybackClock();
+    if (!clock) {
+      for (const index of indexes) this.fireBeat(index);
+      return;
+    }
+
+    const now = clock.nowSeconds;
+    const start = Math.max(now + 0.025, this.lastMappedAudioTime || now + 0.025);
+    const minimumSpan = Math.max(0.28, indexes.length * 0.22);
+    const end = Math.max(clock.bufferedEndSeconds, start + minimumSpan);
+    const weights = indexes.map((index) => speechWeight(this.script!.beats[Math.max(0, index - 1)].text));
+    const totalWeight = Math.max(1, weights.reduce((sum, weight) => sum + weight, 0));
+    let cumulativeWeight = 0;
+
+    indexes.forEach((index, position) => {
+      cumulativeWeight += weights[position];
+      const rawTarget = start + ((end - start) * cumulativeWeight) / totalWeight;
+      const target = Math.max(now + 0.03 + position * 0.07, rawTarget);
+      const expectedScript = this.script;
+      this.callbacks.scheduleAtPlaybackTime(target, () => {
+        if (!this.running || this.script !== expectedScript) return;
+        this.fireBeat(index);
+      });
+    });
+
+    this.lastMappedAudioTime = end;
   }
 
   private fireBeat(index: number) {
