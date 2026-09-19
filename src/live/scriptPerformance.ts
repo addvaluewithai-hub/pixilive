@@ -28,6 +28,7 @@ interface DirectorCallbacks {
   onAction: (action: CharacterActionName) => void;
   onPace: (pace: CharacterPace) => void;
   onCue: (label: string) => void;
+  getPlaybackClock: () => PlaybackClockSnapshot | null;
   scheduleAtPlaybackTime: (audioTimeSeconds: number, callback: () => void) => void;
 }
 
@@ -173,6 +174,24 @@ export class ScriptPerformanceDirector {
   }
 
   onPlaybackStart(clock: PlaybackClockSnapshot) {
+    this.scheduleTimeline(clock);
+  }
+
+  // Transcription is only a wake-up signal. Its text never drives cue timing because
+  // Gemini does not guarantee exact ordering between output transcription and audio.
+  pushTranscript(_chunk: string) {
+    if (!this.running || this.timelineScheduled) return;
+    const clock = this.callbacks.getPlaybackClock();
+    if (clock && clock.turnStartSeconds > 0) this.scheduleTimeline(clock);
+  }
+
+  stop() {
+    this.running = false;
+    this.script = null;
+    this.timelineScheduled = false;
+  }
+
+  private scheduleTimeline(clock: PlaybackClockSnapshot) {
     if (!this.running || !this.script || this.timelineScheduled) return;
     this.timelineScheduled = true;
 
@@ -195,17 +214,6 @@ export class ScriptPerformanceDirector {
 
       elapsedSeconds += estimateBeatDurationSeconds(beat.text, currentExpression);
     }
-  }
-
-  // Output transcription is still useful for captions and viseme hints, but it is
-  // intentionally NOT used as the choreography clock. Gemini documents that output
-  // transcriptions have no guaranteed exact ordering relative to modelTurn audio.
-  pushTranscript(_chunk: string) {}
-
-  stop() {
-    this.running = false;
-    this.script = null;
-    this.timelineScheduled = false;
   }
 
   private fireBeat(index: number) {
