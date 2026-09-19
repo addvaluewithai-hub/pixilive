@@ -16,7 +16,11 @@ interface CharacterStageProps {
 }
 
 export function CharacterStage(props: CharacterStageProps) {
-  if (props.character.rive) return <RiveCharacterStage {...props} />;
+  if (props.character.rive) {
+    // Rive keeps internal file/view-model state. A character switch must be a true
+    // remount, otherwise the new adapter can accidentally drive the previous .riv.
+    return <RiveCharacterStage key={props.character.id} {...props} />;
+  }
   return <PixiCharacterStage {...props} />;
 }
 
@@ -130,8 +134,6 @@ function PixiCharacterStage({ character, emotion, mouth, speaking, action }: Cha
     else runtimeRef.current?.settleMouth();
   }, [character, mouth, speaking]);
 
-  // Legacy Pixi characters do not yet implement the universal adapter contract.
-  // They still receive one-shot actions as a generic reaction instead of breaking.
   useEffect(() => {
     if (action) runtimeRef.current?.react();
   }, [action?.nonce]);
