@@ -7,11 +7,13 @@ on:
     paths:
       - 'rive/**'
       - 'src/**'
+      - 'functions/**'
       - 'scripts/generate-rive-mascots.mjs'
       - 'scripts/generate-foxy-v4.mjs'
       - 'scripts/normalize-foxy-v4-ids.mjs'
       - 'scripts/capture-rive-kiro.mjs'
       - 'scripts/capture-foxy-quality.mjs'
+      - 'scripts/check-gemini-live-38.mjs'
       - 'package.json'
       - '.github/workflows/rive-kiro.yml'
   workflow_dispatch:
@@ -35,6 +37,9 @@ jobs:
 
       - name: Install app dependencies
         run: npm install --no-audit --no-fund
+
+      - name: Verify Gemini 3.8 async performance contract
+        run: node scripts/check-gemini-live-38.mjs
 
       - name: Generate code-first mascot RML
         run: |
