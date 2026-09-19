@@ -18,11 +18,9 @@ import {
   type AgentGesture,
 } from '../character/agentMotion';
 import {
-  applyKiroPattern,
-  kiroPerformanceAdapter,
-  zeroKiroPerformancePose,
-  type KiroPerformancePose,
-} from '../character/kiroPerformanceAdapter';
+  zeroPerformancePose,
+  type StandardPerformancePose,
+} from '../character/performanceAdapter';
 import type { CharacterDefinition } from '../character/runtime';
 import type { Emotion, MouthPose } from '../character/types';
 
@@ -58,7 +56,7 @@ type RigState = {
   neutralOpacity: number;
 };
 
-type AutoPose = KiroPerformancePose;
+type AutoPose = StandardPerformancePose;
 
 const defaultRig: RigState = {
   bodyX: 0,
@@ -94,8 +92,8 @@ const smoothToward = (current: number, target: number, response: number, dt: num
   return current + (target - current) * alpha;
 };
 
-const addPose = (...poses: KiroPerformancePose[]): KiroPerformancePose =>
-  poses.reduce<KiroPerformancePose>(
+const addPose = (...poses: StandardPerformancePose[]): StandardPerformancePose =>
+  poses.reduce<StandardPerformancePose>(
     (sum, pose) => ({
       bodyY: sum.bodyY + pose.bodyY,
       bodyLean: sum.bodyLean + pose.bodyLean,
@@ -110,7 +108,7 @@ const addPose = (...poses: KiroPerformancePose[]): KiroPerformancePose =>
       smileOpacity: sum.smileOpacity + pose.smileOpacity,
       neutralOpacity: sum.neutralOpacity + pose.neutralOpacity,
     }),
-    { ...zeroKiroPerformancePose },
+    { ...zeroPerformancePose },
   );
 
 export function RiveCharacterStage({
@@ -123,7 +121,9 @@ export function RiveCharacterStage({
   action,
 }: RiveCharacterStageProps) {
   const source = character.rive;
+  const performanceAdapter = character.performanceAdapter;
   if (!source) throw new Error(`${character.name} is missing its Rive source configuration.`);
+  if (!performanceAdapter) throw new Error(`${character.name} is missing its performance adapter.`);
 
   const { rive, RiveComponent } = useRive({
     src: source.src,
@@ -143,7 +143,7 @@ export function RiveCharacterStage({
   const [activeAction, setActiveAction] = useState<string>('none');
 
   const rigRef = useRef<RigState>(defaultRig);
-  const autoPoseRef = useRef<AutoPose>({ ...zeroKiroPerformancePose });
+  const autoPoseRef = useRef<AutoPose>({ ...zeroPerformancePose });
   const agentMotionStateRef = useRef(createAgentMotionState());
   const gestureRef = useRef<AgentGesture>('conversational');
   const speechRef = useRef({ speaking, energy: mouth.energy, emotion, text: speechText, strength: gestureStrength });
@@ -151,6 +151,7 @@ export function RiveCharacterStage({
   const actionRef = useRef<ActionCommand | null>(action);
   const actionStartedAt = useRef(-10_000);
   const lastActionNonce = useRef(-1);
+  const activeActionRef = useRef('none');
   const reactionStartedAt = useRef(-10_000);
 
   rigRef.current = rig;
@@ -223,6 +224,7 @@ export function RiveCharacterStage({
     if (action && action.nonce !== lastActionNonce.current) {
       lastActionNonce.current = action.nonce;
       actionStartedAt.current = performance.now();
+      activeActionRef.current = action.id;
       setActiveAction(action.id);
     }
   }, [action]);
@@ -231,7 +233,7 @@ export function RiveCharacterStage({
     if (!viewModelInstance) return;
 
     agentMotionStateRef.current = createAgentMotionState();
-    autoPoseRef.current = { ...zeroKiroPerformancePose };
+    autoPoseRef.current = { ...zeroPerformancePose };
     let previousTime = performance.now();
     let frame = 0;
 
@@ -241,7 +243,7 @@ export function RiveCharacterStage({
       const speech = speechRef.current;
       const base = rigRef.current;
 
-      let speechPose = { ...zeroKiroPerformancePose };
+      let speechPose = { ...zeroPerformancePose };
       if (agentMotionEnabled) {
         const target = stepAgentMotion(
           {
@@ -256,7 +258,7 @@ export function RiveCharacterStage({
           agentMotionStateRef.current,
         );
         speechPose = {
-          ...zeroKiroPerformancePose,
+          ...zeroPerformancePose,
           bodyY: target.bodyY,
           bodyLean: target.bodyLean,
           headY: target.headY,
@@ -275,9 +277,9 @@ export function RiveCharacterStage({
       }
 
       const moodPack = getMoodPack(moodRef.current);
-      const moodPose = kiroPerformanceAdapter.sample(moodPack.intent, { weight: 1, phase: 0 });
+      const moodPose = performanceAdapter.sample(moodPack.intent, { weight: 1, phase: 0 });
 
-      let actionPose = { ...zeroKiroPerformancePose };
+      let actionPose = { ...zeroPerformancePose };
       const currentAction = actionRef.current;
       if (currentAction) {
         const pack = getActionPack(currentAction.id);
@@ -285,12 +287,12 @@ export function RiveCharacterStage({
         const duration = pack.durationMs ?? 1000;
         const envelope = actionEnvelope(pack.pattern, elapsed, duration);
         if (envelope.weight > 0) {
-          actionPose = applyKiroPattern(
-            kiroPerformanceAdapter.sample(pack.intent, envelope),
-            pack.pattern,
-            envelope.phase,
-          );
-        } else if (activeAction !== 'none') {
+          const sampled = performanceAdapter.sample(pack.intent, envelope);
+          actionPose = performanceAdapter.applyPattern
+            ? performanceAdapter.applyPattern(sampled, pack.pattern, envelope.phase)
+            : sampled;
+        } else if (activeActionRef.current !== 'none') {
+          activeActionRef.current = 'none';
           setActiveAction('none');
         }
       }
@@ -298,8 +300,8 @@ export function RiveCharacterStage({
       const reactionAge = now - reactionStartedAt.current;
       const reactionProgress = Math.max(0, Math.min(1, reactionAge / 260));
       const reactionPulse = reactionAge >= 0 && reactionProgress < 1 ? Math.sin(Math.PI * reactionProgress) : 0;
-      const reactionPose: KiroPerformancePose = {
-        ...zeroKiroPerformancePose,
+      const reactionPose: StandardPerformancePose = {
+        ...zeroPerformancePose,
         bodyY: -5 * reactionPulse,
         headY: -3 * reactionPulse,
         headTilt: 0.045 * reactionPulse,
@@ -307,8 +309,8 @@ export function RiveCharacterStage({
 
       const targetPose = addPose(moodPose, actionPose, speechPose, reactionPose);
       const pose = autoPoseRef.current;
-      const bodyResponse = activeAction !== 'none' ? 10 : speech.speaking ? 8 : 5;
-      const handResponse = activeAction !== 'none' ? 9 : speech.speaking ? 7 : 5;
+      const bodyResponse = activeActionRef.current !== 'none' ? 10 : speech.speaking ? 8 : 5;
+      const handResponse = activeActionRef.current !== 'none' ? 9 : speech.speaking ? 7 : 5;
 
       pose.bodyY = smoothToward(pose.bodyY, targetPose.bodyY, bodyResponse, dt);
       pose.bodyLean = smoothToward(pose.bodyLean, targetPose.bodyLean, bodyResponse, dt);
@@ -343,7 +345,7 @@ export function RiveCharacterStage({
     return () => cancelAnimationFrame(frame);
     // Live values are consumed through refs to avoid restarting the RAF on every viseme/transcript update.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [viewModelInstance, agentMotionEnabled]);
+  }, [viewModelInstance, agentMotionEnabled, performanceAdapter]);
 
   useEffect(() => {
     const inferred = inferAgentGesture(speechText, emotion);
@@ -414,7 +416,7 @@ export function RiveCharacterStage({
 
             <p className="motion-lab-note">
               {bindingsReady
-                ? `Universal packs describe intent, not coordinates. Kiro's adapter translates that intent to this rig. Current mood: ${mood}; speech gesture: ${agentGesture}; one-shot action: ${activeAction}.`
+                ? `Universal packs describe intent, not coordinates. Adapter: ${performanceAdapter.id}. Current mood: ${mood}; speech gesture: ${agentGesture}; one-shot action: ${activeAction}.`
                 : 'Rive ViewModel is not bound yet.'}
             </p>
           </div>
