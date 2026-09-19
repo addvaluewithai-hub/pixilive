@@ -54,9 +54,18 @@ const addPose = (...poses: StandardPerformancePose[]): StandardPerformancePose =
       browY: sum.browY + pose.browY,
       smileOpacity: sum.smileOpacity + pose.smileOpacity,
       neutralOpacity: sum.neutralOpacity + pose.neutralOpacity,
+      frownOpacity: (sum.frownOpacity ?? 0) + (pose.frownOpacity ?? 0),
+      expressionMouthOpacity: (sum.expressionMouthOpacity ?? 0) + (pose.expressionMouthOpacity ?? 0),
+      tearOpacity: (sum.tearOpacity ?? 0) + (pose.tearOpacity ?? 0),
+      sparkleOpacity: (sum.sparkleOpacity ?? 0) + (pose.sparkleOpacity ?? 0),
+      blushOpacity: (sum.blushOpacity ?? 0) + (pose.blushOpacity ?? 0),
+      browTilt: (sum.browTilt ?? 0) + (pose.browTilt ?? 0),
+      tailTilt: (sum.tailTilt ?? 0) + (pose.tailTilt ?? 0),
     }),
     { ...zeroPerformancePose },
   );
+
+const clamp01 = (value: number) => Math.max(0, Math.min(1, value));
 
 export function RiveCharacterStage({
   character,
@@ -129,6 +138,15 @@ export function RiveCharacterStage({
   const { setValue: setBrowY } = useViewModelInstanceNumber('browY', viewModelInstance);
   const { setValue: setSmileOpacity } = useViewModelInstanceNumber('smileOpacity', viewModelInstance);
   const { setValue: setNeutralOpacity } = useViewModelInstanceNumber('neutralOpacity', viewModelInstance);
+
+  // New universal expression channels. Older rigs safely ignore these missing properties.
+  const { setValue: setFrownOpacity } = useViewModelInstanceNumber('frownOpacity', viewModelInstance);
+  const { setValue: setExpressionMouthOpacity } = useViewModelInstanceNumber('expressionMouthOpacity', viewModelInstance);
+  const { setValue: setTearOpacity } = useViewModelInstanceNumber('tearOpacity', viewModelInstance);
+  const { setValue: setSparkleOpacity } = useViewModelInstanceNumber('sparkleOpacity', viewModelInstance);
+  const { setValue: setBlushOpacity } = useViewModelInstanceNumber('blushOpacity', viewModelInstance);
+  const { setValue: setBrowTilt } = useViewModelInstanceNumber('browTilt', viewModelInstance);
+  const { setValue: setTailTilt } = useViewModelInstanceNumber('tailTilt', viewModelInstance);
 
   useEffect(() => {
     basePoseRef.current = {
@@ -267,6 +285,13 @@ export function RiveCharacterStage({
       pose.browY = smoothToward(pose.browY, targetPose.browY, bodyResponse, dt);
       pose.smileOpacity = smoothToward(pose.smileOpacity, targetPose.smileOpacity, bodyResponse, dt);
       pose.neutralOpacity = smoothToward(pose.neutralOpacity, targetPose.neutralOpacity, bodyResponse, dt);
+      pose.frownOpacity = smoothToward(pose.frownOpacity ?? 0, targetPose.frownOpacity ?? 0, bodyResponse, dt);
+      pose.expressionMouthOpacity = smoothToward(pose.expressionMouthOpacity ?? 0, targetPose.expressionMouthOpacity ?? 0, bodyResponse, dt);
+      pose.tearOpacity = smoothToward(pose.tearOpacity ?? 0, targetPose.tearOpacity ?? 0, bodyResponse + 2, dt);
+      pose.sparkleOpacity = smoothToward(pose.sparkleOpacity ?? 0, targetPose.sparkleOpacity ?? 0, bodyResponse + 2, dt);
+      pose.blushOpacity = smoothToward(pose.blushOpacity ?? 0, targetPose.blushOpacity ?? 0, bodyResponse, dt);
+      pose.browTilt = smoothToward(pose.browTilt ?? 0, targetPose.browTilt ?? 0, bodyResponse + 1, dt);
+      pose.tailTilt = smoothToward(pose.tailTilt ?? 0, targetPose.tailTilt ?? 0, bodyResponse, dt);
 
       setBodyY(base.bodyY + pose.bodyY);
       setBodyLean(base.bodyLean + pose.bodyLean);
@@ -276,10 +301,17 @@ export function RiveCharacterStage({
       setLeftHandY(base.leftHandY + pose.leftHandY);
       setRightHandX(base.rightHandX + pose.rightHandX);
       setRightHandY(base.rightHandY + pose.rightHandY);
-      setEyeScale(Math.max(0.45, base.eyeScale + pose.eyeScale));
+      setEyeScale(Math.max(0.36, base.eyeScale + pose.eyeScale));
       setBrowY(base.browY + pose.browY);
-      setSmileOpacity(speech.speaking ? 0 : Math.max(0, Math.min(1, base.smileOpacity + pose.smileOpacity)));
-      setNeutralOpacity(speech.speaking ? 0 : Math.max(0, Math.min(1, base.neutralOpacity - pose.smileOpacity + pose.neutralOpacity)));
+      setSmileOpacity(speech.speaking ? 0 : clamp01(base.smileOpacity + pose.smileOpacity));
+      setNeutralOpacity(speech.speaking ? 0 : clamp01(base.neutralOpacity - pose.smileOpacity - (pose.frownOpacity ?? 0) + pose.neutralOpacity));
+      setFrownOpacity(speech.speaking ? 0 : clamp01((base.frownOpacity ?? 0) + (pose.frownOpacity ?? 0)));
+      setExpressionMouthOpacity(speech.speaking ? 0 : clamp01((base.expressionMouthOpacity ?? 0) + (pose.expressionMouthOpacity ?? 0)));
+      setTearOpacity(clamp01((base.tearOpacity ?? 0) + (pose.tearOpacity ?? 0)));
+      setSparkleOpacity(clamp01((base.sparkleOpacity ?? 0) + (pose.sparkleOpacity ?? 0)));
+      setBlushOpacity(clamp01((base.blushOpacity ?? 0) + (pose.blushOpacity ?? 0)));
+      setBrowTilt(Math.max(-1, Math.min(1, (base.browTilt ?? 0) + (pose.browTilt ?? 0))));
+      setTailTilt((base.tailTilt ?? 0) + (pose.tailTilt ?? 0));
 
       frame = requestAnimationFrame(tick);
     };
