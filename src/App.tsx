@@ -60,6 +60,7 @@ export function App() {
   const [agentAction, setAgentAction] = useState<CharacterActionName | null>(null);
   const [agentActionNonce, setAgentActionNonce] = useState(0);
   const [agentPace, setAgentPace] = useState<CharacterPace>('idle');
+  const [agentCueTimeline, setAgentCueTimeline] = useState<string[]>([]);
   const microphone = useRef(new MicrophonePcmStream());
   const playback = useRef<PcmPlaybackQueue | null>(null);
   const live = useRef<GeminiLiveClient | null>(null);
@@ -86,12 +87,17 @@ export function App() {
         setAgentExpression(cue.expression);
         setAgentExpressionIntensity(cue.intensity);
         setAgentExpressionEnergy(cue.energy);
+        setAgentCueTimeline((current) => [...current.slice(-7), cue.expression]);
       },
       onCharacterAction: (nextAction) => {
         setAgentAction(nextAction);
         setAgentActionNonce((nonce) => nonce + 1);
+        setAgentCueTimeline((current) => [...current.slice(-7), `↗${nextAction}`]);
       },
-      onCharacterPace: setAgentPace,
+      onCharacterPace: (nextPace) => {
+        setAgentPace(nextPace);
+        setAgentCueTimeline((current) => [...current.slice(-7), `pace:${nextPace}`]);
+      },
       onInterrupted: () => playback.current?.interrupt(),
       onError: setError,
     });
@@ -120,6 +126,7 @@ export function App() {
     setAgentAction(null);
     setAgentActionNonce(0);
     setAgentPace('idle');
+    setAgentCueTimeline([]);
   };
 
   const selectCharacter = (event: ChangeEvent<HTMLSelectElement>) => {
@@ -171,6 +178,7 @@ export function App() {
   const submitText = (event: FormEvent) => {
     event.preventDefault();
     if (!connected || !text.trim()) return;
+    setAgentCueTimeline([]);
     live.current?.sendText(text);
     setInputTranscript(text.trim());
     setText('');
@@ -284,6 +292,9 @@ export function App() {
         <div className="meter" aria-hidden="true"><span style={{ width: `${Math.round(mouth.energy * 100)}%` }} /></div>
         <p className="hint">
           Live performance: {agentExpression ?? mood} · energy {agentExpression ? agentExpressionEnergy.toFixed(2) : 'manual'} · pace {agentPace}
+        </p>
+        <p className="hint" aria-live="polite">
+          Cue timeline: {agentCueTimeline.length ? agentCueTimeline.join(' → ') : 'waiting for live stage directions'}
         </p>
         <p className="hint">Expression/action tools are non-blocking and acknowledged silently, so Ember can change face and movement repeatedly inside one uninterrupted spoken turn while the mouth bridge follows the outgoing audio.</p>
         {error && <p className="error">{error}</p>}
