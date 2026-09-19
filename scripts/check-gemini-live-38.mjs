@@ -26,15 +26,19 @@ assert(client.includes('multiple times inside the SAME spoken turn'), 'Freeform 
 
 assert(scriptPerformance.includes('parsePerformanceScript'), 'Tagged performance script parser is missing');
 assert(scriptPerformance.includes('buildScriptPerformancePrompt'), 'Tagged performance prompt builder is missing');
-assert(scriptPerformance.includes('ScriptPerformanceDirector'), 'Transcript-synced script director is missing');
+assert(scriptPerformance.includes('ScriptPerformanceDirector'), 'Tagged script director is missing');
 assert(scriptPerformance.includes('getPlaybackClock'), 'Tagged director is not reading the PCM playback clock');
 assert(scriptPerformance.includes('scheduleAtPlaybackTime'), 'Tagged director is not scheduling cues onto playback time');
-assert(scriptPerformance.includes('scheduleCrossedBeats'), 'Tagged director no longer spreads batched transcript beats across playback');
+assert(scriptPerformance.includes('waitForPlaybackStart'), 'Tagged director no longer waits for the actual first PCM playback frame');
+assert(scriptPerformance.includes('WORDS_PER_SECOND'), 'Tagged director no longer builds a deterministic script timing model');
+assert(scriptPerformance.includes('pushTranscript(_chunk: string) {}'), 'Tagged director has become transcript-driven again');
 assert(scriptPerformance.includes('ONE continuous spoken turn'), 'Tagged script prompt does not require a single continuous spoken turn');
 assert(scriptPerformance.includes('NEVER pronounce'), 'Tagged script prompt does not explicitly keep stage tags silent');
+assert(playback.includes('turnStartSeconds'), 'PCM queue no longer exposes the active turn start time');
 assert(playback.includes('getClock()'), 'PCM queue no longer exposes its playback clock');
 assert(playback.includes('scheduleAt(audioTimeSeconds'), 'PCM queue no longer supports playback-timed cues');
 assert(playback.includes('hasPendingAudio()'), 'PCM queue cannot guard against ending script mode before buffered audio drains');
+assert(playback.includes('enqueueChain'), 'PCM chunks are no longer serialized before playback scheduling');
 assert(app.includes('scriptServerTurnComplete'), 'App no longer waits for both server turn completion and playback drain');
 assert(app.includes('TAGGED SCRIPT · PCM SYNC'), 'Demo no longer exposes PCM-synced tagged mode');
 assert(app.includes('[surprised]'), 'Tagged demo no longer covers surprised');
@@ -43,4 +47,4 @@ assert(app.includes('[pace:run]'), 'Tagged demo no longer covers locomotion chan
 assert(app.includes('Run tagged story — one live turn'), 'Tagged story control is missing from the demo UI');
 assert(app.includes('Cue timeline:'), 'Demo no longer exposes the performance cue timeline');
 
-console.log('Gemini 3.8 Live performance contract is locked: async freeform tools plus PCM-clock-synchronized tagged-script choreography inside one spoken turn.');
+console.log('Gemini 3.8 Live performance contract is locked: async freeform tools plus deterministic PCM-start tagged-script choreography inside one spoken turn.');
