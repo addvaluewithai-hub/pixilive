@@ -3,7 +3,7 @@ import { mkdir } from 'node:fs/promises';
 import path from 'node:path';
 
 const appUrl = process.env.PIXILIVE_PREVIEW_URL ?? 'http://127.0.0.1:4173';
-const outputDir = path.resolve('visual-artifacts', 'foxy-v2');
+const outputDir = path.resolve('visual-artifacts', 'foxy-v3');
 await mkdir(outputDir, { recursive: true });
 
 const browser = await chromium.launch({ headless: true });
@@ -54,7 +54,7 @@ try {
   await action(canvas, 'Reassure', '14-reassure', 480);
 
   await page.screenshot({ path: path.join(outputDir, 'foxy-full-page.png'), fullPage: true });
-  console.log('Captured Foxy v2 neutral master and 14 expression/action QA states.');
+  console.log('Captured Foxy v3 neutral master and 14 expression/action QA states.');
 } finally {
   await browser.close();
 }
