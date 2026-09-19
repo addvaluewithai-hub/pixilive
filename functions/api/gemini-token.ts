@@ -2,7 +2,7 @@ interface Env {
   GEMINI_API_KEY: string;
 }
 
-const MODEL = 'gemini-3.1-flash-live-preview';
+const MODEL = 'gemini-3.8-live';
 const TOKEN_URL = 'https://generativelanguage.googleapis.com/v1beta/auth_tokens';
 
 function json(body: unknown, init: ResponseInit = {}) {
