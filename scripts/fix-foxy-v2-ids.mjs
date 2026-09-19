@@ -22,3 +22,7 @@ for (const [from, to] of replacements) {
 
 await writeFile(sceneUrl, scene);
 console.log('normalized Foxy v2 authored ids');
+
+// The visual-polish pass intentionally runs after ID normalization so every authored
+// layer already satisfies Rive's stable-ID contract before we change draw order/art.
+await import('./polish-foxy-v2.mjs');
