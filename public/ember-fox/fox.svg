@@ -1,0 +1,115 @@
+<svg id="fox-stage" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 580" role="img" aria-labelledby="fox-title fox-desc">
+ <title id="fox-title">Ember, a little orange fox</title>
+ <desc id="fox-desc">A softly shaded orange fox with fluffy ivory cheeks, large amber eyes, a teal scarf and a full white-tipped tail.</desc>
+ <defs>
+  <radialGradient id="fur" cx=".33" cy=".2" r=".86"><stop stop-color="#ffcd78"/><stop offset=".36" stop-color="#ffa044"/><stop offset=".7" stop-color="#ef702e"/><stop offset="1" stop-color="#c24728"/></radialGradient>
+  <radialGradient id="head-fur" cx=".34" cy=".17" r=".83"><stop stop-color="#ffe0a0"/><stop offset=".25" stop-color="#ffb75b"/><stop offset=".62" stop-color="#f28a35"/><stop offset=".85" stop-color="#e46d28"/><stop offset="1" stop-color="#c14b28"/></radialGradient>
+  <radialGradient id="ivory" cx=".43" cy=".24" r=".87"><stop stop-color="#fffdf1"/><stop offset=".52" stop-color="#fff2da"/><stop offset=".83" stop-color="#edd2ad"/><stop offset="1" stop-color="#c69b79"/></radialGradient>
+  <radialGradient id="muzzle" cx=".45" cy=".22" r=".91"><stop stop-color="#fffef8"/><stop offset=".57" stop-color="#fff6e7"/><stop offset="1" stop-color="#e5c9a9"/></radialGradient>
+  <radialGradient id="ear-inner" cx=".48" cy=".82" r=".9"><stop stop-color="#f7b294"/><stop offset=".57" stop-color="#cc7861"/><stop offset="1" stop-color="#743b36"/></radialGradient>
+  <linearGradient id="ear-dark" x2=".85" y2="1"><stop stop-color="#744133"/><stop offset="1" stop-color="#3e2928"/></linearGradient>
+  <radialGradient id="tail-fur" cx=".57" cy=".38" r=".7"><stop stop-color="#ffc574"/><stop offset=".45" stop-color="#ff9d43"/><stop offset=".76" stop-color="#e7702a"/><stop offset="1" stop-color="#af4b2c"/></radialGradient>
+  <linearGradient id="leg-fur" x1="0" y1="0" x2=".6" y2="1"><stop stop-color="#ffab59"/><stop offset=".5" stop-color="#e9843e"/><stop offset=".82" stop-color="#8e5035"/><stop offset="1" stop-color="#633b30"/></linearGradient>
+  <linearGradient id="arm-fur" x1="0" y1="0" x2="1" y2=".4"><stop stop-color="#e87533"/><stop offset=".43" stop-color="#ffae60"/><stop offset="1" stop-color="#e37a39"/></linearGradient>
+  <linearGradient id="arm-fur-l" gradientUnits="userSpaceOnUse" x1="199" y1="360" x2="260" y2="374"><stop stop-color="#d67434"/><stop offset=".4" stop-color="#ffaf63"/><stop offset="1" stop-color="#e5803c"/></linearGradient>
+  <linearGradient id="arm-fur-r" gradientUnits="userSpaceOnUse" x1="351" y1="360" x2="407" y2="374"><stop stop-color="#d67434"/><stop offset=".4" stop-color="#ffaf63"/><stop offset="1" stop-color="#d77637"/></linearGradient>
+  <radialGradient id="paw-fur" cx=".35" cy=".2" r=".92"><stop stop-color="#b77b51"/><stop offset=".52" stop-color="#7d4d38"/><stop offset="1" stop-color="#4d322c"/></radialGradient>
+  <radialGradient id="eye-white" cx=".36" cy=".42" r=".82"><stop stop-color="#fffef7"/><stop offset=".67" stop-color="#ffefd4"/><stop offset="1" stop-color="#d69f73"/></radialGradient>
+  <radialGradient id="iris" cx=".52" cy=".73" r=".76"><stop stop-color="#e0a04d"/><stop offset=".4" stop-color="#a7632b"/><stop offset=".73" stop-color="#633721"/><stop offset="1" stop-color="#2d2523"/></radialGradient>
+  <radialGradient id="nose-fur" cx=".32" cy=".16" r=".9"><stop stop-color="#785048"/><stop offset=".47" stop-color="#47302e"/><stop offset="1" stop-color="#211e22"/></radialGradient>
+  <radialGradient id="blush" r=".5"><stop stop-color="#f19a77" stop-opacity=".57"/><stop offset="1" stop-color="#f19a77" stop-opacity="0"/></radialGradient>
+  <radialGradient id="forehead-light" cx=".5" cy=".3" r=".55"><stop stop-color="#ffe6ae" stop-opacity=".48"/><stop offset="1" stop-color="#ffe6ae" stop-opacity="0"/></radialGradient>
+  <linearGradient id="scarf" x1=".15" y1=".05" x2=".85" y2="1"><stop stop-color="#86c5b3"/><stop offset=".36" stop-color="#519b8c"/><stop offset=".7" stop-color="#337568"/><stop offset="1" stop-color="#1f514b"/></linearGradient>
+  <linearGradient id="scarf-edge" x2=".85" y2="1"><stop stop-color="#b0d9c0"/><stop offset="1" stop-color="#559382"/></linearGradient>
+  <linearGradient id="tear-color" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#e7f8ff"/><stop offset=".42" stop-color="#93d5e2"/><stop offset="1" stop-color="#4eaccc"/></linearGradient>
+  <radialGradient id="ground-shadow"><stop stop-color="#7c5844" stop-opacity=".22"/><stop offset=".55" stop-color="#9c7960" stop-opacity=".12"/><stop offset="1" stop-color="#9c7960" stop-opacity="0"/></radialGradient>
+  <clipPath id="eye-clip-l"><path id="eye-cut-l" d="M-26 0 C-26-44 24-45 26-1 C28 43-28 43-26 0Z"/></clipPath>
+  <clipPath id="eye-clip-r"><path id="eye-cut-r" d="M-26 0 C-26-44 24-45 26-1 C28 43-28 43-26 0Z"/></clipPath>
+  <clipPath id="mouth-clip"><path id="mouth-cut" d="M-23 0 C-11 11 11 11 23 0 C17 29-17 29-23 0Z"/></clipPath>
+ </defs>
+ <ellipse id="shadow" cx="311" cy="498" rx="125" ry="25" fill="url(#ground-shadow)"/>
+ <g id="travel">
+ <g id="character">
+  <g id="tail" data-pivot="363 428">
+   <path d="M356 420 C398 430 410 399 408 367 C403 317 433 267 476 249 C499 239 519 223 529 208 C550 232 567 270 564 312 C561 381 511 445 444 462 C402 474 372 454 356 436Z" fill="url(#tail-fur)"/>
+   <path d="M442 273 Q479 251 495 241 Q516 226 529 208 C551 238 567 275 563 311 Q550 295 533 294 L537 311 Q521 299 505 303 L507 317 Q490 303 476 311 L474 329 Q462 315 448 318 L438 332 Q432 302 442 273Z" fill="url(#ivory)"/>
+   <path d="M529 221 C549 250 553 268 553 284 C542 259 526 252 511 250" fill="#fffbed" opacity=".42"/>
+   <path d="M410 441 C460 447 521 400 542 353 C530 405 482 448 441 456Z" fill="#b95a2e" opacity=".28"/>
+   <path d="M420 407 C418 371 430 349 443 338" fill="none" stroke="#ffc777" stroke-width="5" stroke-linecap="round" opacity=".32"/>
+  </g>
+  <g id="leg-l" data-pivot="274 427">
+   <path d="M253 421 Q272 411 291 423 L290 463 Q289 479 271 480 Q251 476 251 463Z" fill="url(#leg-fur)"/>
+   <g id="foot-l"><path d="M256 461 C264 452 282 454 289 465 Q306 482 290 490 Q267 495 246 488 C235 479 246 466 256 461Z" fill="url(#paw-fur)"/><path d="M248 480 Q246 473 251 470 M259 485 Q256 477 260 472" fill="none" stroke="#493029" stroke-width="2" stroke-linecap="round" opacity=".48"/><path d="M263 462 Q275 458 282 463" fill="none" stroke="#d49e6e" stroke-width="3" stroke-linecap="round" opacity=".4"/></g>
+  </g>
+  <g id="leg-r" data-pivot="332 427">
+   <path d="M310 422 Q330 413 349 423 L351 464 Q349 480 331 480 Q309 478 309 463Z" fill="url(#leg-fur)"/>
+   <g id="foot-r"><path d="M315 465 Q325 452 343 462 C354 467 371 478 362 487 Q344 496 315 490 C303 485 307 474 315 465Z" fill="url(#paw-fur)"/><path d="M350 471 Q355 476 353 482 M340 473 Q345 480 342 487" fill="none" stroke="#493029" stroke-width="2" stroke-linecap="round" opacity=".48"/><path d="M320 463 Q328 459 337 463" fill="none" stroke="#d49e6e" stroke-width="3" stroke-linecap="round" opacity=".4"/></g>
+  </g>
+  <g id="torso">
+   <path d="M264 326 C239 345 229 373 232 407 C235 444 259 461 302 462 C344 463 369 443 372 410 C375 374 357 343 338 329Z" fill="url(#fur)"/>
+   <path d="M278 348 Q298 361 324 347 C336 359 353 387 350 411 C347 438 329 448 301 448 C272 448 254 433 254 409 C253 385 267 364 278 348Z" fill="url(#ivory)"/>
+   <path d="M267 413 Q279 430 301 431 Q328 431 339 414 Q332 438 304 438 Q278 439 267 413" fill="#fff9e8" opacity=".33"/>
+  </g>
+  <g id="upper-arms" fill="none" stroke="url(#arm-fur)" stroke-width="30" stroke-linecap="round"><path id="upper-arm-l" stroke="url(#arm-fur-l)" d="M249 357 Q230 375 229 390"/><path id="upper-arm-r" stroke="url(#arm-fur-r)" d="M355 357 Q373 375 375 390"/></g>
+  <g id="scarf-front" data-pivot="302 341">
+   <path d="M242 335 Q300 355 361 332 L365 355 Q352 365 321 386 Q311 393 304 384 L281 361 Q255 363 240 350Z" fill="url(#scarf)"/>
+   <path d="M245 339 Q301 359 359 336" fill="none" stroke="url(#scarf-edge)" stroke-width="5" stroke-linecap="round"/>
+   <path d="M285 353 Q309 367 312 382 Q333 361 351 350" fill="none" stroke="#a8d2b8" stroke-width="1.6" opacity=".55"/>
+   <g id="scarf-tails"><path d="M354 346 Q377 349 391 374 Q377 371 371 378 Q360 365 354 346" fill="url(#scarf)"/><path d="M358 343 Q385 338 399 347 L387 354 L390 363 Q372 362 358 350" fill="url(#scarf)"/><path d="M361 350 Q370 354 377 367" fill="none" stroke="#91c4aa" stroke-width="2" opacity=".6"/></g>
+   <path d="M352 338 Q364 337 370 348 Q366 358 355 356 Q349 350 352 338" fill="url(#scarf-edge)"/>
+  </g>
+  <g id="head" data-pivot="302 327">
+   <g id="ear-l" data-pivot="226 181">
+    <path d="M185 191 C169 162 171 114 182 79 Q186 65 198 77 C221 97 247 132 260 159Z" fill="url(#ear-dark)"/>
+    <path d="M188 179 Q177 132 191 88 C216 111 239 140 248 160Z" fill="url(#fur)"/>
+    <path d="M197 171 C187 147 188 122 194 105 Q222 130 234 163Z" fill="url(#ear-inner)"/>
+    <path d="M199 172 L199 151 L210 157 L213 142 L223 161 L229 151 L238 171" fill="url(#ivory)"/>
+   </g>
+   <g id="ear-r" data-pivot="380 181">
+    <path d="M344 161 C361 127 388 91 410 76 Q422 67 426 82 C439 124 436 161 420 192Z" fill="url(#ear-dark)"/>
+    <path d="M355 164 Q377 118 414 90 C427 131 426 159 415 180Z" fill="url(#fur)"/>
+    <path d="M369 166 Q386 129 411 107 C418 136 416 155 409 173Z" fill="url(#ear-inner)"/>
+    <path d="M369 172 L382 151 L389 163 L401 144 L403 162 L413 153 L411 176" fill="url(#ivory)"/>
+   </g>
+   <path id="head-silhouette" d="M183 218 C179 170 213 139 261 138 Q269 122 284 119 Q281 128 281 134 Q298 120 317 119 Q314 128 310 133 Q328 125 340 128 Q338 134 334 140 C389 137 427 168 427 215 Q429 239 443 254 Q448 259 456 262 Q452 268 444 270 Q449 280 454 286 Q446 289 437 286 Q437 295 440 302 Q428 305 421 300 Q390 342 305 345 C233 347 195 326 178 303 Q170 307 161 304 Q165 295 167 286 Q157 288 151 284 Q159 277 164 269 Q158 267 152 261 Q177 245 183 218Z" fill="url(#head-fur)"/>
+   <ellipse cx="285" cy="181" rx="100" ry="49" fill="url(#forehead-light)"/>
+   <path d="M191 207 Q191 165 245 152" fill="none" stroke="#ffe1a0" stroke-width="4" stroke-linecap="round" opacity=".3"/>
+   <path d="M170 268 Q200 256 222 266 C253 275 280 293 302 290 C331 288 350 272 384 265 Q413 257 441 269 Q437 275 430 276 Q437 281 446 282 Q438 288 429 285 Q429 292 433 297 Q424 302 416 297 Q389 342 305 345 C233 347 198 326 192 300 Q183 304 177 302 Q180 296 180 289 Q173 291 165 286 Q177 280 181 276 Q175 274 170 268Z" fill="url(#ivory)"/>
+   <path d="M187 276 Q203 275 218 280 M397 280 Q412 273 427 275" stroke="#fff9e8" stroke-width="4" fill="none" stroke-linecap="round" opacity=".75"/>
+   <g id="face">
+    <g id="eye-l" transform="translate(247 232)">
+     <path id="eye-rim-l" d="M-26 0 C-26-44 24-45 26-1 C28 43-28 43-26 0Z" fill="#86461f" stroke="#a24f21" stroke-width="5" stroke-opacity=".22"/>
+     <g id="eye-content-l" clip-path="url(#eye-clip-l)"><rect x="-31" y="-45" width="63" height="88" fill="url(#eye-white)"/><g id="pupil-l"><ellipse cx="5" cy="3" rx="18" ry="27" fill="url(#iris)"/><ellipse cx="6" cy="1" rx="11.8" ry="20" fill="#292223"/><ellipse cx="-.5" cy="-10" rx="6.8" ry="8.6" fill="#fffef6"/><circle cx="14" cy="14" r="3.1" fill="#ffdeb1" opacity=".86"/><path d="M-7 19 Q2 28 14 24" fill="none" stroke="#df9944" stroke-width="2" opacity=".48"/></g></g>
+     <path id="lid-l" d="M-26 0 C-26-44 24-45 26-1" fill="none" stroke="#713b28" stroke-width="3.8" stroke-linecap="round"/>
+     <path id="closed-l" d="M-25 0 Q0-16 25 0" fill="none" stroke="#713b28" stroke-width="4.5" stroke-linecap="round" opacity="0"/>
+    </g>
+    <g id="eye-r" transform="translate(355 232)">
+     <path id="eye-rim-r" d="M-26 0 C-26-44 24-45 26-1 C28 43-28 43-26 0Z" fill="#86461f" stroke="#a24f21" stroke-width="5" stroke-opacity=".22"/>
+     <g id="eye-content-r" clip-path="url(#eye-clip-r)"><rect x="-31" y="-45" width="63" height="88" fill="url(#eye-white)"/><g id="pupil-r"><ellipse cx="-5" cy="3" rx="18" ry="27" fill="url(#iris)"/><ellipse cx="-6" cy="1" rx="11.8" ry="20" fill="#292223"/><ellipse cx="-12.5" cy="-10" rx="6.8" ry="8.6" fill="#fffef6"/><circle cx="2" cy="14" r="3.1" fill="#ffdeb1" opacity=".86"/><path d="M-17 19 Q-8 28 4 24" fill="none" stroke="#df9944" stroke-width="2" opacity=".48"/></g></g>
+     <path id="lid-r" d="M-26 0 C-26-44 24-45 26-1" fill="none" stroke="#713b28" stroke-width="3.8" stroke-linecap="round"/>
+     <path id="closed-r" d="M-25 0 Q0-16 25 0" fill="none" stroke="#713b28" stroke-width="4.5" stroke-linecap="round" opacity="0"/>
+    </g>
+    <path id="brow-l" d="M224 181 Q241 171 258 180" fill="none" stroke="#91522b" stroke-width="6.5" stroke-linecap="round"/>
+    <path id="brow-r" d="M344 180 Q361 171 378 181" fill="none" stroke="#91522b" stroke-width="6.5" stroke-linecap="round"/>
+    <ellipse id="blush-l" cx="219" cy="285" rx="32" ry="17" fill="url(#blush)"/><ellipse id="blush-r" cx="389" cy="285" rx="32" ry="17" fill="url(#blush)"/>
+    <g id="mouth" transform="translate(302 303)">
+     <path id="mouth-fill" d="M-23 0 C-11 11 11 11 23 0 C17 29-17 29-23 0Z" fill="#522e2d"/>
+     <g clip-path="url(#mouth-clip)"><ellipse id="tongue" cx="2" cy="23" rx="16" ry="10" fill="#df8e87"/><path d="M-19 2 Q0 12 20 2 L18 8 Q0 18-17 8Z" fill="#fff9e7" id="teeth"/></g>
+     <path id="mouth-edge" d="M-23 0 C-11 11 11 11 23 0" fill="none" stroke="#744137" stroke-width="2.8" stroke-linecap="round"/>
+    </g>
+    <path d="M301 280 C280 268 265 274 262 286 Q264 300 285 301 Q298 302 302 294 Q305 302 321 300 C344 299 345 280 330 277 Q314 271 301 280Z" fill="url(#muzzle)"/>
+    <path id="muzzle-smile" d="M301 287 L302 294 M280 298 Q294 305 302 294 Q312 305 326 297" fill="none" stroke="#b18569" stroke-width="1.6" stroke-linecap="round" opacity=".65"/>
+    <path id="nose" d="M283 271 C289 264 313 264 321 270 C326 277 309 290 303 290 C296 290 278 278 283 271Z" fill="url(#nose-fur)"/>
+    <path d="M289 273 Q298 269 306 271" stroke="#c39480" stroke-width="3.4" stroke-linecap="round" fill="none" opacity=".63"/>
+    <g id="freckles" fill="#c68e62" opacity=".6"><circle cx="273" cy="284" r="1.4"/><circle cx="280" cy="281" r="1.1"/><circle cx="275" cy="291" r="1"/><circle cx="327" cy="283" r="1.4"/><circle cx="334" cy="286" r="1.1"/><circle cx="331" cy="292" r="1"/></g>
+    <g id="tears" opacity="0"><g id="tear-l"><path d="M222 254 Q226 265 221 280 C212 295 228 307 234 294 Q238 286 233 276 L232 254Z" fill="url(#tear-color)" opacity=".9"/><path d="M225 275 Q220 287 223 290" stroke="#fff" opacity=".8" stroke-width="2.4" fill="none" stroke-linecap="round"/></g><g id="tear-r"><path d="M373 254 Q377 265 372 280 C363 295 379 307 385 294 Q389 286 384 276 L383 254Z" fill="url(#tear-color)" opacity=".9"/><path d="M376 275 Q371 287 374 290" stroke="#fff" opacity=".8" stroke-width="2.4" fill="none" stroke-linecap="round"/></g></g>
+   </g>
+  </g>
+  <!-- Forearms and paws pass in front of the scarf; upper arms remain behind it. -->
+  <g id="forearms">
+   <g id="forearm-l"><path id="lower-arm-l" d="M229 390 Q222 403 221 415" fill="none" stroke="url(#arm-fur-l)" stroke-width="30" stroke-linecap="round"/><g id="hand-l" transform="translate(221 419)"><path d="M-17-10 C-13-22 6-24 15-13 C24-2 21 14 10 20 C0 26-15 19-19 9 Q-23 0-17-10Z" fill="url(#paw-fur)"/><path d="M-11 9 Q-13 4-11 0 M-3 15 Q-5 9-3 5 M6 15 Q4 10 6 6" fill="none" stroke="#4f332c" stroke-width="1.8" stroke-linecap="round" opacity=".5"/><ellipse cx="-5" cy="-10" rx="8" ry="4" fill="#d4a173" opacity=".25"/></g></g>
+   <g id="forearm-r"><path id="lower-arm-r" d="M375 390 Q382 403 383 415" fill="none" stroke="url(#arm-fur-r)" stroke-width="30" stroke-linecap="round"/><g id="hand-r" transform="translate(383 419)"><path d="M-17-10 C-13-22 6-24 15-13 C24-2 21 14 10 20 C0 26-15 19-19 9 Q-23 0-17-10Z" fill="url(#paw-fur)"/><path d="M-11 9 Q-13 4-11 0 M-3 15 Q-5 9-3 5 M6 15 Q4 10 6 6" fill="none" stroke="#4f332c" stroke-width="1.8" stroke-linecap="round" opacity=".5"/><ellipse cx="-5" cy="-10" rx="8" ry="4" fill="#d4a173" opacity=".25"/></g></g>
+  </g>
+ </g>
+ </g>
+</svg>
