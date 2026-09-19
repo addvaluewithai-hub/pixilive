@@ -1,0 +1,28 @@
+.performance-script {
+  display: block;
+  width: 100%;
+  min-height: 180px;
+  max-height: 280px;
+  resize: vertical;
+  margin: 0 0 9px;
+  padding: 12px 13px;
+  border: 1px solid var(--line);
+  border-radius: 13px;
+  outline: none;
+  background: rgba(255,255,255,.028);
+  color: #f7f5ef;
+  font: 500 11px/1.6 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  direction: rtl;
+  text-align: right;
+  scrollbar-width: thin;
+}
+.performance-script:focus {
+  border-color: color-mix(in srgb,var(--accent) 48%,transparent);
+  box-shadow: 0 0 0 3px color-mix(in srgb,var(--accent) 9%,transparent);
+}
+.performance-script::selection {
+  background: color-mix(in srgb,var(--accent) 32%,transparent);
+}
+.performance-script + .primary {
+  margin-bottom: 8px;
+}
