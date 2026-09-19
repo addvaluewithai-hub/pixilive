@@ -15,7 +15,6 @@ export interface ScriptPerformanceBeat {
   index: number;
   text: string;
   cues: ScriptPerformanceCue[];
-  triggerAnchor: string;
 }
 
 export interface ParsedPerformanceScript {
@@ -29,7 +28,6 @@ interface DirectorCallbacks {
   onAction: (action: CharacterActionName) => void;
   onPace: (pace: CharacterPace) => void;
   onCue: (label: string) => void;
-  getPlaybackClock: () => PlaybackClockSnapshot | null;
   scheduleAtPlaybackTime: (audioTimeSeconds: number, callback: () => void) => void;
 }
 
@@ -60,6 +58,18 @@ const EXPRESSION_DEFAULTS: Record<CharacterExpressionName, Pick<CharacterExpress
   excited: { intensity: 1, energy: 0.92 },
 };
 
+const WORDS_PER_SECOND: Record<CharacterExpressionName, number> = {
+  happy: 3.25,
+  sad: 2.55,
+  crying: 2.2,
+  surprised: 3.1,
+  thinking: 2.6,
+  angry: 2.85,
+  sleepy: 2.35,
+  laughing: 3.0,
+  excited: 3.55,
+};
+
 export const normalizePerformanceText = (value: string) =>
   value
     .toLowerCase()
@@ -69,18 +79,6 @@ export const normalizePerformanceText = (value: string) =>
     .replace(/[“”"'`،؛؟!.,:;(){}<>…\-_/\\]/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
-
-const tailAnchor = (text: string) => {
-  const words = normalizePerformanceText(text).split(' ').filter(Boolean);
-  return words.slice(-Math.min(3, words.length)).join(' ');
-};
-
-const speechWeight = (text: string) => {
-  const normalized = normalizePerformanceText(text);
-  const wordCount = normalized ? normalized.split(' ').length : 1;
-  const punctuationPauses = (text.match(/[.!?؟…]/g) ?? []).length * 1.5;
-  return Math.max(1, wordCount + punctuationPauses);
-};
 
 const parseTag = (rawTag: string): ScriptPerformanceCue => {
   const tag = rawTag.trim().toLowerCase();
@@ -104,7 +102,7 @@ const parseTag = (rawTag: string): ScriptPerformanceCue => {
 };
 
 export function parsePerformanceScript(source: string): ParsedPerformanceScript {
-  const beats: Array<Omit<ScriptPerformanceBeat, 'index' | 'triggerAnchor'>> = [];
+  const beats: Array<Omit<ScriptPerformanceBeat, 'index'>> = [];
   const tagPattern = /\[([^\]]+)\]/g;
   let pendingCues: ScriptPerformanceCue[] = [];
   let cursor = 0;
@@ -129,12 +127,7 @@ export function parsePerformanceScript(source: string): ParsedPerformanceScript 
     throw new Error('Add at least one performance tag such as [happy] or [surprised].');
   }
 
-  const finalized = beats.map((beat, index): ScriptPerformanceBeat => ({
-    ...beat,
-    index,
-    triggerAnchor: index === 0 ? '' : tailAnchor(beats[index - 1].text),
-  }));
-
+  const finalized = beats.map((beat, index): ScriptPerformanceBeat => ({ ...beat, index }));
   return {
     source,
     beats: finalized,
@@ -143,15 +136,26 @@ export function parsePerformanceScript(source: string): ParsedPerformanceScript 
 }
 
 export function buildScriptPerformancePrompt(script: ParsedPerformanceScript) {
-  return `[SCRIPTED PERFORMANCE]\nRead the tagged Arabic story below as ONE continuous spoken turn.\n\nRULES:\n- Bracketed tags are silent acting directions. NEVER pronounce, describe, translate, or spell the tags.\n- Do NOT call character stage tools while reading this scripted performance; the host application executes the visual tags itself.\n- Read every non-tagged story sentence in the exact written order. Do not paraphrase, skip, add, summarize, or ask a question until the supplied script ends.\n- Change your VOICE ACTING immediately when each tag appears and keep that vocal attitude until the next expression tag.\n- [happy] warm and smiling. [sad] quieter and slower. [crying] soft shaky voice with tiny broken pauses, still clear and comforting. [surprised] bright startled onset. [thinking] reflective with small pauses. [angry] controlled firmness without shouting. [sleepy] soft and drowsy. [laughing] genuinely amused with a light natural chuckle. [excited] bright, energetic and quicker.\n- Action tags such as [wave], [blink], [jump] and pace tags such as [pace:walk] are silent visual directions only. Do not say them.\n- Keep speaking continuously through the expression changes.\n\nSCRIPT:\n${script.source.trim()}\n\n[END SCRIPTED PERFORMANCE]`;
+  return `[SCRIPTED PERFORMANCE]\nRead the tagged Arabic story below as ONE continuous spoken turn.\n\nRULES:\n- Bracketed tags are silent acting directions. NEVER pronounce, describe, translate, or spell the tags.\n- Do NOT call character stage tools while reading this scripted performance; the host application executes the visual tags itself.\n- Read every non-tagged story sentence in the exact written order. Do not paraphrase, skip, add, summarize, or ask a question until the supplied script ends.\n- Change your VOICE ACTING immediately when each expression tag appears and keep that vocal attitude until the next expression tag.\n- Make a tiny natural beat between tagged sections so each emotional change has room to read, but keep the whole story as one continuous turn.\n- [happy] warm and smiling. [sad] quieter and slower. [crying] soft shaky voice with tiny broken pauses, still clear and comforting. [surprised] bright startled onset. [thinking] reflective with small pauses. [angry] controlled firmness without shouting. [sleepy] soft and drowsy. [laughing] genuinely amused with a light natural chuckle. [excited] bright, energetic and quicker.\n- Action tags such as [wave], [blink], [jump] and pace tags such as [pace:walk] are silent visual directions only. Do not say them.\n- Keep speaking continuously through the expression changes.\n\nSCRIPT:\n${script.source.trim()}\n\n[END SCRIPTED PERFORMANCE]`;
 }
+
+const expressionCueInBeat = (beat: ScriptPerformanceBeat) =>
+  beat.cues.find((cue): cue is Extract<ScriptPerformanceCue, { kind: 'expression' }> => cue.kind === 'expression');
+
+const estimateBeatDurationSeconds = (text: string, expression: CharacterExpressionName) => {
+  const normalized = normalizePerformanceText(text);
+  const words = normalized ? normalized.split(' ').filter(Boolean).length : 1;
+  const commaPause = (text.match(/[،,:;]/g) ?? []).length * 0.11;
+  const sentencePause = (text.match(/[.!?؟]/g) ?? []).length * 0.24;
+  const reflectivePause = (text.match(/\.\.\.|…/g) ?? []).length * 0.32;
+  const speechSeconds = words / WORDS_PER_SECOND[expression];
+  return Math.max(0.85, speechSeconds + commaPause + sentencePause + reflectivePause);
+};
 
 export class ScriptPerformanceDirector {
   private script: ParsedPerformanceScript | null = null;
-  private nextBeatIndex = 0;
-  private transcriptBuffer = '';
   private running = false;
-  private lastMappedAudioTime = 0;
+  private timelineScheduled = false;
 
   constructor(private readonly callbacks: DirectorCallbacks) {}
 
@@ -161,94 +165,47 @@ export class ScriptPerformanceDirector {
 
   start(script: ParsedPerformanceScript) {
     this.script = script;
-    this.nextBeatIndex = 0;
-    this.transcriptBuffer = '';
     this.running = true;
-    this.lastMappedAudioTime = 0;
+    this.timelineScheduled = false;
+
+    // Pre-pose before speech begins so the first line never starts on the stale face.
     this.fireBeat(0);
-    this.nextBeatIndex = 1;
   }
 
-  pushTranscript(chunk: string) {
-    if (!this.running || !this.script || !chunk.trim()) return;
-    this.mergeTranscript(chunk);
-    const normalized = normalizePerformanceText(this.transcriptBuffer);
-    const crossedBeatIndexes: number[] = [];
+  onPlaybackStart(clock: PlaybackClockSnapshot) {
+    if (!this.running || !this.script || this.timelineScheduled) return;
+    this.timelineScheduled = true;
 
-    while (this.nextBeatIndex < this.script.beats.length) {
-      const beat = this.script.beats[this.nextBeatIndex];
-      if (!beat.triggerAnchor || !normalized.includes(beat.triggerAnchor)) break;
-      crossedBeatIndexes.push(this.nextBeatIndex);
-      this.nextBeatIndex += 1;
+    let currentExpression: CharacterExpressionName = 'happy';
+    let elapsedSeconds = 0;
+    const expectedScript = this.script;
+
+    for (let index = 0; index < expectedScript.beats.length; index += 1) {
+      const beat = expectedScript.beats[index];
+      const expressionCue = expressionCueInBeat(beat);
+      if (expressionCue) currentExpression = expressionCue.value;
+
+      if (index > 0) {
+        const cueTime = clock.turnStartSeconds + Math.max(0.12, elapsedSeconds - 0.08);
+        this.callbacks.scheduleAtPlaybackTime(cueTime, () => {
+          if (!this.running || this.script !== expectedScript) return;
+          this.fireBeat(index);
+        });
+      }
+
+      elapsedSeconds += estimateBeatDurationSeconds(beat.text, currentExpression);
     }
-
-    if (crossedBeatIndexes.length) this.scheduleCrossedBeats(crossedBeatIndexes);
   }
+
+  // Output transcription is still useful for captions and viseme hints, but it is
+  // intentionally NOT used as the choreography clock. Gemini documents that output
+  // transcriptions have no guaranteed exact ordering relative to modelTurn audio.
+  pushTranscript(_chunk: string) {}
 
   stop() {
     this.running = false;
     this.script = null;
-    this.nextBeatIndex = 0;
-    this.transcriptBuffer = '';
-    this.lastMappedAudioTime = 0;
-  }
-
-  private mergeTranscript(chunk: string) {
-    const incoming = chunk.trim();
-    if (!incoming) return;
-
-    if (!this.transcriptBuffer) {
-      this.transcriptBuffer = incoming;
-      return;
-    }
-
-    if (incoming.startsWith(this.transcriptBuffer)) {
-      this.transcriptBuffer = incoming;
-      return;
-    }
-
-    if (this.transcriptBuffer.endsWith(incoming)) return;
-
-    let overlap = 0;
-    const max = Math.min(this.transcriptBuffer.length, incoming.length);
-    for (let length = max; length > 0; length -= 1) {
-      if (this.transcriptBuffer.slice(-length) === incoming.slice(0, length)) {
-        overlap = length;
-        break;
-      }
-    }
-    this.transcriptBuffer += incoming.slice(overlap);
-  }
-
-  private scheduleCrossedBeats(indexes: number[]) {
-    if (!this.script || !indexes.length) return;
-
-    const clock = this.callbacks.getPlaybackClock();
-    if (!clock) {
-      for (const index of indexes) this.fireBeat(index);
-      return;
-    }
-
-    const now = clock.nowSeconds;
-    const start = Math.max(now + 0.025, this.lastMappedAudioTime || now + 0.025);
-    const minimumSpan = Math.max(0.28, indexes.length * 0.22);
-    const end = Math.max(clock.bufferedEndSeconds, start + minimumSpan);
-    const weights = indexes.map((index) => speechWeight(this.script!.beats[Math.max(0, index - 1)].text));
-    const totalWeight = Math.max(1, weights.reduce((sum, weight) => sum + weight, 0));
-    let cumulativeWeight = 0;
-
-    indexes.forEach((index, position) => {
-      cumulativeWeight += weights[position];
-      const rawTarget = start + ((end - start) * cumulativeWeight) / totalWeight;
-      const target = Math.max(now + 0.03 + position * 0.07, rawTarget);
-      const expectedScript = this.script;
-      this.callbacks.scheduleAtPlaybackTime(target, () => {
-        if (!this.running || this.script !== expectedScript) return;
-        this.fireBeat(index);
-      });
-    });
-
-    this.lastMappedAudioTime = end;
+    this.timelineScheduled = false;
   }
 
   private fireBeat(index: number) {
