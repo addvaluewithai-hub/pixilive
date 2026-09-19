@@ -19,11 +19,14 @@ export interface MascotAdapterTuning {
   browLift: number;
   thinkHandX: number;
   thinkHandY: number;
+  browTilt?: number;
+  tailTilt?: number;
   motionCharacter?: 'soft' | 'bouncy' | 'nimble';
   emotion?: Partial<Record<Emotion, Partial<StandardPerformancePose>>>;
 }
 
 const clamp = (value: number, min = -1, max = 1) => Math.max(min, Math.min(max, value));
+const clamp01 = (value: number) => Math.max(0, Math.min(1, value));
 const pulse = (amplitude: number, phase: number, cycles = 1) => amplitude * Math.sin(phase * Math.PI * 2 * cycles);
 
 const defaultEmotion: Record<Emotion, Partial<StandardPerformancePose>> = {
@@ -53,11 +56,17 @@ export function createMascotPerformanceAdapter(tuning: MascotAdapterTuning): Cha
       const headNod = clamp(intent.headNod ?? 0);
       const eyeOpen = clamp(intent.eyeOpen ?? 0);
       const browLift = clamp(intent.browLift ?? 0);
+      const browTilt = clamp(intent.browTilt ?? 0);
       const smile = clamp(intent.smile ?? 0);
+      const mouthOpen = clamp01(intent.mouthOpen ?? 0);
       const armRaise = clamp(intent.armRaise ?? 0);
       const armSpread = clamp(intent.armSpread ?? 0);
       const handToFace = clamp(intent.handToFace ?? 0);
       const shrug = clamp(intent.shrug ?? 0);
+      const tears = clamp01(intent.tears ?? 0);
+      const sparkle = clamp01(intent.sparkle ?? 0);
+      const blush = clamp01(intent.blush ?? 0);
+      const tailLift = clamp(intent.tailLift ?? 0);
 
       let leftHandX = (-tuning.armX * armSpread - tuning.armX * 0.24 * bodyOpen) * w;
       let rightHandX = (tuning.armX * armSpread + tuning.armX * 0.24 * bodyOpen) * w;
@@ -86,7 +95,14 @@ export function createMascotPerformanceAdapter(tuning: MascotAdapterTuning): Cha
         eyeScale: tuning.eyeScale * eyeOpen * w,
         browY: -tuning.browLift * browLift * w,
         smileOpacity: Math.max(0, smile) * w,
-        neutralOpacity: Math.max(0, -smile) * 0.28 * w,
+        neutralOpacity: Math.max(0, -smile) * 0.12 * w,
+        frownOpacity: Math.max(0, -smile) * w,
+        expressionMouthOpacity: mouthOpen * w,
+        tearOpacity: tears * w,
+        sparkleOpacity: sparkle * w,
+        blushOpacity: blush * w,
+        browTilt: (tuning.browTilt ?? 1) * browTilt * w,
+        tailTilt: (tuning.tailTilt ?? 0.4) * tailLift * w,
       };
     },
     applyPattern(pose, pattern, phase) {
@@ -101,6 +117,7 @@ export function createMascotPerformanceAdapter(tuning: MascotAdapterTuning): Cha
           ...pose,
           rightHandX: pose.rightHandX + pulse(amount, phase, 2.4),
           rightHandY: pose.rightHandY - Math.abs(pulse(amount * 0.35, phase, 2.4)),
+          tailTilt: (pose.tailTilt ?? 0) + pulse(character === 'nimble' ? 0.1 : 0.06, phase, 1.4),
         };
       }
       if (pattern === 'tremble') {
@@ -112,7 +129,11 @@ export function createMascotPerformanceAdapter(tuning: MascotAdapterTuning): Cha
       }
       if (pattern === 'bounce') {
         const amount = character === 'bouncy' ? 9 : character === 'nimble' ? 7 : 5;
-        return { ...pose, bodyY: pose.bodyY - Math.max(0, pulse(amount, phase, 1.6)) };
+        return {
+          ...pose,
+          bodyY: pose.bodyY - Math.max(0, pulse(amount, phase, 1.6)),
+          tailTilt: (pose.tailTilt ?? 0) + Math.abs(pulse(character === 'nimble' ? 0.08 : 0.05, phase, 1.6)),
+        };
       }
       if (pattern === 'pulse') {
         return { ...pose, bodyY: pose.bodyY - Math.max(0, pulse(3, phase, 1)) };
