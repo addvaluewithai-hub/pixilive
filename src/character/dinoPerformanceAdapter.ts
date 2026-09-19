@@ -1,0 +1,30 @@
+import { createMascotPerformanceAdapter } from './mascotPerformanceAdapter';
+
+export const dinoPerformanceAdapter = createMascotPerformanceAdapter({
+  id: 'dino-v1',
+  base: {
+    bodyY: 0,
+    bodyLean: 0,
+    headY: 0,
+    headTilt: 0,
+    leftHandX: -126,
+    leftHandY: 62,
+    rightHandX: 126,
+    rightHandY: 62,
+    eyeScale: 0.96,
+    browY: -48,
+    smileOpacity: 0.08,
+    neutralOpacity: 1,
+  },
+  armX: 34,
+  armY: 54,
+  bodyLift: 19,
+  bodyLean: 0.06,
+  headLift: 14,
+  headTilt: 0.14,
+  eyeScale: 0.24,
+  browLift: 7,
+  thinkHandX: -34,
+  thinkHandY: -62,
+  motionCharacter: 'bouncy',
+});
