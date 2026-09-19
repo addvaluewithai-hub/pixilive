@@ -23,34 +23,35 @@ async function waitForEmber() {
   return stage;
 }
 
-async function setExpression(expression, intensity = 1, energy = 0.5) {
-  await page.evaluate(({ expression, intensity, energy }) => {
+async function withBridge(callback, arg) {
+  await page.evaluate(({ callbackText, arg }) => {
     const frame = document.querySelector('.ember-character-stage iframe');
     if (!(frame instanceof HTMLIFrameElement) || !frame.contentWindow?.EmberHost) {
       throw new Error('Ember host bridge is not ready');
     }
-    frame.contentWindow.EmberHost.setExpression(expression, intensity, energy);
-  }, { expression, intensity, energy });
+    const fn = new Function('bridge', 'arg', `return (${callbackText})(bridge, arg);`);
+    return fn(frame.contentWindow.EmberHost, arg);
+  }, { callbackText: callback.toString(), arg });
+}
+
+async function setExpression(expression, intensity = 1, energy = 0.5) {
+  await withBridge((bridge, payload) => bridge.setExpression(payload.expression, payload.intensity, payload.energy), {
+    expression,
+    intensity,
+    energy,
+  });
 }
 
 async function runAction(action) {
-  await page.evaluate((nextAction) => {
-    const frame = document.querySelector('.ember-character-stage iframe');
-    if (!(frame instanceof HTMLIFrameElement) || !frame.contentWindow?.EmberHost) {
-      throw new Error('Ember host bridge is not ready');
-    }
-    frame.contentWindow.EmberHost.runAction(nextAction);
-  }, action);
+  await withBridge((bridge, nextAction) => bridge.runAction(nextAction), action);
 }
 
 async function setPace(pace) {
-  await page.evaluate((nextPace) => {
-    const frame = document.querySelector('.ember-character-stage iframe');
-    if (!(frame instanceof HTMLIFrameElement) || !frame.contentWindow?.EmberHost) {
-      throw new Error('Ember host bridge is not ready');
-    }
-    frame.contentWindow.EmberHost.setPace(nextPace);
-  }, pace);
+  await withBridge((bridge, nextPace) => bridge.setPace(nextPace), pace);
+}
+
+async function setMouth(pose, speaking) {
+  await withBridge((bridge, payload) => bridge.setMouth(payload.pose, payload.speaking), { pose, speaking });
 }
 
 async function shot(stage, name, waitMs = 460) {
@@ -105,11 +106,21 @@ try {
   await setPace('run');
   await shot(stage, '14-run', 320);
 
+  // Exercise the exact bridge used by outgoing Gemini audio/visemes. The client
+  // controller keeps authoring the mouth path while this overlay only applies the
+  // live articulation transform, so customer source remains untouched.
   await setPace('idle');
+  await setExpression('happy', 1, 0.58);
+  await setMouth({ open: 0.88, width: 0.72, round: 0.12, energy: 0.9, viseme: 'AA' }, true);
+  await shot(stage, '15-speaking-aa', 120);
+  await setMouth({ open: 0.62, width: 0.34, round: 0.9, energy: 0.7, viseme: 'OH' }, true);
+  await shot(stage, '16-speaking-oh', 120);
+  await setMouth({ open: 0.045, width: 0.37, round: 0.08, energy: 0, viseme: 'REST' }, false);
+
   await setExpression('happy', 0.7, 0.35);
   await shot(stage, '00-neutral-master', 420);
 
-  console.log('Captured Ember: all 9 client expressions, wave, jump, blink, walk, run and neutral master.');
+  console.log('Captured Ember: all 9 client expressions, native actions/pace, and live mouth articulation bridge.');
 } finally {
   await browser.close();
 }
