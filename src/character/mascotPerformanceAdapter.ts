@@ -83,6 +83,10 @@ export function createMascotPerformanceAdapter(tuning: MascotAdapterTuning): Cha
         ? Math.sin(context.phase * Math.PI * 4) * headNod * tuning.headLift * 0.55
         : 0;
 
+      // Mouth readability rule: when an open-expression mouth is active, the
+      // closed smile/frown shapes fade aggressively instead of ghosting on top.
+      const closedMouthWeight = (1 - mouthOpen) * (1 - mouthOpen);
+
       return {
         bodyY: -tuning.bodyLift * bodyLift * w,
         bodyLean: tuning.bodyLean * bodyLean * w,
@@ -94,11 +98,10 @@ export function createMascotPerformanceAdapter(tuning: MascotAdapterTuning): Cha
         rightHandY,
         eyeScale: tuning.eyeScale * eyeOpen * w,
         browY: -tuning.browLift * browLift * w,
-        smileOpacity: Math.max(0, smile) * w,
-        // Open expression mouths must suppress the resting W-mouth. Negative values
-        // are intentional: the stage adds this channel to the authored base opacity.
-        neutralOpacity: (-mouthOpen * 0.95 + Math.max(0, -smile) * 0.06) * w,
-        frownOpacity: Math.max(0, -smile) * w,
+        smileOpacity: Math.max(0, smile) * closedMouthWeight * w,
+        // Negative values intentionally subtract from the authored neutral mouth.
+        neutralOpacity: (-mouthOpen * 1.15 + Math.max(0, -smile) * 0.04) * w,
+        frownOpacity: Math.max(0, -smile) * closedMouthWeight * w,
         expressionMouthOpacity: mouthOpen * w,
         tearOpacity: tears * w,
         sparkleOpacity: sparkle * w,
