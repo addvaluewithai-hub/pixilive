@@ -16,16 +16,16 @@ const neutralFace = {
 } as const;
 
 export const foxyPerformanceAdapter = createMascotPerformanceAdapter({
-  id: 'foxy-v4.3',
+  id: 'foxy-v4.4',
   base: {
     bodyY: 0,
     bodyLean: 0,
     headY: 0,
     headTilt: 0,
     leftHandX: -88,
-    leftHandY: 58,
+    leftHandY: 76,
     rightHandX: 88,
-    rightHandY: 58,
+    rightHandY: 76,
     ...neutralFace,
   },
   // Foxy folds long hidden arm chains at rest, then lets IK unfold them for acting.
