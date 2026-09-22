@@ -21,10 +21,10 @@ interface ServerMessage {
   goAway?: object;
 }
 export const performanceTool = {
-  name: 'perform', description: 'Actually change your visible avatar face and gesture. Use proactively at emotional beats throughout speech, and for every requested expression or action. Use immediate for direct requests, next_audio for story scenes. Continue speaking naturally.', behavior: 'NON_BLOCKING',
+  name: 'perform', description: 'Actually change your visible avatar face and gesture. Use proactively at emotional beats throughout speech, and for every requested expression or action. Use immediate for direct requests, with_speech during narrated sentences. Continue speaking naturally.', behavior: 'NON_BLOCKING',
   parameters: { type: 'OBJECT', properties: {
     expression: { type: 'STRING', enum: [...expressions] }, gesture: { type: 'STRING', enum: [...gestures] },
-    timing: { type: 'STRING', enum: ['immediate', 'next_audio'], description: 'immediate for explicit face/gesture requests; next_audio for narrated emotion.' },
+    timing: { type: 'STRING', enum: ['immediate', 'with_speech'], description: 'immediate for explicit face/gesture requests; with_speech applies during currently playing or queued speech; call while narrating, not after the reply.' },
     intensity: { type: 'NUMBER', description: '0 to 1. Prefer 0.55 to 0.9 for clearly readable acting.' },
     duration: { type: 'NUMBER', description: 'Hold in seconds, 0.6 to 6.' },
   }, required: ['expression'] },

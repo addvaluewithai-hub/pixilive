@@ -38,7 +38,7 @@ test('selected avatar, real model and explicit performance instructions reach se
  const prompt=setup.systemInstruction.parts[0].text;
  assert.ok(prompt.includes('بندق (bear)'));assert.ok(prompt.includes('MUST call perform'));
  assert.ok(prompt.includes('complete story'));assert.ok(prompt.includes('never send all scene cues at the start'));
- assert.deepEqual(setup.tools[0].functionDeclarations[0].parameters.properties.timing.enum,['immediate','next_audio']);
+ assert.deepEqual(setup.tools[0].functionDeclarations[0].parameters.properties.timing.enum,['immediate','with_speech']);
  f.client.close();
 });
 test('direct tool-only turn preserves immediate cue before turn completion',async()=>{

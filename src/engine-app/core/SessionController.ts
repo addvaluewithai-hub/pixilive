@@ -43,16 +43,18 @@ export class SessionController {
       turn: id => { this.clearPending('new_turn'); this.turn = id; this.cues.begin(id); this.log.beginTurn(); this.complete = false; this.view.assistant = ''; if (!this.ignored) this.director.beginTurn(id, true); },
       audio: (data, rate) => {
         if (this.ignored) return;
-        const start = this.playback.enqueue(data, rate);
-        // Best-effort next-audio boundary, not a claimed word-level timestamp.
-        this.schedule(this.cues.flush(start),'next_audio');
+        this.playback.enqueue(data, rate);
+        this.scheduleAudible();
       },
       cue: (id, cue) => {
         if(this.view.toolTrace.some(t=>t.id===id&&t.turn===this.turn))return;
         this.log.tool(id,this.turn,cue,this.ignored?'cancelled':'received',this.ignored?'interrupted':'awaiting_audio');
         this.view.toolReceived++;
         this.view.toolTrace=[...this.view.toolTrace.slice(-39),{id,turn:this.turn,expression:cue.expression,gesture:cue.gesture,status:this.ignored?'cancelled':'received',reason:this.ignored?'interrupted':'awaiting_audio'}];
-        if(!this.ignored)this.schedule(this.cues.receive(id,cue,this.playback.now),'immediate');
+        if(!this.ignored){
+          const at=this.playback.performanceAt;
+          this.schedule(this.cues.receive(id,cue,this.playback.now,at),cue.timing==='immediate'?'immediate':at!==null&&at<=this.playback.now?'current_audio':'queued_audio_start');
+        }
         this.emit();
       },
       cancel: ids => { this.cues.cancel(ids); for(const id of ids)this.traceUpdate(id,'cancelled','tool_cancelled'); this.director.cancelCalls(ids); },
@@ -64,22 +66,34 @@ export class SessionController {
         this.lastRole = role; this.emit();
       },
       interrupted: () => { this.ignored = false; this.clearPerformance('server_interrupted'); },
-      complete: () => { this.complete = true; if(!this.ignored)this.schedule(this.cues.flush(this.playback.now),'turn_end_fallback'); else this.clearPending('interrupted'); this.ignored = false; },
+      complete: () => {
+        this.complete = true;
+        if(!this.ignored){
+          this.scheduleAudible();
+          for(const id of this.cues.clear())this.traceUpdate(id,'skipped','no_speech_available');
+        }else this.clearPending('interrupted');
+        this.ignored = false;
+      },
       error: error => { this.view.error = error; this.emit(); },
     });
     this.frame = requestAnimationFrame(this.tick);
   }
   private traceUpdate(id:string,status:ToolTrace['status'],reason:string,turn=this.turn) {
-    this.log.update(id,turn,status,reason);
+    const audio=status==='applied'?{clock:this.playback.now,queued:this.playback.queuedSeconds,speaking:this.playback.sample().speaking}:undefined;
+    this.log.update(id,turn,status,reason,audio);
     const row=this.view.toolTrace.find(t=>t.id===id&&t.turn===turn);
     if(!row)return;
     if(status==='applied'&&row.status!=='applied')this.view.toolApplied++;
     this.view.toolTrace=this.view.toolTrace.map(t=>t===row?{...t,status,reason}:t);
   }
+  private scheduleAudible(){
+    const at=this.playback.performanceAt;
+    if(at!==null)this.schedule(this.cues.flush(at),at<=this.playback.now?'current_audio':'queued_audio_start');
+  }
   private clearPending(reason:string){for(const id of this.cues.clear())this.traceUpdate(id,'cancelled',reason);}
   private schedule(cues:ReturnType<CueScheduler['flush']>,reason:string){for(const cue of cues){this.traceUpdate(cue.id,'scheduled',reason);this.director.enqueue(cue);}}
   attach(port: CharacterPort,avatar?:AvatarContext) { this.clearPending('character_changed'); this.director.attach(port); if(avatar){this.live.setAvatar(avatar);if(this.avatarName!==avatar.name){this.avatarName=avatar.name;this.log.avatar(avatar.name);}} }
-  storyTest(){this.send(storyTestPrompt,'[اختبار القصة] نادر والفانوس؛ حوالي دقيقتين؛ ستة مشاهد واثنين أو ثلاثة تفاعلات لكل مشهد، مع perform كل 4–7 ثواني ومن غير تكرار الكلام.');}
+  storyTest(){this.send(storyTestPrompt,'[قراءة قصة مكتوبة كاملة] نادر ونونو وفانوس الغابة؛ 30 جملة، وحركة في كل جملتين، باستخدام جميع الحركات الست، بدون انتظار كمل.');}
 
   async start() {
     const operation = ++this.operation;
@@ -108,7 +122,7 @@ export class SessionController {
     this.clearPerformance('user_interrupt'); this.ignored = this.view.connection === 'connected';
     this.director.mode(this.view.connection === 'connected' ? 'listening' : 'idle'); this.emit();
   }
-  send(text: string, logText=text) { if (this.view.connection !== 'connected' || !text.trim()) return; this.log.message('user',logText.trim(),false); this.view.user = text.trim(); this.view.assistant = ''; this.lastRole = 'user'; this.live.text(text); this.director.mode('thinking'); this.emit(); }
+  send(text: string, logText=text) { if (this.view.connection !== 'connected' || !text.trim()) return; this.log.message('user',logText.trim(),false); this.view.user = logText.trim(); this.view.assistant = ''; this.lastRole = 'user'; this.live.text(text); this.director.mode('thinking'); this.emit(); }
   manual(expression: Expression, gesture: Gesture = 'none') {
     this.director.enqueue({ id: `manual-${performance.now()}`, expression, intensity: .7, gesture, duration: 3, turn: this.turn, at: this.now });
   }

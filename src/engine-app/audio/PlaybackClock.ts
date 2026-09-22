@@ -13,6 +13,12 @@ export class PlaybackClock {
   get now() { return this.context?.currentTime ?? 0; }
   get nextStart() { return Math.max(this.now + .075, this.end); }
   get queuedSeconds() { return Math.max(0, this.end - this.now); }
+  /** Earliest audible position already available, never the tail of the queue. */
+  get performanceAt(): number | null {
+    if (this.context?.state !== 'running') return null;
+    const next = this.segments.find(segment => segment.end > this.now);
+    return next ? Math.max(this.now, next.start) : null;
+  }
   async unlock() {
     this.context ??= new AudioContext({ latencyHint: 'interactive' });
     await this.context.resume();

@@ -10,13 +10,20 @@ test('explicit face requests dispatch without waiting for audio',()=>{
  assert.deepEqual(scheduler.flush(20),[]);
  assert.deepEqual(scheduler.receive('direct',{...cue,timing:'immediate'},13),[]);
 });
-test('narrative cues anchor to next audio, or turn completion when audio never follows',()=>{
+test('narrative cues run on current speech without another incoming audio packet',()=>{
  const scheduler=new CueScheduler();scheduler.begin(1);
- assert.deepEqual(scheduler.receive('audio',cue,1),[]);
- assert.equal(scheduler.flush(4)[0].at,4);
- scheduler.receive('late',{...cue,timing:'next_audio'},6);
- assert.equal(scheduler.flush(8)[0].id,'late');
- assert.deepEqual(scheduler.flush(9),[]);
+ for(const timing of ['with_speech','next_audio'] as const){
+  const result=scheduler.receive(timing,{...cue,timing},3,3);
+  assert.equal(result[0].at,3);assert.deepEqual(scheduler.flush(12),[]);
+ }
+});
+test('queued speech uses its first audible start, while absent speech waits and can be discarded',()=>{
+ const scheduler=new CueScheduler();scheduler.begin(1);
+ assert.equal(scheduler.receive('queued',cue,0,.075)[0].at,.075);
+ assert.deepEqual(scheduler.receive('waiting',cue,1,null),[]);
+ assert.equal(scheduler.flush(1.2)[0].at,1.2);
+ scheduler.receive('no-speech',cue,6,null);assert.deepEqual(scheduler.clear(),['no-speech']);
+ assert.deepEqual(scheduler.flush(8),[]);
 });
 test('cancellation, character switch, new turn and overflow do not leave stale cues',()=>{
  const dropped:string[]=[];const scheduler=new CueScheduler(id=>dropped.push(id));scheduler.begin(1);

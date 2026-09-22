@@ -24,3 +24,14 @@ test('bounded logs disclose removed history rather than pretending to export eve
  const log=new SessionLog();log.reset('إمبر');for(let i=0;i<510;i++)log.message('user',`message ${i}`,false);
  const output=log.export();assert.ok(output.includes('Earlier entries omitted: 11'));assert.ok(output.includes('message 509'));
 });
+test('one concise tool row preserves separate arrival, actual execution and playback evidence',()=>{
+ const originalNow=Date.now;let now=1000;Date.now=()=>now;
+ try{
+  const log=new SessionLog();log.reset('إمبر');now=2000;log.tool('timed',1,cue,'received','awaiting_audio');
+  log.update('timed',1,'scheduled','current_audio');now=2025;
+  log.update('timed',1,'applied','renderer_called',{clock:3,queued:9,speaking:true});
+  now=3000;log.update('timed',1,'cancelled','server_interrupted');const output=log.export();
+  assert.ok(output.includes('executed=1.025s; wait=25ms'));assert.ok(output.includes('audio=playing; clock=3.000s; remaining=9.00s'));
+  assert.ok(output.includes('route=current_audio'));assert.equal(output.match(/perform \[/g)?.length,1);
+ }finally{Date.now=originalNow;}
+});

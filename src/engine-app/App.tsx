@@ -66,8 +66,8 @@ export function App() {
         <form className="text-input" onSubmit={submit}><label className="sr-only" htmlFor="message">رسالتك</label><input id="message" value={text} onChange={e => setText(e.target.value)} disabled={!connected} placeholder={connected ? 'أو اكتب له هنا…' : 'ابدأ المحادثة عشان تكتب'} /><button disabled={!connected || !text.trim()} aria-label="إرسال الرسالة">↑</button></form>
         <details className="live-test-panel"><summary>اختبار تفاعل Gemini</summary>
           <p>النموذج المطلوب: <b dir="ltr">{view.model || 'يظهر بعد بدء الاتصال'}</b></p>
-          <div className="test-buttons"><button disabled={!connected || view.mode==='speaking' || view.mode==='thinking'} onClick={() => session.current?.storyTest()}>قصة بتفاعل مكثّف</button><button disabled={!connected} onClick={() => session.current?.send('اعمل وش تفكير دلوقتي باستخدام حركة التفكير، واثبت عليه أربع ثواني.')}>اطلب وش تفكير</button></div>
-          <p>دي طلبات لـGemini نفسه. العرض الصامت والأزرار اليدوية مش محسوبين هنا.</p>
+          <div className="test-buttons"><button disabled={!connected || view.mode==='speaking' || view.mode==='thinking'} onClick={() => session.current?.storyTest()}>اقرأ القصة كاملة</button><button disabled={!connected} onClick={() => session.current?.send('اعمل وش تفكير دلوقتي باستخدام حركة التفكير، واثبت عليه أربع ثواني.')}>اطلب وش تفكير</button></div>
+          <p>قصة مكتوبة من 30 جملة، وحركة في كل جملتين. دي طلبات لـGemini نفسه. العرض الصامت والأزرار اليدوية مش محسوبين هنا.</p>
           <p>أوامر وصلت: <b>{view.toolReceived}</b> · اتبعتت للمحرّك: <b>{view.toolApplied}</b></p>
           <p className="test-hint">لو العدّاد فضل صفر بعد الرد، الموديل ما بعتش أداة. التنفيذ في السجل يثبت وصول الأمر للمحرّك؛ راقب الشخصية عشان تحكم على الحركة والتوقيت.</p>
           <ol className="tool-trace">{view.toolTrace.slice(-12).reverse().map((entry,i)=><li key={`${entry.turn}-${entry.id}-${i}`}><code dir="ltr">{entry.expression} / {entry.gesture}</code><span>{traceLabels[entry.status]}</span><small dir="ltr">{entry.reason}</small></li>)}</ol>

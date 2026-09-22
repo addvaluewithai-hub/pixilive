@@ -5,7 +5,7 @@ export type Gesture = typeof gestures[number];
 export type Mode = 'idle' | 'listening' | 'thinking' | 'speaking';
 export type Viseme = 'REST' | 'MBP' | 'AA' | 'EE' | 'IH' | 'OH' | 'OO' | 'FV' | 'L' | 'S' | 'CH' | 'WQ';
 export interface MouthFrame { viseme: Viseme; energy: number; open: number; width?: number; round?: number }
-export interface Cue { expression: Expression; intensity: number; gesture: Gesture; duration: number; timing?: 'immediate' | 'next_audio' }
+export interface Cue { expression: Expression; intensity: number; gesture: Gesture; duration: number; timing?: 'immediate' | 'with_speech' | 'next_audio' }
 export interface TimedCue extends Cue { id: string; turn: number; at: number }
 export interface CharacterPort {
   expression(value: Expression, intensity: number): void;
@@ -23,7 +23,7 @@ export function parseCue(value: unknown): Cue | null {
   if (!expressions.includes(p.expression as Expression) || !gestures.includes((p.gesture ?? 'none') as Gesture)) return null;
   if (p.intensity !== undefined && (typeof p.intensity !== 'number' || !Number.isFinite(p.intensity))) return null;
   if (p.duration !== undefined && (typeof p.duration !== 'number' || !Number.isFinite(p.duration))) return null;
-  if (p.timing !== undefined && p.timing !== 'immediate' && p.timing !== 'next_audio') return null;
-  return { ...(p.timing ? { timing: p.timing as 'immediate' | 'next_audio' } : {}), expression: p.expression as Expression, gesture: (p.gesture ?? 'none') as Gesture,
+  if (p.timing !== undefined && p.timing !== 'immediate' && p.timing !== 'with_speech' && p.timing !== 'next_audio') return null;
+  return { ...(p.timing ? { timing: p.timing as 'immediate' | 'with_speech' | 'next_audio' } : {}), expression: p.expression as Expression, gesture: (p.gesture ?? 'none') as Gesture,
     intensity: clamp((p.intensity as number | undefined) ?? 0.65), duration: clamp((p.duration as number | undefined) ?? 2, 0.6, 6) };
 }

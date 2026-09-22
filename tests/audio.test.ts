@@ -28,3 +28,10 @@ test('resampling preserves position across capture chunks',()=>{
  const expected=atob(whole.convert(input,44100));let actual='';for(let i=0;i<input.length;i+=137)actual+=atob(split.convert(input.slice(i,i+137),44100));
  assert.equal(actual.length,expected.length);const a=new DataView(Uint8Array.from(actual,c=>c.charCodeAt(0)).buffer),b=new DataView(Uint8Array.from(expected,c=>c.charCodeAt(0)).buffer);for(let i=0;i<a.byteLength;i+=2)assert.ok(Math.abs(a.getInt16(i,true)-b.getInt16(i,true))<=1);
 });
+test('performance position follows audible queue head and current speech instead of queue tail',async()=>{
+ const clock=new PlaybackClock();await clock.unlock();assert.equal(clock.performanceAt,null);
+ clock.enqueue(pcm(24000));clock.enqueue(pcm(24000));assert.equal(clock.performanceAt,.075);
+ FakeContext.last.currentTime=.5;assert.equal(clock.performanceAt,.5);assert.ok(clock.nextStart>2);
+ FakeContext.last.state='suspended';assert.equal(clock.performanceAt,null);FakeContext.last.state='running';
+ FakeContext.last.currentTime=3;assert.equal(clock.performanceAt,null);await clock.close();
+});
