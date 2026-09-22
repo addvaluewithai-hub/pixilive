@@ -85,7 +85,13 @@ export class GeminiAdapter {
         this.avatarDirty = false;
         this.send({ setup: { model: `models/${token.model}`, generationConfig: { responseModalities: ['AUDIO'] },
           systemInstruction: { parts: [{ text: performanceInstructions(this.avatar) }] }, tools: [{ functionDeclarations: [performanceTool, flightTool] }],
-          realtimeInputConfig: { activityHandling: 'START_OF_ACTIVITY_INTERRUPTS', automaticActivityDetection: { disabled: false, prefixPaddingMs: 120, silenceDurationMs: 420 } },
+          realtimeInputConfig: { activityHandling: 'START_OF_ACTIVITY_INTERRUPTS', automaticActivityDetection: {
+            disabled: false,
+            startOfSpeechSensitivity: 'START_SENSITIVITY_HIGH',
+            endOfSpeechSensitivity: 'END_SENSITIVITY_HIGH',
+            prefixPaddingMs: 180,
+            silenceDurationMs: 650,
+          } },
           inputAudioTranscription: { languageCodes: ['ar-EG', 'en-US'] }, outputAudioTranscription: {}, contextWindowCompression: { slidingWindow: {} },
           sessionResumption: this.handle ? { handle: this.handle } : {} } });
       };
@@ -160,6 +166,7 @@ export class GeminiAdapter {
     finally { this.resuming = false; }
   }
   audio(data: string) { if (this.ready) this.send({ realtimeInput: { audio: { data, mimeType: 'audio/pcm;rate=16000' } } }); }
+  audioStreamEnd() { if (this.ready) this.send({ realtimeInput: { audioStreamEnd: true } }); }
   text(text: string) { if (this.ready && text.trim()) this.send({ realtimeInput: { text: text.trim() } }); }
   close() {
     ++this.generation; this.controller?.abort(); this.cancelSetup?.(); this.cancelSetup = null;
