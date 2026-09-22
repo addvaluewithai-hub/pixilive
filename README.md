@@ -21,6 +21,16 @@ npm run preview
 
 This builds the app and starts Cloudflare Pages locally, including `/api/gemini-token`. Open the URL printed by Wrangler and click **ابدأ الكلام**. Microphone access needs localhost or HTTPS. Never use a `VITE_` variable for the API key. The server defaults to `gemini-3.8-live`; model access must be available to the key's project.
 
+## Cloudflare Preview troubleshooting
+
+Secrets are configured separately for Production and Preview. For this branch, select **Preview** in the Pages project settings, confirm `GEMINI_API_KEY` is set, then deploy again if you changed it. Open the latest deployment for the branch; a hash-prefixed URL refers to a specific deployment and will not acquire later fixes.
+
+The token endpoint uses the raw REST `AuthToken` schema (`bidiGenerateContentSetup` plus an explicit `fieldMask`), not the JavaScript SDK's `liveConnectConstraints` input. It preserves the client's tools and system instructions while locking the model and audio output.
+
+Failures return a safe diagnostic code: `GEMINI_KEY_MISSING`, `GEMINI_KEY_INVALID`, `GEMINI_ACCESS_DENIED`, `GEMINI_RATE_LIMITED`, or `GEMINI_TOKEN_REQUEST_INVALID`. Upstream response bodies and API keys are never returned or logged. A successful token response does not by itself validate the subsequent Live WebSocket handshake.
+
+References: [Google REST AuthToken](https://ai.google.dev/api/live#AuthToken), [Cloudflare environment bindings](https://developers.cloudflare.com/pages/functions/bindings/).
+
 ## Included
 
 - Four configurable SVG characters: fox, cat, rabbit, bear.
