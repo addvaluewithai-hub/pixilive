@@ -42,3 +42,9 @@ test('sprite wings, flight, face and lip sync coexist; face cancellation never s
  const reduced=setup('sprite',true);reduced.motion.setFlight(command(.8,.2));reduced.tick(900);assert.equal(reduced.motion.flightState().moving,false);
  const fox=setup('fox');assert.equal(fox.motion.setFlight(command(1,0)),false);assert.equal(fox.$('wings').getAttribute('opacity'),'0');
 });
+test('wingbeats keep a continuous phase when speed changes late in a session',()=>{
+ const f=setup('sprite');f.tick(3000);
+ const spread=()=>Number(/scale\(([-.\d]+)/.exec(f.$('wing-l').getAttribute('transform'))[1]);
+ f.motion.setFlight(command(1,0,1));let previous=spread();
+ for(let i=0;i<160;i++){if(i===90)f.motion.setFlight(command(0,1,.1));f.tick();const current=spread();assert.ok(Math.abs(current-previous)<.035);previous=current;}
+});

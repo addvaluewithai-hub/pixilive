@@ -5,6 +5,7 @@
  function createRig(root, options={}) {
  const Geometry=host.CharacterGeometry;
  const flight=options.appearance?.().species==='sprite'?host.CharacterFlight.createFlight():null;
+ let wingPhase=0;
  const appearance=()=>options.appearance?options.appearance():({head:1,body:1,eyes:1,species:'fox'});
  const uiSet=(id,key,value)=>{const el=$(id);if(el)el[key]=value;};
  const nodes=new Map();
@@ -207,8 +208,8 @@
   if(flight){
    const f=flight.state(),hover=reduced?0:Math.sin(time*2.2)*3*f.lift;
    transform('flight',`translate(${fmt(190+260*f.x)} ${fmt(150+200*f.y+hover)}) rotate(${fmt(f.bank)}) scale(.76) translate(-302 -310)`);
-   const spread=reduced?.92:.68+f.lift*(.16+.16*Math.cos(time*(5+Math.hypot(f.vx,f.vy)*10)));
-   for(const side of ['l','r']){const x=side==='l'?269:335;transform('wing-'+side,`translate(${x} 373) scale(${fmt(spread)} 1) rotate(${fmt((side==='l'?1:-1)*(4+Math.sin(time*5)*6)*f.lift*(reduced?0:1))}) translate(${-x} -373)`);}
+   const spread=reduced?.92:.68+f.lift*(.16+.16*Math.cos(wingPhase));
+   for(const side of ['l','r']){const x=side==='l'?269:335;transform('wing-'+side,`translate(${x} 373) scale(${fmt(spread)} 1) rotate(${fmt((side==='l'?1:-1)*(4+Math.sin(wingPhase)*6)*f.lift*(reduced?0:1))}) translate(${-x} -373)`);}
    const shadowScale=.48+f.y*.22;
    transform('flight-shadow',`translate(${fmt(190+260*f.x)} 498) scale(${fmt(shadowScale)} ${fmt(shadowScale)}) translate(-311 -498)`);
    opacity('flight-shadow',.25+f.y*.55);
@@ -278,7 +279,7 @@
   if(disposed)return;
   const dt=(previous?Math.min((now-previous)/1000,.05):1/60)*settings.playbackRate;previous=now;
   if(!paused && !document.hidden){
-   time+=dt;flight?.step(dt,reduced);
+   time+=dt;if(flight){const f=flight.step(dt,reduced);wingPhase=(wingPhase+dt*(5+Math.hypot(f.vx,f.vy)*10))%(Math.PI*2);}
    if(!reduced && time>nextBlink){blinkStart=time;nextBlink=time+3.2+Math.random()*2.6;}
    updateSpeech();const goal=targets();updateArms(goal,dt,reduced);
    for(const key in goal)smooth(key,goal[key],dt,key==='mouthOpen'&&externalMouth&&['REST','MBP'].includes(externalMouth.viseme)?80:key.startsWith('mouth')?32:key==='lookX'||key==='lookY'?15:key==='wave'?10:11);
