@@ -1,80 +1,23 @@
-name: CI
-
+name: Character Engine CI
 on:
   pull_request:
   push:
-    branches:
-      - main
+    branches: [main, feat/character-engine]
   workflow_dispatch:
-
 permissions:
   contents: read
-
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
-
 jobs:
-  build:
-    name: Typecheck, build, and visual check
+  check:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
-
+    timeout-minutes: 10
     steps:
-      - name: Checkout
-        uses: actions/checkout@v5
-
-      - name: Set up Node
-        uses: actions/setup-node@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
-          node-version: 22
+          node-version: 24
           cache: npm
-          cache-dependency-path: package.json
-
-      - name: Install dependencies
-        run: npm install --no-audit --no-fund
-
-      - name: Build
-        run: npm run build
-
-      - name: Install Playwright Chromium
-        run: |
-          npm install --no-save --no-audit --no-fund playwright@latest
-          npx playwright install --with-deps chromium
-
-      - name: Start app and viseme harness servers
-        run: |
-          npx vite preview --host 127.0.0.1 --port 4173 > /tmp/pixilive-preview.log 2>&1 &
-          npx vite --host 127.0.0.1 --port 4174 > /tmp/pixilive-harness.log 2>&1 &
-
-          for port in 4173 4174; do
-            ready=0
-            for attempt in {1..30}; do
-              if curl --fail --silent http://127.0.0.1:$port > /dev/null; then
-                ready=1
-                break
-              fi
-              sleep 1
-            done
-
-            if [ "$ready" -ne 1 ]; then
-              echo "Server on port $port did not become ready"
-              cat /tmp/pixilive-preview.log || true
-              cat /tmp/pixilive-harness.log || true
-              exit 1
-            fi
-          done
-
-      - name: Capture registered characters and visemes
-        env:
-          PIXILIVE_PREVIEW_URL: http://127.0.0.1:4173
-          PIXILIVE_VISUAL_HARNESS_URL: http://127.0.0.1:4174
-        run: node scripts/capture-characters.mjs
-
-      - name: Upload visual artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: character-screenshots-${{ github.sha }}
-          path: visual-artifacts/*.png
-          if-no-files-found: error
-          retention-days: 14
+      - run: npm ci --no-audit --no-fund
+      - run: npm run check

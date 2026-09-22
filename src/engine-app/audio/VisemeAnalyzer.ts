@@ -1,4 +1,6 @@
-import type { MouthPose, Viseme } from '../character/types';
+// Acoustic fallback adapted from PixiLive main (d85f0d5). Not phoneme alignment.
+type Viseme = 'REST' | 'MBP' | 'FV' | 'EE' | 'AA' | 'OH' | 'OO' | 'L' | 'CONS';
+interface MouthPose { open:number; width:number; round:number; energy:number; viseme?:Viseme; lipPress?:number; lowerLipBite?:number; teeth?:number; tongue?:number; cornerPull?:number }
 
 const clamp = (value: number, min = 0, max = 1) => Math.max(min, Math.min(max, value));
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t;

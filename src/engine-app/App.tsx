@@ -1,0 +1,63 @@
+import { useEffect, useMemo, useRef, useState, type FormEvent, type CSSProperties } from 'react';
+import { characters, getCharacter } from './core/registry';
+import { loadCharacterEngine, portrait, SvgCharacter } from './core/SvgCharacter';
+import { SessionController, type SessionView } from './core/SessionController';
+import { expressions, type Expression, type Gesture } from './core/types';
+const labels: Record<Expression, string> = { neutral: 'هادي', happy: 'مبسوط', sad: 'زعلان', crying: 'بيعيّط', surprised: 'متفاجئ', thinking: 'بيفكّر', angry: 'متعصّب', sleepy: 'نعسان', laughing: 'بيضحك', excited: 'متحمّس' };
+const initial: SessionView = { connection: 'offline', mode: 'idle', demo: false, error: '', user: '', assistant: '', energy: 0 };
+export function App() {
+  const [id, setId] = useState('ember');
+  const [engine, setEngine] = useState<Awaited<ReturnType<typeof loadCharacterEngine>> | null>(null);
+  const [view, setView] = useState(initial);
+  const [loadError, setLoadError] = useState('');
+  const [text, setText] = useState('');
+  const [expression, setExpression] = useState<Expression>('neutral');
+  const [showControls, setShowControls] = useState(false);
+  const host = useRef<HTMLDivElement>(null);
+  const session = useRef<SessionController | null>(null);
+  const character = getCharacter(id);
+  const portraits = useMemo(() => engine ? Object.fromEntries(characters.map(c => [c.id, portrait(engine, c)])) : {}, [engine]);
+  useEffect(() => {
+    let disposed = false;
+    const controller = new SessionController(next => { if (!disposed) setView(next); }); session.current = controller;
+    void loadCharacterEngine().then(next => { if (!disposed) setEngine(next); }).catch(e => { if (!disposed) setLoadError(String(e.message)); });
+    return () => { disposed = true; controller.dispose(); session.current = null; };
+  }, []);
+  useEffect(() => {
+    if (!engine || !host.current || !session.current) return;
+    try { session.current.attach(new SvgCharacter(host.current, engine, character)); setExpression('neutral'); }
+    catch(error) { setLoadError(error instanceof Error ? error.message : 'تعذّر عرض الشخصية.'); }
+  }, [engine, character]);
+  const connected = view.connection === 'connected';
+  const busy = view.connection === 'connecting';
+  const mode = view.demo ? 'عرض الحركات — بدون صوت' : busy ? 'بنوصّل المحادثة…' : connected ? ({ idle: 'جاهز', listening: 'سامعك…', thinking: 'لحظة…', speaking: 'بيتكلم معاك' }[view.mode]) : 'جاهز للكلام';
+  const submit = (event: FormEvent) => { event.preventDefault(); if (!text.trim()) return; session.current?.send(text); setText(''); };
+  const cue = (value: Expression, gesture: Gesture = 'none') => { setExpression(value); session.current?.manual(value, gesture); };
+  return <main className="studio" dir="rtl" style={{ '--character-accent': character.accent } as CSSProperties}>
+    <header className="topbar"><a className="wordmark" href="/" aria-label="PixiLive"><span className="brand-symbol">p</span>pixilive<span className="edition">CHARACTER ENGINE</span></a><span className="session-indicator">{connected ? 'المحادثة شغالة' : busy ? 'جارٍ الاتصال' : 'مساحتك للكلام'}</span></header>
+    <div className="workspace">
+      <aside className="character-panel"><span className="overline">اختار صاحبك</span><h1>مين معاك<br />النهارده؟</h1><p className="panel-copy">نفس المحادثة، وش جديد.<br />بدّل بينهم في أي وقت.</p>
+        <div className="character-list" role="group" aria-label="الشخصيات">{characters.map(c => <button type="button" className={`character-card ${id === c.id ? 'selected' : ''}`} aria-pressed={id === c.id} key={c.id} onClick={() => setId(c.id)}>
+          <span className="portrait">{engine && <img src={portraits[c.id]} alt="" />}</span><span><strong>{c.name}</strong><small>{c.description}</small></span><span className="selection-mark" aria-hidden="true">{id === c.id ? '✓' : ''}</span>
+        </button>)}</div>
+        <div className="panel-note"><span>01 — 04</span><p>أربع شخصيات.<br />ومكان لحكايات كتير.</p></div>
+      </aside>
+      <section className="stage-panel" aria-label="مساحة الشخصية">
+        <div className="stage-heading"><div><span className="overline">معاك دلوقتي</span><h2>{character.name}</h2></div><span className={`mode-pill ${connected ? 'live' : ''}`} role="status">{mode}</span></div>
+        <div className="character-scene"><div className="scene-orbit" aria-hidden="true" /><div className="character-host" ref={host} />{!engine && <p className="loading">{loadError || 'بنجهّز الشخصيات…'}</p>}</div>
+        <div className="stage-caption"><span className="sound-bars" aria-hidden="true">{[.4,.8,1,.65,.35].map((v,i) => <i key={i} style={{ height: `${5 + view.energy * 40 * v}px` }} />)}</span><span>{connected ? 'اتكلم بطبيعتك. تقدر تقاطعه في أي وقت.' : 'ابدأ محادثة، أو جرّب تعبيراته الأول.'}</span></div>
+        <div className="conversation-controls"><button className={`talk-button ${connected || busy ? 'end' : ''}`} disabled={!engine} onClick={() => { if (connected || busy) void session.current?.stop(); else void session.current?.start(); }}>{busy ? 'إلغاء الاتصال' : connected ? 'إنهاء المحادثة' : 'ابدأ الكلام'}<span aria-hidden="true">{connected || busy ? '■' : '◉'}</span></button>
+          <button className="secondary-button" disabled={!engine} onClick={() => { if (view.demo) session.current?.interrupt(); else void session.current?.demo(); }}>{view.demo ? 'إيقاف العرض' : 'جرّب الحركات'}</button>
+          {(connected || view.demo) && <button className="interrupt-button" onClick={() => session.current?.interrupt()}>اسمعني</button>}
+        </div>
+        {(view.error || loadError) && <p className="error" role="alert">{view.error || loadError}</p>}
+        <button className="controls-toggle" aria-expanded={showControls} onClick={() => setShowControls(!showControls)}>تعبيرات وحركات <span aria-hidden="true">{showControls ? '−' : '+'}</span></button>
+        {showControls && <div className="expression-controls"><div className="expression-grid">{expressions.map(value => <button disabled={!engine} key={value} aria-pressed={expression === value} onClick={() => cue(value)}>{labels[value]}</button>)}</div><div className="gesture-row">{([['wave','سلّم'],['blink','ارمش'],['explain','اشرح'],['think','فكّر'],['celebrate','احتفل']] as [Gesture,string][]).map(([gesture,label]) => <button disabled={!engine} key={gesture} onClick={() => cue(expression,gesture)}>{label}</button>)}</div></div>}
+      </section>
+      <aside className="conversation-panel"><div className="conversation-heading"><span className="overline">بينكم</span><h2>الكلام اللي اتقال</h2></div><div className="transcript" aria-live="polite" aria-atomic="false">{!view.user && !view.assistant ? <div className="empty-chat"><span aria-hidden="true">“</span><p>كل حكاية بتبدأ<br />بـ «عامل إيه؟»</p><small>كلامكم هيظهر هنا لما تبدأوا.</small></div> : <>{view.user && <div className="message user"><small>إنت</small><p>{view.user}</p></div>}{view.assistant && <div className="message assistant"><small>{character.name}</small><p>{view.assistant}</p></div>}</>}</div>
+        <form className="text-input" onSubmit={submit}><label className="sr-only" htmlFor="message">رسالتك</label><input id="message" value={text} onChange={e => setText(e.target.value)} disabled={!connected} placeholder={connected ? 'أو اكتب له هنا…' : 'ابدأ المحادثة عشان تكتب'} /><button disabled={!connected || !text.trim()} aria-label="إرسال الرسالة">↑</button></form>
+        <p className="privacy-note">الميكروفون بيشتغل بس لما تبدأ المحادثة.</p>
+      </aside>
+    </div><footer><span>PIXI / LIVE</span><span>شخصيات ليها روح.</span></footer>
+  </main>;
+}

@@ -1,0 +1,33 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { GeminiAdapter, type LiveEvents } from '../src/engine-app/live/GeminiAdapter.ts';
+class FakeSocket {
+ static OPEN=1;static instances:FakeSocket[]=[];readyState=1;sent:any[]=[];
+ onopen:(()=>void)|null=null;onclose:(()=>void)|null=null;onerror:(()=>void)|null=null;onmessage:((event:{data:unknown})=>void)|null=null;
+ constructor(_url:string){FakeSocket.instances.push(this);queueMicrotask(()=>this.onopen?.());}
+ send(value:string){this.sent.push(JSON.parse(value));if(this.sent.at(-1).setup)this.message({setupComplete:{}});}
+ message(value:unknown){this.onmessage?.({data:JSON.stringify(value)});}
+ close(){this.readyState=3;this.onclose?.();}
+}
+const settle=()=>new Promise(resolve=>setImmediate(resolve));
+Object.assign(globalThis,{window:globalThis,WebSocket:FakeSocket,fetch:async()=>new Response(JSON.stringify({token:'test-ephemeral',model:'gemini-3.8-live'}))});
+function fixture(){const calls:{name:string;value?:unknown}[]=[];const events:LiveEvents={status:v=>calls.push({name:'status',value:v}),turn:v=>calls.push({name:'turn',value:v}),audio:(v,rate)=>calls.push({name:'audio',value:[v,rate]}),cue:(id,cue)=>calls.push({name:'cue',value:[id,cue]}),cancel:ids=>calls.push({name:'cancel',value:ids}),transcript:(role,text)=>calls.push({name:role,value:text}),interrupted:()=>calls.push({name:'interrupted'}),complete:()=>calls.push({name:'complete'}),error:v=>calls.push({name:'error',value:v})};return {client:new GeminiAdapter(events),calls};}
+test('Gemini setup, cues, multiple audio parts and completion use one turn',async()=>{
+ const f=fixture();await f.client.connect();const socket=FakeSocket.instances.at(-1)!;
+ assert.equal(socket.sent[0].setup.tools[0].functionDeclarations[0].behavior,'NON_BLOCKING');
+ socket.message({toolCall:{functionCalls:[{id:'a',name:'perform',args:{expression:'happy',gesture:'wave'}}]},serverContent:{modelTurn:{parts:[{inlineData:{data:'AAAA',mimeType:'audio/pcm;rate=24000'}},{inlineData:{data:'BBBB',mimeType:'audio/pcm;rate=24000'}}]},turnComplete:true}});await settle();
+ assert.equal(f.calls.filter(c=>c.name==='turn').length,1);assert.equal(f.calls.filter(c=>c.name==='audio').length,2);assert.equal(socket.sent[1].toolResponse.functionResponses[0].response.scheduling,'SILENT');assert.ok(f.calls.some(c=>c.name==='complete'));f.client.close();
+});
+test('cancellation and barge-in discard audio included with interruption',async()=>{
+ const f=fixture();await f.client.connect();const socket=FakeSocket.instances.at(-1)!;
+ socket.message({toolCallCancellation:{ids:['cancelled']},serverContent:{interrupted:true,modelTurn:{parts:[{inlineData:{data:'AAAA',mimeType:'audio/pcm;rate=24000'}}]}}});await settle();
+ assert.ok(f.calls.some(c=>c.name==='interrupted'));assert.deepEqual(f.calls.find(c=>c.name==='cancel')?.value,['cancelled']);assert.equal(f.calls.some(c=>c.name==='audio'),false);f.client.close();
+});
+test('a late Blob decode from a closed connection cannot animate a new session',async()=>{
+ const f=fixture();await f.client.connect();const old=FakeSocket.instances.at(-1)!;
+ let release:(value:string)=>void=()=>{};const delayed=new Blob();delayed.text=()=>new Promise(resolve=>{release=resolve;});old.onmessage?.({data:delayed});await settle();
+ f.client.close();await f.client.connect();release(JSON.stringify({toolCall:{functionCalls:[{id:'old',name:'perform',args:{expression:'angry'}}]}}));await settle();assert.equal(f.calls.some(c=>c.name==='cue'),false);f.client.close();
+});
+test('explicit close clears the resumption handle for the next conversation',async()=>{
+ const f=fixture();await f.client.connect();FakeSocket.instances.at(-1)!.message({sessionResumptionUpdate:{resumable:true,newHandle:'old-session'}});await settle();f.client.close();await f.client.connect();assert.deepEqual(FakeSocket.instances.at(-1)!.sent[0].setup.sessionResumption,{});f.client.close();
+});

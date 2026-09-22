@@ -1,148 +1,72 @@
-# PixiLive
+# PixiLive — Character Engine
 
-A real-time AI character playground built with **PixiJS**, **React**, **Gemini Live API**, and **Cloudflare Pages Functions**.
+A new SVG character application on `feat/character-engine`, based on `main` at `d85f0d5`. The previous Pixi/Rive applications remain in Git history. This branch uses our Character Lab artwork and a separate performance, speech, and Gemini architecture.
 
-PixiLive is intentionally a **multi-character runtime**. Characters are procedural code, not pre-rendered avatar assets, and they share one audio, Gemini Live, lip-sync and UI infrastructure.
+## Run
 
-## Included characters
+Use Node 22.18+ (Node 24 recommended).
 
-- **Milo** — monochrome editorial-style human mascot with hand-drawn motion.
-- **Nova** — the original colorful cosmic creature with ears, tail, antenna glow and energetic secondary motion.
-
-Neither character uses PNG/SVG character artwork, Rive, Live2D, Spine or a 3D model.
-
-## Architecture
-
-```text
-                         character registry
-                    ┌──────────┴──────────┐
-                    │                     │
-                  Milo                  Nova          ...future characters
-                    │                     │
-                    └──────────┬──────────┘
-                               ▼
-                       CharacterRuntime
-                               │
-             ┌─────────────────┼─────────────────┐
-             ▼                 ▼                 ▼
-         Pixi stage         lip sync          emotion/gaze
-
-microphone ──16 kHz PCM──▶ Gemini Live WebSocket ──24 kHz PCM──▶ playback
-                              ▲                              │
-                              │                              └──▶ mouth pose ──▶ active character
-Browser ──POST /api/gemini-token──▶ Cloudflare Pages Function
-                                         │
-                                         └── GEMINI_API_KEY (server-side only)
-```
-
-## Repository layout
-
-```text
-src/
-├── audio/                         # microphone capture + PCM playback
-├── character/
-│   ├── runtime.ts                 # shared CharacterRuntime / CharacterDefinition contracts
-│   ├── registry.ts                # all available characters + persona/theme/framing metadata
-│   ├── types.ts                   # shared emotion + mouth controls
-│   ├── MiloCharacter.ts           # Milo vector artwork and animation
-│   └── NovaCharacter.ts           # Nova vector artwork and animation
-├── components/
-│   └── CharacterStage.tsx         # generic Pixi lifecycle; renders any registered character
-├── live/
-│   └── GeminiLiveClient.ts        # character-agnostic Gemini Live transport
-└── App.tsx                        # character picker + shared product UI
-
-functions/
-└── api/
-    └── gemini-token.ts            # server-side ephemeral-token endpoint
-```
-
-## Character contract
-
-Every character implements the same runtime interface:
-
-```ts
-interface CharacterRuntime {
-  view: Container;
-  setEmotion(emotion: Emotion): void;
-  setMouth(pose: MouthPose, speaking?: boolean): void;
-  settleMouth(): void;
-  lookAt(x: number, y: number): void;
-  react(): void;
-  update(ticker: Ticker): void;
-}
-```
-
-A registry entry provides product metadata around that runtime:
-
-```ts
-{
-  id: 'new-character',
-  name: 'New Character',
-  tagline: 'Short UI tagline',
-  description: 'What this character feels like.',
-  theme: 'mono',
-  defaultEmotion: 'calm',
-  emotions: ['calm', 'happy', 'curious', 'excited'],
-  systemPrompt: 'Gemini persona instructions...',
-  framing: { ... },
-  ambient: { ... },
-  create: () => new NewCharacter(),
-}
-```
-
-### Adding a character
-
-1. Add a class such as `src/character/NewCharacter.ts` implementing `CharacterRuntime`.
-2. Add one entry to `src/character/registry.ts`.
-3. Done: the selector, stage framing, emotion UI and Gemini persona all pick it up automatically.
-
-Do not import a concrete character class from `App.tsx` or `CharacterStage.tsx`. Those layers should remain registry/runtime-driven.
-
-## Gemini Live
-
-The browser captures mono PCM16 at 16 kHz and connects directly to Gemini Live using a one-use ephemeral token. Gemini returns native PCM audio at 24 kHz. Playback analysis drives normalized mouth controls (`open`, `width`, `round`, `energy`) shared by every character.
-
-The selected registry entry supplies Gemini's system instruction. Character switching is disabled during an active Live session so the visual character and model persona cannot drift apart.
-
-Session resumption, context-window compression, interruption handling and transcription stay in the shared transport layer.
-
-## Local development
-
-```bash
-npm install
+```sh
+npm ci
 npm run dev
 ```
 
-For the full Pages app including the token function:
+This starts the character switcher and silent motion preview. Vite alone does **not** serve the Gemini token endpoint.
 
-```bash
-npm install
-npm run build
+For real voice conversations, create a local `.dev.vars` file with `GEMINI_API_KEY=...`, then:
+
+```sh
 npm run preview
 ```
 
-Configure `GEMINI_API_KEY` as a Cloudflare secret/environment variable. Never put it in a `VITE_` variable because Vite exposes those values to browser code.
+This builds the app and starts Cloudflare Pages locally, including `/api/gemini-token`. Open the URL printed by Wrangler and click **ابدأ الكلام**. Microphone access needs localhost or HTTPS. Never use a `VITE_` variable for the API key. The server defaults to `gemini-3.8-live`; model access must be available to the key's project.
 
-## Cloudflare Pages
+## Included
 
-Build settings:
+- Four configurable SVG characters: fox, cat, rabbit, bear.
+- Switch appearance during a conversation without reconnecting or losing its context.
+- Independent expression, gesture, and speech channels; a face change no longer moves both hands.
+- One playback clock for PCM audio and visual sampling. No per-viseme JavaScript timers.
+- Validated, non-blocking Gemini stage directions, silently acknowledged.
+- Cancellation for interruption, cancelled tool calls, character changes, and stale socket messages.
+- A clearly labeled **silent** motion demonstration; it does not fake a Gemini conversation.
+- Deterministic tests for scheduling, cancellation, resampling, protocol handling, and the actual SVG rig.
 
-```text
-Framework preset: None
-Build command: npm run build
-Build output directory: dist
-Root directory: (empty)
+## Structure
+
+| Path | Responsibility |
+|---|---|
+| `src/engine-app/core/registry.ts` | Character recipes, supported gestures, motion intensity |
+| `src/engine-app/core/SvgCharacter.ts` | Direct adapter to the SVG rig |
+| `src/engine-app/core/PerformanceDirector.ts` | Timed cues, gesture limits, cancellation |
+| `src/engine-app/core/SessionController.ts` | Conversation, audio, and character coordination |
+| `src/engine-app/audio/PlaybackClock.ts` | PCM scheduling and mouth sampling |
+| `src/engine-app/audio/Microphone.ts` | Capture lifecycle and continuous resampling |
+| `src/engine-app/live/GeminiAdapter.ts` | Live protocol, tools, session resumption |
+| `public/character-engine/` | Character Lab artwork, geometry, recipe engine, motion |
+| `functions/api/gemini-token.ts` | Server-only ephemeral token issuance |
+
+## Add a character
+
+Add a definition to `characters` in `registry.ts`. Give it a unique `id`, choose a supported `species`, and optionally supply a `recipe` with colors, proportions, and an accessory. The switcher discovers definitions automatically.
+
+```ts
+{
+  id: 'night-fox', species: 'fox', name: 'ليل',
+  description: 'ثعلب بألوان ليلية', accent: '#8A839B',
+  gestures: common, motionScale: 0.4,
+  recipe: { fur: '#8A839B', cream: '#E8E1E9', accent: '#D49B64', accessory: 'scarf' }
+}
 ```
 
-Add `GEMINI_API_KEY` in the Pages project's Variables and Secrets settings.
+A new anatomy requires geometry/rig work. The shared engine does not claim to generate arbitrary species from four presets. Current switching changes appearance and motion style, not the agent's identity or voice.
 
-## CI
+## Verification
 
-`.github/workflows/ci.yml` runs a clean dependency install and `npm run build` for pull requests, pushes to `main`, and manual workflow dispatches.
+```sh
+npm run check
+```
 
-## Gemini key note (September 2026)
+Tests use fake audio/network devices and a deterministic DOM fixture running the actual rig scripts. They do not prove browser layout, audible lip-sync quality, or a real Gemini handshake. Browser inspection was omitted at the user's request. No real Gemini session was run in the development environment.
 
-Use a current Gemini authorization/auth key created in Google AI Studio rather than a legacy unrestricted Standard key.
-
-`gemini-3.1-flash-live-preview` remains a preview model, so upstream Live behavior can still change.
+See [architecture and remaining validation](docs/architecture.md).
