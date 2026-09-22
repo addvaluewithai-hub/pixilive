@@ -37,7 +37,7 @@ export class SessionLog {
     entry.reason = reason;
   }
   export() {
-    const lines = ['PixiLive — conversation + tool calls', `Model: ${this.model || 'not connected'}`, `Started: ${new Date(this.started).toISOString()}`];
+    const lines = ['PixiLive — conversation + tool calls', `Model: ${this.model || 'not connected'}`, `Started: ${new Date(this.started).toISOString()}`, 'Performance: expressive-v2; tool acknowledgements=SILENT; speech accents=local audio-driven'];
     if(this.omitted)lines.push(`Earlier entries omitted: ${this.omitted} (latest 500 retained)`);
     for (const entry of this.entries) {
       const seconds = Math.max(0,Math.floor((entry.at-this.started)/1000));

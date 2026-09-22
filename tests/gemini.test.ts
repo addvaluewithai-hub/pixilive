@@ -16,7 +16,7 @@ test('Gemini setup, cues, multiple audio parts and completion use one turn',asyn
  const f=fixture();await f.client.connect();const socket=FakeSocket.instances.at(-1)!;
  assert.equal(socket.sent[0].setup.tools[0].functionDeclarations[0].behavior,'NON_BLOCKING');
  socket.message({toolCall:{functionCalls:[{id:'a',name:'perform',args:{expression:'happy',gesture:'wave'}}]},serverContent:{modelTurn:{parts:[{inlineData:{data:'AAAA',mimeType:'audio/pcm;rate=24000'}},{inlineData:{data:'BBBB',mimeType:'audio/pcm;rate=24000'}}]},turnComplete:true}});await settle();
- assert.equal(f.calls.filter(c=>c.name==='turn').length,1);assert.equal(f.calls.filter(c=>c.name==='audio').length,2);assert.equal(socket.sent[1].toolResponse.functionResponses[0].response.scheduling,'SILENT');assert.ok(f.calls.some(c=>c.name==='complete'));f.client.close();
+ assert.equal(f.calls.filter(c=>c.name==='turn').length,1);assert.equal(f.calls.filter(c=>c.name==='audio').length,2);assert.equal(socket.sent[1].toolResponse.functionResponses[0].scheduling,'SILENT');assert.ok(f.calls.some(c=>c.name==='complete'));f.client.close();
 });
 test('cancellation and barge-in discard audio included with interruption',async()=>{
  const f=fixture();await f.client.connect();const socket=FakeSocket.instances.at(-1)!;
@@ -48,4 +48,30 @@ test('direct tool-only turn preserves immediate cue before turn completion',asyn
  assert.equal(received[0],'think');assert.equal(received[1].timing,'immediate');
  assert.ok(f.calls.findIndex(c=>c.name==='cue')<f.calls.findIndex(c=>c.name==='complete'));
  f.client.close();
+});
+test('silent acknowledgements use the protocol envelope and batch every result once',async()=>{
+ const f=fixture();await f.client.connect();const socket=FakeSocket.instances.at(-1)!;
+ const calls=[{id:'1',name:'perform',args:{expression:'thinking'}},{id:'2',name:'perform',args:{expression:'excited'}}];
+ socket.message({toolCall:{functionCalls:calls}});await settle();
+ const responses=socket.sent.filter(m=>m.toolResponse);assert.equal(responses.length,1);
+ assert.deepEqual(responses[0].toolResponse.functionResponses,[
+  {id:'1',name:'perform',scheduling:'SILENT',response:{result:'accepted'}},
+  {id:'2',name:'perform',scheduling:'SILENT',response:{result:'accepted'}}]);
+ // Documented default is WHEN_IDLE when the envelope has no scheduling field.
+ // A nested response.scheduling would fail this check and can trigger extra speech.
+ for(const response of responses[0].toolResponse.functionResponses){assert.equal(response.scheduling??'WHEN_IDLE','SILENT');assert.equal('scheduling' in response.response,false);}
+ socket.message({toolCall:{functionCalls:calls}});await settle();
+ assert.equal(socket.sent.filter(m=>m.toolResponse).length,1);assert.equal(f.calls.filter(c=>c.name==='cue').length,2);f.client.close();
+});
+test('interrupted packets cannot restart stale speech or gestures',async()=>{
+ const f=fixture();await f.client.connect();const socket=FakeSocket.instances.at(-1)!;
+ socket.message({serverContent:{interrupted:true,outputTranscription:{text:'stale text'},turnComplete:true},toolCall:{functionCalls:[{id:'old',name:'perform',args:{expression:'happy'}}]}});await settle();
+ assert.equal(f.calls.some(c=>['turn','cue','assistant','audio'].includes(c.name)),false);
+ assert.deepEqual(socket.sent.at(-1).toolResponse.functionResponses[0],{id:'old',name:'perform',scheduling:'SILENT',response:{result:'cancelled'}});f.client.close();
+});
+test('speech recognition receives language hints and invalid cues are acknowledged silently',async()=>{
+ const f=fixture();await f.client.connect();const socket=FakeSocket.instances.at(-1)!;
+ assert.deepEqual(socket.sent[0].setup.inputAudioTranscription.languageCodes,['ar-EG','en-US']);
+ socket.message({toolCall:{functionCalls:[{id:'bad',name:'perform',args:{expression:'not-real'}}]}});await settle();
+ assert.equal(f.calls.some(c=>c.name==='cue'),false);assert.equal(socket.sent.at(-1).toolResponse.functionResponses[0].scheduling,'SILENT');f.client.close();
 });

@@ -37,10 +37,10 @@ export class SessionController {
       status: connection => {
         this.view.connection = connection;
         if (connection === 'connected') this.director.mode('listening');
-        if (connection === 'offline' && !this.view.demo) { void this.microphone.stop(); this.playback.interrupt(); this.director.interrupt(); this.director.mode('idle'); }
+        if (connection === 'offline' && !this.view.demo) { void this.microphone.stop(); this.playback.interrupt(); this.director.interrupt('connection_closed'); this.director.mode('idle'); }
         this.emit();
       },
-      turn: id => { this.clearPending('new_turn'); this.turn = id; this.cues.begin(id); this.log.beginTurn(); this.complete = false; this.view.assistant = ''; if (!this.ignored) this.director.beginTurn(id); },
+      turn: id => { this.clearPending('new_turn'); this.turn = id; this.cues.begin(id); this.log.beginTurn(); this.complete = false; this.view.assistant = ''; if (!this.ignored) this.director.beginTurn(id, true); },
       audio: (data, rate) => {
         if (this.ignored) return;
         const start = this.playback.enqueue(data, rate);
@@ -63,7 +63,7 @@ export class SessionController {
         else this.view.assistant += text;
         this.lastRole = role; this.emit();
       },
-      interrupted: () => { this.ignored = false; this.clearPerformance(); },
+      interrupted: () => { this.ignored = false; this.clearPerformance('server_interrupted'); },
       complete: () => { this.complete = true; if(!this.ignored)this.schedule(this.cues.flush(this.playback.now),'turn_end_fallback'); else this.clearPending('interrupted'); this.ignored = false; },
       error: error => { this.view.error = error; this.emit(); },
     });
@@ -79,7 +79,7 @@ export class SessionController {
   private clearPending(reason:string){for(const id of this.cues.clear())this.traceUpdate(id,'cancelled',reason);}
   private schedule(cues:ReturnType<CueScheduler['flush']>,reason:string){for(const cue of cues){this.traceUpdate(cue.id,'scheduled',reason);this.director.enqueue(cue);}}
   attach(port: CharacterPort,avatar?:AvatarContext) { this.clearPending('character_changed'); this.director.attach(port); if(avatar){this.live.setAvatar(avatar);if(this.avatarName!==avatar.name){this.avatarName=avatar.name;this.log.avatar(avatar.name);}} }
-  storyTest(){this.send(storyTestPrompt,'[اختبار القصة] نادر والفانوس؛ حوالي دقيقتين؛ ستة مشاهد: happy → thinking → surprised → sad → laughing → excited، مع perform أثناء السرد.');}
+  storyTest(){this.send(storyTestPrompt,'[اختبار القصة] نادر والفانوس؛ حوالي دقيقتين؛ ستة مشاهد واثنين أو ثلاثة تفاعلات لكل مشهد، مع perform كل 4–7 ثواني ومن غير تكرار الكلام.');}
 
   async start() {
     const operation = ++this.operation;
@@ -102,10 +102,10 @@ export class SessionController {
     ++this.operation; this.demoStart = null; this.view.demo = false; this.ignored = false;
     this.live.close(); this.clearPerformance(); this.director.mode('idle'); this.emit(); await this.microphone.stop();
   }
-  private clearPerformance() { this.clearPending('interrupted'); this.complete = true; this.playback.interrupt(); this.director.interrupt(); }
+  private clearPerformance(reason = 'session_stopped') { this.clearPending(reason); this.complete = true; this.playback.interrupt(); this.director.interrupt(reason); }
   interrupt() {
     if (this.demoStart !== null) { this.demoStart = null; this.view.demo = false; }
-    this.clearPerformance(); this.ignored = this.view.connection === 'connected';
+    this.clearPerformance('user_interrupt'); this.ignored = this.view.connection === 'connected';
     this.director.mode(this.view.connection === 'connected' ? 'listening' : 'idle'); this.emit();
   }
   send(text: string, logText=text) { if (this.view.connection !== 'connected' || !text.trim()) return; this.log.message('user',logText.trim(),false); this.view.user = text.trim(); this.view.assistant = ''; this.lastRole = 'user'; this.live.text(text); this.director.mode('thinking'); this.emit(); }

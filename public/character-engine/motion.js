@@ -45,7 +45,7 @@
  Object.assign(emotions.excited,{handLX:196,handLY:317,handRX:409,handRY:315});
  const labels = {happy:'مبسوط',sad:'زعلان',crying:'بيعيّط',surprised:'متفاجئ',thinking:'بيفكّر',angry:'متعصّب',sleepy:'نعسان',laughing:'بيضحك',excited:'متحمّس'};
  const settings = {emotion:'happy',intensity:1,energy:.5,walkSpeed:0,wave:0,gazeX:0,gazeY:0,mouse:true,playbackRate:1};
- const rig = {...base,walk:0,energy:.5,wave:0,lookX:0,lookY:0,tail:0};
+ const rig = {...base,walk:0,energy:.5,wave:0,lookX:0,lookY:0,tail:0,speechActivity:0,speechHands:0};
  const velocity = Object.fromEntries(Object.keys(rig).map(k=>[k,0]));
  if(options.externalControl)settings.mouse=false;
  let paused=false, time=0, previous=0, raf=0, disposed=false, phase=0;
@@ -57,12 +57,13 @@
  let externalMouth=null,gesturePose=null,gestureUntil=0;
  const armKeys=['handLX','handLY','handRX','handRY'];
  function cancelActions(){waveUntil=0;jumpStart=-99;gesturePose=null;gestureUntil=0;settings.wave=0;}
- function setGesture(name){
+ function setGesture(name,duration){
+  const hold=Number.isFinite(duration)?clamp(duration,.1,6):null;
   cancelActions();
-  if(name==='wave')doWave();else if(name==='blink')doBlink();else if(name==='jump')doJump();
-  else if(name==='think'){gesturePose={handRX:335,handRY:322};gestureUntil=time+2;}
-  else if(name==='explain'){gesturePose={handRX:398,handRY:355};gestureUntil=time+1.6;}
-  else if(name==='celebrate'){gesturePose={handLX:196,handLY:317,handRX:409,handRY:315};gestureUntil=time+2;}
+  if(name==='wave'){doWave();if(hold!==null)waveUntil=time+hold;}else if(name==='blink')doBlink();else if(name==='jump')doJump();
+  else if(name==='think'){gesturePose={handRX:335,handRY:322};gestureUntil=time+(hold??2);}
+  else if(name==='explain'){gesturePose={handRX:398,handRY:355};gestureUntil=time+(hold??1.6);}
+  else if(name==='celebrate'){gesturePose={handLX:196,handLY:317,handRX:409,handRY:315};gestureUntil=time+(hold??2);}
  }
  function applyGeometry(result){for(const [id,attrs] of Object.entries(result.attributes))for(const [key,value] of Object.entries(attrs))attr(id,key,value);}
  function setViseme(name,weight=1){
@@ -170,6 +171,13 @@
   }
   result.walk=reduced?0:Math.max(settings.walkSpeed,moveDirection?.55:0);
   result.energy=settings.energy;
+  // Audio-clock mouth samples drive small physical accents, never inferred emotions.
+  const speechLevel=options.externalControl&&externalMouth&&externalMouth.viseme!=='REST'?clamp((externalMouth.energy-.018)*3.2,0,1):0;
+  const restraint=['sad','crying','sleepy','angry'].includes(settings.emotion)?.25:settings.emotion==='thinking'?.45:1;
+  const scale=options.speechMotionScale===undefined?1:clamp(options.speechMotionScale,0,1);
+  result.speechActivity=reduced?0:speechLevel*restraint*scale;
+  const explicitGesture=(gesturePose&&time<gestureUntil)||time<waveUntil||time-jumpStart<1.1;
+  result.speechHands=explicitGesture?0:result.speechActivity;
   result.wave=Math.max(settings.wave,time<waveUntil?1:0);
   result.lookX=(settings.mouse?lookX:settings.gazeX)*10+result.gazeX;
   result.lookY=(settings.mouse?lookY:settings.gazeY)*7+result.gazeY;
@@ -212,8 +220,9 @@
   transform('travel',`translate(${fmt(travel)} 0)`);
   transform('character',`translate(302 ${fmt(488+jump+bob)}) scale(${fmt(1+(1-squash)*.6)} ${fmt(squash)}) translate(-302 -488)`);
   transform('shadow',`translate(${fmt(travel)} 0) translate(311 498) scale(${fmt(1+jump*.005)} ${fmt(1+jump*.003)}) translate(-311 -498)`);
-  const headR=rig.headR+idle*.6+rig.lookX*.055;
-  const headY=rig.headY-idle*.6+sob*.3;
+  const speechAccent=motion*rig.speechActivity;
+  const headR=rig.headR+idle*.6+rig.lookX*.055+Math.sin(time*2.8)*speechAccent*2.4;
+  const headY=rig.headY-idle*.6+sob*.3-Math.max(0,Math.sin(time*4.1))*speechAccent*2.3;
   transform('head',`translate(0 ${fmt(headY)}) rotate(${fmt(headR)} 302 327)`);
   transform('ear-l',`rotate(${fmt(rig.earL+idle*1.1-gait*stride)} 226 181)`);
   transform('ear-r',`rotate(${fmt(rig.earR-idle*.8+gait*stride)} 380 181)`);
@@ -227,8 +236,8 @@
   let blink=0, bt=time-blinkStart;
   if(bt>=0 && bt<.2)blink=Math.pow(Math.sin(bt/.2*Math.PI),.75);
   eye('l',rig.openL,blink);eye('r',rig.openR,blink);
-  transform('brow-l',`translate(0 ${fmt(rig.browLY)}) rotate(${fmt(rig.browLR)} 242 181)`);
-  transform('brow-r',`translate(0 ${fmt(rig.browRY)}) rotate(${fmt(rig.browRR)} 360 181)`);
+  transform('brow-l',`translate(0 ${fmt(rig.browLY-speechAccent*1.8)}) rotate(${fmt(rig.browLR)} 242 181)`);
+  transform('brow-r',`translate(0 ${fmt(rig.browRY-speechAccent*1.5)}) rotate(${fmt(rig.browRR)} 360 181)`);
   applyGeometry(Geometry.mouth(rig,shape.species));
   opacity('blush-l',rig.blush);opacity('blush-r',rig.blush);
   opacity('tears',rig.tears);
@@ -240,8 +249,12 @@
    const hx=(x-302)*shape.head,hy=(y-327)*shape.head;
    return [lerp(302+(x-302)*shape.body,302+hx*Math.cos(a)-hy*Math.sin(a),weight),lerp(y,327+hx*Math.sin(a)+hy*Math.cos(a)+headY,weight)];
   };
-  let [lx,ly]=followHead(tracks.l.x,tracks.l.y);
-  let [rx,ry]=followHead(tracks.r.x,tracks.r.y);
+  // Add tiny smooth offsets after arm trajectory evaluation; continuously retargeting
+  // the quintic arm trajectory would restart its easing every frame.
+  const speechHands=motion*rig.speechHands;
+  const leftAccent=.5+.5*Math.sin(time*2.4),rightAccent=.5+.5*Math.sin(time*2.4+1.8);
+  let [lx,ly]=followHead(tracks.l.x-speechHands*5*leftAccent,tracks.l.y-speechHands*(5+10*leftAccent));
+  let [rx,ry]=followHead(tracks.r.x+speechHands*5*rightAccent,tracks.r.y-speechHands*(5+10*rightAccent));
   const walkInfluence=stride*(1-.8*settings.intensity*(settings.emotion==='happy'?0:1));
   lx+=gait*6*walkInfluence;ly+=gait*14*walkInfluence;
   rx-=gait*6*walkInfluence;ry-=gait*14*walkInfluence;
@@ -311,7 +324,7 @@
  on(window,'pagehide',destroy);
  uiSet('motion-note','hidden',!reduced);
  settle();raf=requestAnimationFrame(frame);
- return {setIntensity:n=>{settings.intensity=clamp(n,0,1);},setMouthPose:p=>{externalMouth=p;if(paused||reduced)settle();},setGesture,cancelActions,setEmotion,setPace,setViseme,stopSpeech,playVisemes,wave:doWave,jump:doJump,blink:doBlink,pause:setPause,reset,destroy,refresh:()=>{if(paused||reduced)settle();else draw();},setEnergy:n=>{if(typeof n!=='number'||!Number.isFinite(n))throw new Error('Energy must be a finite number.');settings.energy=clamp(n,0,1);},getState:()=>({...settings,paused,speech:speech?.name||null,speaking:!!speechQueue,arms:{l:{...tracks.l},r:{...tracks.r}}})};
+ return {setIntensity:n=>{settings.intensity=clamp(n,0,1);},setMouthPose:p=>{externalMouth=p;if(paused||reduced)settle();},setGesture,cancelActions,setEmotion,setPace,setViseme,stopSpeech,playVisemes,wave:doWave,jump:doJump,blink:doBlink,pause:setPause,reset,destroy,refresh:()=>{if(paused||reduced)settle();else draw();},setEnergy:n=>{if(typeof n!=='number'||!Number.isFinite(n))throw new Error('Energy must be a finite number.');settings.energy=clamp(n,0,1);},getState:()=>({...settings,paused,speech:speech?.name||null,speaking:!!speechQueue,presence:{voice:rig.speechActivity,hands:rig.speechHands},arms:{l:{...tracks.l},r:{...tracks.r}}})};
  }
  host.CharacterMotion={createRig};
 })(typeof window!=='undefined'?window:this);

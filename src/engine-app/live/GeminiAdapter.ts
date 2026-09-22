@@ -21,11 +21,11 @@ interface ServerMessage {
   goAway?: object;
 }
 export const performanceTool = {
-  name: 'perform', description: 'Actually change your visible avatar face and gesture. Required when the user requests an expression or action. Use immediate for direct requests, next_audio for story scenes. Continue speaking naturally.', behavior: 'NON_BLOCKING',
+  name: 'perform', description: 'Actually change your visible avatar face and gesture. Use proactively at emotional beats throughout speech, and for every requested expression or action. Use immediate for direct requests, next_audio for story scenes. Continue speaking naturally.', behavior: 'NON_BLOCKING',
   parameters: { type: 'OBJECT', properties: {
     expression: { type: 'STRING', enum: [...expressions] }, gesture: { type: 'STRING', enum: [...gestures] },
     timing: { type: 'STRING', enum: ['immediate', 'next_audio'], description: 'immediate for explicit face/gesture requests; next_audio for narrated emotion.' },
-    intensity: { type: 'NUMBER', description: '0 to 1. Prefer 0.3 to 0.7.' },
+    intensity: { type: 'NUMBER', description: '0 to 1. Prefer 0.55 to 0.9 for clearly readable acting.' },
     duration: { type: 'NUMBER', description: 'Hold in seconds, 0.6 to 6.' },
   }, required: ['expression'] },
 };
@@ -33,6 +33,7 @@ export class GeminiAdapter {
   private events: LiveEvents;
   private avatar: AvatarContext = { name: 'إمبر', species: 'fox' };
   private cueSequence = 0;
+  private acknowledged = new Set<string>();
   setAvatar(avatar: AvatarContext) { this.avatar = avatar; }
   private socket: WebSocket | null = null;
   private generation = 0;
@@ -71,7 +72,7 @@ export class GeminiAdapter {
         this.send({ setup: { model: `models/${token.model}`, generationConfig: { responseModalities: ['AUDIO'] },
           systemInstruction: { parts: [{ text: performanceInstructions(this.avatar) }] }, tools: [{ functionDeclarations: [performanceTool] }],
           realtimeInputConfig: { activityHandling: 'START_OF_ACTIVITY_INTERRUPTS', automaticActivityDetection: { disabled: false, prefixPaddingMs: 120, silenceDurationMs: 420 } },
-          inputAudioTranscription: {}, outputAudioTranscription: {}, contextWindowCompression: { slidingWindow: {} },
+          inputAudioTranscription: { languageCodes: ['ar-EG', 'en-US'] }, outputAudioTranscription: {}, contextWindowCompression: { slidingWindow: {} },
           sessionResumption: this.handle ? { handle: this.handle } : {} } });
       };
       // Ordered decoding also handles Blob frames without racing later frames.
@@ -101,14 +102,24 @@ export class GeminiAdapter {
     if (content?.interrupted) { this.receiving = false; this.events.interrupted(); }
     if (message.toolCallCancellation?.ids) this.events.cancel(message.toolCallCancellation.ids);
     if (content?.inputTranscription?.text) this.events.transcript('user', content.inputTranscription.text);
-    if (content?.outputTranscription?.text) { this.begin(); this.events.transcript('assistant', content.outputTranscription.text); }
+    if (!content?.interrupted && content?.outputTranscription?.text) { this.begin(); this.events.transcript('assistant', content.outputTranscription.text); }
+    const responses: {id?:string;name:string;scheduling:'SILENT';response:{result:string}}[] = [];
     for (const call of message.toolCall?.functionCalls ?? []) {
+      if (call.id && this.acknowledged.has(call.id)) continue;
+      if (call.id) this.acknowledged.add(call.id);
+      if (content?.interrupted) {
+        responses.push({id:call.id,name:call.name,scheduling:'SILENT',response:{result:'cancelled'}});
+        continue;
+      }
       this.begin(); const cue = call.name === 'perform' ? parseCue(call.args) : null;
       const cueId = call.id ?? `cue-${this.turnId}-${++this.cueSequence}`;
       if (cue) this.events.cue(cueId, cue); else this.events.rejectedCue?.(cueId);
-      this.send({ toolResponse: { functionResponses: [{ id: call.id, name: call.name,
-        response: { result: cue ? 'queued' : 'invalid stage direction', scheduling: 'SILENT' } }] } });
+      // Scheduling is a FunctionResponse field, NOT part of the tool's JSON output.
+      // Nested scheduling silently defaults to WHEN_IDLE, potentially triggering extra speech.
+      responses.push({ id: call.id, name: call.name, scheduling: 'SILENT',
+        response: { result: cue ? 'accepted' : 'invalid stage direction' } });
     }
+    if (responses.length) this.send({toolResponse:{functionResponses:responses}});
     if (!content?.interrupted) for (const part of content?.modelTurn?.parts ?? []) {
       const data = part.inlineData;
       if (data?.data && data.mimeType?.startsWith('audio/pcm')) {
@@ -130,7 +141,7 @@ export class GeminiAdapter {
   close() {
     ++this.generation; this.controller?.abort(); this.cancelSetup?.(); this.cancelSetup = null;
     const socket = this.socket; this.socket = null; socket?.close();
-    this.ready = false; this.receiving = false; this.handle = null; this.resuming = false; this.events.status('offline');
+    this.ready = false; this.receiving = false; this.handle = null; this.resuming = false; this.acknowledged.clear(); this.events.status('offline');
   }
   private send(data: unknown) { if (this.socket?.readyState === WebSocket.OPEN) this.socket.send(JSON.stringify(data)); }
 }

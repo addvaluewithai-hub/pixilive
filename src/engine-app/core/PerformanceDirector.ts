@@ -31,7 +31,12 @@ export class PerformanceDirector {
     port.expression('neutral', 0);
     port.mode(this.currentMode);
   }
-  beginTurn(turn: number) { this.interrupt(); this.turn = turn; this.mode('thinking'); }
+  beginTurn(turn: number, preservePerformance = false) {
+    if (!preservePerformance) this.interrupt('new_turn');
+    else this.seen.clear();
+    this.turn = turn;
+    if (this.currentMode !== 'speaking') this.mode('thinking');
+  }
   enqueue(cue: TimedCue) {
     if (cue.turn !== this.turn || this.seen.has(cue.id) || !Number.isFinite(cue.at)) return;
     this.seen.add(cue.id);
@@ -54,10 +59,11 @@ export class PerformanceDirector {
     if(latest && now>=latest.at+latest.duration)this.report({id:latest.id,turn:latest.turn,status:'skipped',reason:'expired'});
     if (latest && now < latest.at + latest.duration) {
       this.active = latest;
+      this.port?.cancel();
       this.port?.expression(latest.expression, latest.intensity);
       const gestureAllowed=latest.gesture !== 'none' && now-this.lastGesture>=1.1;
       if (gestureAllowed) {
-        this.port?.gesture(latest.gesture);
+        this.port?.gesture(latest.gesture, latest.at + latest.duration - now);
         this.lastGesture = now;
       }
       this.report({id:latest.id,turn:latest.turn,status:this.port?'applied':'skipped',reason:!this.port?'no_renderer':latest.gesture!=='none'&&!gestureAllowed?'expression_only_gesture_cooldown':'renderer_called'});
@@ -72,8 +78,8 @@ export class PerformanceDirector {
     this.port?.mouth(mouth ?? restMouth);
   }
   mode(mode: Mode) { if (mode !== this.currentMode) { this.currentMode = mode; this.port?.mode(mode); } }
-  interrupt() {
-    this.clear('interrupted_or_new_turn'); this.seen.clear(); this.lastGesture = -Infinity;
+  interrupt(reason = 'interrupted') {
+    this.clear(reason); this.seen.clear(); this.lastGesture = -Infinity;
     this.port?.cancel(); this.port?.mouth(restMouth); this.port?.expression('neutral', 0);
     this.mode('listening');
   }

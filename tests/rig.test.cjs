@@ -22,3 +22,20 @@ test('MBP closure hides cavity and teeth after an open vowel',()=>{
 test('recipe rendering produces unique ids and escapes names',()=>{
  const a=setup();for(const species of ['fox','cat','rabbit','bear']){const svg=a.engine.render({species,name:'<script>bad</script>'});assert.ok(!svg.includes('<script>'));const ids=[...svg.matchAll(/\bid="([^"]+)"/g)].map(x=>x[1]);assert.equal(ids.length,new Set(ids).size);}a.motion.destroy();
 });
+test('speech accents follow audible energy, yield to explicit hands, and settle in silence',()=>{
+ for(const species of ['fox','cat','rabbit','bear']){
+  const a=setup(species);a.motion.setMouthPose({viseme:'AA',energy:.5,open:.6});a.tick(60);
+  assert.ok(a.motion.getState().presence.voice>.8);assert.ok(a.motion.getState().presence.hands>.8);
+  a.motion.setGesture('think',4);a.tick(70);assert.ok(a.motion.getState().presence.hands<.001);assert.ok(a.motion.getState().presence.voice>.8);
+  a.tick(80);assert.ok(Math.abs(a.motion.getState().arms.r.y-322)<.01); // Still held after the old two-second limit.
+  a.motion.cancelActions();a.motion.setMouthPose({viseme:'REST',energy:0,open:0});a.tick(150);
+  assert.ok(a.motion.getState().presence.voice<.001);assert.ok(a.motion.getState().presence.hands<.001);assert.ok(Math.abs(a.motion.getState().arms.r.y-414)<.01);
+  assert.ok(!/NaN|Infinity|undefined/.test(a.svg()));a.motion.destroy();
+ }
+});
+test('speech accents are restrained for sad scenes and disabled with reduced motion',()=>{
+ const a=setup();a.motion.setMouthPose({viseme:'AA',energy:.7,open:.6});a.motion.setEmotion('sad');a.tick(100);
+ assert.ok(a.motion.getState().presence.voice<=.251);a.motion.destroy();
+ const b=setup('fox',true);b.motion.setMouthPose({viseme:'AA',energy:.7,open:.6});b.tick(100);
+ assert.equal(b.motion.getState().presence.voice,0);assert.equal(b.motion.getState().presence.hands,0);b.motion.destroy();
+});

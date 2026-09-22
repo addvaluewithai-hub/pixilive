@@ -39,3 +39,21 @@ test('hidden-tab catch-up does not burst stale gestures', () => {
   for(let i=0;i<10;i++)d.enqueue({...cue,id:`cue-${i}`,at:i}); d.tick(20,null,false);
   assert.equal(f.calls.some(c=>c.name==='gesture'),false);
 });
+test('generation boundaries preserve performance already scheduled against buffered audio',()=>{
+ const reports:any[]=[];const d=new PerformanceDirector(e=>reports.push(e)),f=fixture();d.attach(f.port);d.beginTurn(1);
+ d.enqueue(cue);d.tick(10,null,true);d.enqueue({...cue,id:'later',at:13});
+ d.beginTurn(2,true);assert.equal(d.snapshot().active,'beat-1');assert.equal(d.snapshot().queued,1);
+ assert.equal(reports.some(e=>e.status==='cancelled'),false);
+ d.tick(13,null,true);assert.equal(d.snapshot().active,'later');
+ d.interrupt('server_interrupted');assert.equal(d.snapshot().active,null);assert.equal(reports.at(-1).reason,'server_interrupted');
+});
+test('expression-only cue cancels an incompatible old gesture',()=>{
+ const d=new PerformanceDirector(),f=fixture();d.attach(f.port);d.beginTurn(1);d.enqueue(cue);d.tick(10,null,true);f.calls.length=0;
+ d.enqueue({...cue,id:'sad',at:12,expression:'sad',gesture:'none'});d.tick(12,null,true);
+ assert.ok(f.calls.some(c=>c.name==='cancel'));assert.equal(f.calls.some(c=>c.name==='gesture'),false);
+ assert.ok(f.calls.some(c=>c.name==='expression'&&(c.value as string[])[0]==='sad'));
+});
+test('gesture hold receives only the remaining duration on the playback clock',()=>{
+ const d=new PerformanceDirector(),f=fixture();let hold=0;f.port.gesture=(_g,duration)=>{hold=duration!;};
+ d.attach(f.port);d.beginTurn(1);d.enqueue({...cue,duration:5});d.tick(11,null,true);assert.equal(hold,4);
+});

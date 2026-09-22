@@ -9,7 +9,7 @@ export interface Cue { expression: Expression; intensity: number; gesture: Gestu
 export interface TimedCue extends Cue { id: string; turn: number; at: number }
 export interface CharacterPort {
   expression(value: Expression, intensity: number): void;
-  gesture(value: Gesture): void;
+  gesture(value: Gesture, duration?: number): void;
   mouth(value: MouthFrame | null): void;
   mode(value: Mode): void;
   cancel(): void;
