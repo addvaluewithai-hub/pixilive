@@ -1,16 +1,18 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent, type CSSProperties } from 'react';
 import { characters, getCharacter } from './core/registry';
 import { loadCharacterEngine, portrait, SvgCharacter } from './core/SvgCharacter';
-import { SessionController, type SessionView } from './core/SessionController';
+import { SessionController, initialSessionView } from './core/SessionController';
 import { expressions, type Expression, type Gesture } from './core/types';
+const traceLabels = {received:'وصل',scheduled:'اتحدد توقيته',applied:'وصل للمحرّك',cancelled:'اتلغى',skipped:'اتخطّى',rejected:'غير صالح'};
 const labels: Record<Expression, string> = { neutral: 'هادي', happy: 'مبسوط', sad: 'زعلان', crying: 'بيعيّط', surprised: 'متفاجئ', thinking: 'بيفكّر', angry: 'متعصّب', sleepy: 'نعسان', laughing: 'بيضحك', excited: 'متحمّس' };
-const initial: SessionView = { connection: 'offline', mode: 'idle', demo: false, error: '', user: '', assistant: '', energy: 0 };
 export function App() {
   const [id, setId] = useState('ember');
   const [engine, setEngine] = useState<Awaited<ReturnType<typeof loadCharacterEngine>> | null>(null);
-  const [view, setView] = useState(initial);
+  const [view, setView] = useState(initialSessionView);
   const [loadError, setLoadError] = useState('');
   const [text, setText] = useState('');
+  const [copyStatus, setCopyStatus] = useState('');
+  const [copyFallback, setCopyFallback] = useState('');
   const [expression, setExpression] = useState<Expression>('neutral');
   const [showControls, setShowControls] = useState(false);
   const host = useRef<HTMLDivElement>(null);
@@ -25,9 +27,15 @@ export function App() {
   }, []);
   useEffect(() => {
     if (!engine || !host.current || !session.current) return;
-    try { session.current.attach(new SvgCharacter(host.current, engine, character)); setExpression('neutral'); }
+    try { session.current.attach(new SvgCharacter(host.current, engine, character), {name:character.name,species:character.species}); setExpression('neutral'); }
     catch(error) { setLoadError(error instanceof Error ? error.message : 'تعذّر عرض الشخصية.'); }
   }, [engine, character]);
+  const copyLog = async () => {
+    const content = session.current?.exportLog();
+    if (!content) return;
+    try { await navigator.clipboard.writeText(content); setCopyStatus('اتنسخ السجل'); setCopyFallback(''); }
+    catch { setCopyStatus('النسخ التلقائي متاحش؛ انسخ النص من هنا.'); setCopyFallback(content); }
+  };
   const connected = view.connection === 'connected';
   const busy = view.connection === 'connecting';
   const mode = view.demo ? 'عرض الحركات — بدون صوت' : busy ? 'بنوصّل المحادثة…' : connected ? ({ idle: 'جاهز', listening: 'سامعك…', thinking: 'لحظة…', speaking: 'بيتكلم معاك' }[view.mode]) : 'جاهز للكلام';
@@ -54,8 +62,16 @@ export function App() {
         <button className="controls-toggle" aria-expanded={showControls} onClick={() => setShowControls(!showControls)}>تعبيرات وحركات <span aria-hidden="true">{showControls ? '−' : '+'}</span></button>
         {showControls && <div className="expression-controls"><div className="expression-grid">{expressions.map(value => <button disabled={!engine} key={value} aria-pressed={expression === value} onClick={() => cue(value)}>{labels[value]}</button>)}</div><div className="gesture-row">{([['wave','سلّم'],['blink','ارمش'],['explain','اشرح'],['think','فكّر'],['celebrate','احتفل']] as [Gesture,string][]).map(([gesture,label]) => <button disabled={!engine} key={gesture} onClick={() => cue(expression,gesture)}>{label}</button>)}</div></div>}
       </section>
-      <aside className="conversation-panel"><div className="conversation-heading"><span className="overline">بينكم</span><h2>الكلام اللي اتقال</h2></div><div className="transcript" aria-live="polite" aria-atomic="false">{!view.user && !view.assistant ? <div className="empty-chat"><span aria-hidden="true">“</span><p>كل حكاية بتبدأ<br />بـ «عامل إيه؟»</p><small>كلامكم هيظهر هنا لما تبدأوا.</small></div> : <>{view.user && <div className="message user"><small>إنت</small><p>{view.user}</p></div>}{view.assistant && <div className="message assistant"><small>{character.name}</small><p>{view.assistant}</p></div>}</>}</div>
+      <aside className="conversation-panel"><div className="conversation-heading"><button className="copy-log-button" type="button" onClick={() => void copyLog()}>نسخ السجل</button><span className="overline">بينكم</span><h2>الكلام اللي اتقال</h2></div><span className="copy-log-status" role="status">{copyStatus}</span>{copyFallback && <textarea className="copy-log-fallback" aria-label="سجل المحادثة للنسخ" readOnly value={copyFallback} onFocus={e=>e.currentTarget.select()} />}<div className="transcript" aria-live="polite" aria-atomic="false">{!view.user && !view.assistant ? <div className="empty-chat"><span aria-hidden="true">“</span><p>كل حكاية بتبدأ<br />بـ «عامل إيه؟»</p><small>كلامكم هيظهر هنا لما تبدأوا.</small></div> : <>{view.user && <div className="message user"><small>إنت</small><p>{view.user}</p></div>}{view.assistant && <div className="message assistant"><small>{character.name}</small><p>{view.assistant}</p></div>}</>}</div>
         <form className="text-input" onSubmit={submit}><label className="sr-only" htmlFor="message">رسالتك</label><input id="message" value={text} onChange={e => setText(e.target.value)} disabled={!connected} placeholder={connected ? 'أو اكتب له هنا…' : 'ابدأ المحادثة عشان تكتب'} /><button disabled={!connected || !text.trim()} aria-label="إرسال الرسالة">↑</button></form>
+        <details className="live-test-panel"><summary>اختبار تفاعل Gemini</summary>
+          <p>النموذج المطلوب: <b dir="ltr">{view.model || 'يظهر بعد بدء الاتصال'}</b></p>
+          <div className="test-buttons"><button disabled={!connected || view.mode==='speaking' || view.mode==='thinking'} onClick={() => session.current?.storyTest()}>قصة بستة تعبيرات</button><button disabled={!connected} onClick={() => session.current?.send('اعمل وش تفكير دلوقتي باستخدام حركة التفكير، واثبت عليه أربع ثواني.')}>اطلب وش تفكير</button></div>
+          <p>دي طلبات لـGemini نفسه. العرض الصامت والأزرار اليدوية مش محسوبين هنا.</p>
+          <p>أوامر وصلت: <b>{view.toolReceived}</b> · اتبعتت للمحرّك: <b>{view.toolApplied}</b></p>
+          <p className="test-hint">لو العدّاد فضل صفر بعد الرد، الموديل ما بعتش أداة. التنفيذ في السجل يثبت وصول الأمر للمحرّك؛ راقب الشخصية عشان تحكم على الحركة والتوقيت.</p>
+          <ol className="tool-trace">{view.toolTrace.slice(-12).reverse().map((entry,i)=><li key={`${entry.turn}-${entry.id}-${i}`}><code dir="ltr">{entry.expression} / {entry.gesture}</code><span>{traceLabels[entry.status]}</span><small dir="ltr">{entry.reason}</small></li>)}</ol>
+        </details>
         <p className="privacy-note">الميكروفون بيشتغل بس لما تبدأ المحادثة.</p>
       </aside>
     </div><footer><span>PIXI / LIVE</span><span>شخصيات ليها روح.</span></footer>

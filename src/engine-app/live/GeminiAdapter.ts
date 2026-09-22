@@ -1,6 +1,9 @@
+import { performanceInstructions, type AvatarContext } from './performancePrompt.ts';
 import { expressions, gestures, parseCue } from '../core/types.ts';
 import type { Cue } from '../core/types.ts';
 export interface LiveEvents {
+  model?(value: string): void;
+  rejectedCue?(id: string): void;
   status(value: 'connecting' | 'connected' | 'offline'): void;
   turn(id: number): void; audio(data: string, rate: number): void;
   cue(id: string, value: Cue): void; cancel(ids: string[]): void;
@@ -18,16 +21,19 @@ interface ServerMessage {
   goAway?: object;
 }
 export const performanceTool = {
-  name: 'perform', description: 'Choose a restrained facial expression and optional gesture for the next spoken beat. Never describe this tool aloud.', behavior: 'NON_BLOCKING',
+  name: 'perform', description: 'Actually change your visible avatar face and gesture. Required when the user requests an expression or action. Use immediate for direct requests, next_audio for story scenes. Continue speaking naturally.', behavior: 'NON_BLOCKING',
   parameters: { type: 'OBJECT', properties: {
     expression: { type: 'STRING', enum: [...expressions] }, gesture: { type: 'STRING', enum: [...gestures] },
+    timing: { type: 'STRING', enum: ['immediate', 'next_audio'], description: 'immediate for explicit face/gesture requests; next_audio for narrated emotion.' },
     intensity: { type: 'NUMBER', description: '0 to 1. Prefer 0.3 to 0.7.' },
     duration: { type: 'NUMBER', description: 'Hold in seconds, 0.6 to 6.' },
   }, required: ['expression'] },
 };
-const direction = `You are a warm conversational companion. Speak Egyptian Arabic unless the user prefers another language. Keep replies natural and concise. Your visual avatar can change while your identity and conversation stay the same. Match your vocal expression to the meaning. Use perform shortly BEFORE the next phrase when an expression or gesture adds meaning. Prefer one or two restrained cues per reply. Never call a tool for every word. Tools are silent stage directions. Continue speaking after the tool result; never announce its execution. Do not jump or celebrate during serious or sad conversation. Allow interruption naturally.`;
 export class GeminiAdapter {
   private events: LiveEvents;
+  private avatar: AvatarContext = { name: 'إمبر', species: 'fox' };
+  private cueSequence = 0;
+  setAvatar(avatar: AvatarContext) { this.avatar = avatar; }
   private socket: WebSocket | null = null;
   private generation = 0;
   private controller: AbortController | null = null;
@@ -51,6 +57,7 @@ export class GeminiAdapter {
     const token = await response.json().catch(() => ({})) as { token?: string; model?: string; error?: string };
     if (!response.ok || !token.token || !token.model) throw new Error(token.error ?? 'تعذّر بدء Gemini. شغّل التطبيق بخادم الصوت واضبط المفتاح.');
     if (generation !== this.generation) return;
+    this.events.model?.(token.model);
     await new Promise<void>((resolve, reject) => {
       const socket = new WebSocket(`wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContentConstrained?access_token=${encodeURIComponent(token.token!)}`);
       socket.binaryType = 'arraybuffer'; this.socket = socket; this.ready = false;
@@ -62,7 +69,7 @@ export class GeminiAdapter {
       socket.onopen = () => {
         if (!current()) return;
         this.send({ setup: { model: `models/${token.model}`, generationConfig: { responseModalities: ['AUDIO'] },
-          systemInstruction: { parts: [{ text: direction }] }, tools: [{ functionDeclarations: [performanceTool] }],
+          systemInstruction: { parts: [{ text: performanceInstructions(this.avatar) }] }, tools: [{ functionDeclarations: [performanceTool] }],
           realtimeInputConfig: { activityHandling: 'START_OF_ACTIVITY_INTERRUPTS', automaticActivityDetection: { disabled: false, prefixPaddingMs: 120, silenceDurationMs: 420 } },
           inputAudioTranscription: {}, outputAudioTranscription: {}, contextWindowCompression: { slidingWindow: {} },
           sessionResumption: this.handle ? { handle: this.handle } : {} } });
@@ -97,7 +104,8 @@ export class GeminiAdapter {
     if (content?.outputTranscription?.text) { this.begin(); this.events.transcript('assistant', content.outputTranscription.text); }
     for (const call of message.toolCall?.functionCalls ?? []) {
       this.begin(); const cue = call.name === 'perform' ? parseCue(call.args) : null;
-      if (cue) this.events.cue(call.id ?? `cue-${this.turnId}`, cue);
+      const cueId = call.id ?? `cue-${this.turnId}-${++this.cueSequence}`;
+      if (cue) this.events.cue(cueId, cue); else this.events.rejectedCue?.(cueId);
       this.send({ toolResponse: { functionResponses: [{ id: call.id, name: call.name,
         response: { result: cue ? 'queued' : 'invalid stage direction', scheduling: 'SILENT' } }] } });
     }

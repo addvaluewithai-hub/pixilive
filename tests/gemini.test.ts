@@ -31,3 +31,21 @@ test('a late Blob decode from a closed connection cannot animate a new session',
 test('explicit close clears the resumption handle for the next conversation',async()=>{
  const f=fixture();await f.client.connect();FakeSocket.instances.at(-1)!.message({sessionResumptionUpdate:{resumable:true,newHandle:'old-session'}});await settle();f.client.close();await f.client.connect();assert.deepEqual(FakeSocket.instances.at(-1)!.sent[0].setup.sessionResumption,{});f.client.close();
 });
+test('selected avatar, real model and explicit performance instructions reach setup',async()=>{
+ const f=fixture();f.client.setAvatar({name:'بندق',species:'bear'});await f.client.connect();
+ const setup=FakeSocket.instances.at(-1)!.sent[0].setup;
+ assert.equal(setup.model,'models/gemini-3.8-live');
+ const prompt=setup.systemInstruction.parts[0].text;
+ assert.ok(prompt.includes('بندق (bear)'));assert.ok(prompt.includes('MUST call perform'));
+ assert.ok(prompt.includes('complete story'));assert.ok(prompt.includes('never send all scene cues at the start'));
+ assert.deepEqual(setup.tools[0].functionDeclarations[0].parameters.properties.timing.enum,['immediate','next_audio']);
+ f.client.close();
+});
+test('direct tool-only turn preserves immediate cue before turn completion',async()=>{
+ const f=fixture();await f.client.connect();const socket=FakeSocket.instances.at(-1)!;
+ socket.message({toolCall:{functionCalls:[{id:'think',name:'perform',args:{expression:'thinking',gesture:'think',timing:'immediate'}}]},serverContent:{turnComplete:true}});await settle();
+ const received=f.calls.find(c=>c.name==='cue')?.value as [string,{timing:string}];
+ assert.equal(received[0],'think');assert.equal(received[1].timing,'immediate');
+ assert.ok(f.calls.findIndex(c=>c.name==='cue')<f.calls.findIndex(c=>c.name==='complete'));
+ f.client.close();
+});
