@@ -40,7 +40,7 @@ function setup(species='fox',reduced=false){
  let frame=null,clock=0,stopped=false;
  const context={window:win,document:doc,AbortController,Math,Number,Object,Array,String,JSON,console,
  requestAnimationFrame:fn=>(frame=fn,1),cancelAnimationFrame:()=>{stopped=true;}};
- vm.createContext(context);for(const f of ['geometry.js','engine.js','motion.js'])vm.runInContext(fs.readFileSync(path.join(here,f),'utf8'),context,{filename:f});
+ vm.createContext(context);for(const f of ['geometry.js','engine.js','flight.js','motion.js'])vm.runInContext(fs.readFileSync(path.join(here,f),'utf8'),context,{filename:f});
  const engine=win.CharacterEngine.createEngine(master),recipe=engine.normalize({species});
  engine.apply(tree.querySelector('svg'),recipe);
  const motion=win.CharacterMotion.createRig(tree,{externalControl:true,keyboard:false,appearance:()=>engine.metrics(recipe)});

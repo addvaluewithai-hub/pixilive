@@ -1,8 +1,9 @@
+import type { FlightCommand } from './flight.ts';
 import type { Cue } from './types.ts';
 type Role = 'user' | 'assistant';
 interface MessageEntry { kind: 'message'; at: number; role: Role; text: string }
 interface PlaybackDiagnostic { clock: number; queued: number; speaking: boolean }
-interface ToolEntry { kind: 'tool'; at: number; id: string; turn: number; cue: Cue | null; status: string; reason: string; route?: string; appliedAt?: number; audio?: PlaybackDiagnostic }
+interface ToolEntry { kind: 'tool'; at: number; id: string; turn: number; cue: Cue | null; flight?: FlightCommand; tool?: string; status: string; reason: string; route?: string; appliedAt?: number; audio?: PlaybackDiagnostic }
 interface AvatarEntry { kind: 'avatar'; at: number; name: string }
 type Entry = MessageEntry | ToolEntry | AvatarEntry;
 /** Human-readable diagnostics only: no audio, transport payloads, tokens or per-frame events. */
@@ -27,9 +28,10 @@ export class SessionLog {
     if (append && previous && this.entries.includes(previous)) previous.text += text;
     else { const entry: MessageEntry = {kind:'message', at:Date.now(), role, text}; this.active[role] = entry; this.add(entry); }
   }
-  tool(id: string, turn: number, cue: Cue | null, status: string, reason: string) {
-    this.add({kind:'tool', at:Date.now(), id, turn, cue, status, reason});
+  tool(id: string, turn: number, cue: Cue | null, status: string, reason: string, tool = 'perform') {
+    this.add({kind:'tool', at:Date.now(), id, turn, cue, status, reason, tool});
   }
+  flight(id: string, turn: number, flight: FlightCommand) { this.add({kind:'tool',at:Date.now(),id,turn,cue:null,flight,tool:'fly',status:'received',reason:''}); }
   update(id: string, turn: number, status: string, reason: string, audio?: PlaybackDiagnostic) {
     const entry = this.entries.find(e => e.kind === 'tool' && e.id === id && e.turn === turn) as ToolEntry | undefined;
     if (!entry) return;
@@ -49,12 +51,12 @@ export class SessionLog {
       else if (entry.kind === 'avatar') lines.push(`[${stamp}] الشخصية المعروضة: ${entry.name}`);
       else {
         const c=entry.cue;
-        const args=c ? `${c.expression} / ${c.gesture}; intensity=${c.intensity}; duration=${c.duration}s; timing=${c.timing ?? 'with_speech'}` : 'invalid arguments';
+        const args=entry.flight ? `${entry.flight.action}; x=${entry.flight.x}; y=${entry.flight.y}; speed=${entry.flight.speed}; path=${entry.flight.path}` : c ? `${c.expression} / ${c.gesture}; intensity=${c.intensity}; duration=${c.duration}s; timing=${c.timing ?? 'with_speech'}` : 'invalid arguments';
         const reason=['renderer_called','awaiting_audio'].includes(entry.reason) ? '' : ` (${entry.reason})`;
         const applied=entry.appliedAt===undefined?'':` | executed=${((entry.appliedAt-this.started)/1000).toFixed(3)}s; wait=${entry.appliedAt-entry.at}ms`;
         const playback=entry.audio?`; audio=${entry.audio.speaking?'playing':'silent'}; clock=${entry.audio.clock.toFixed(3)}s; remaining=${entry.audio.queued.toFixed(2)}s`:'';
         const route=entry.route?`; route=${entry.route}`:'';
-        lines.push(`[${stamp}] perform [turn ${entry.turn}, ${entry.id}]: ${args} → ${entry.status}${reason}${applied}${playback}${route}`);
+        lines.push(`[${stamp}] ${entry.tool ?? 'perform'} [turn ${entry.turn}, ${entry.id}]: ${args} → ${entry.status}${reason}${applied}${playback}${route}`);
       }
     }
     return lines.join('\n\n');

@@ -75,3 +75,10 @@ test('speech recognition receives language hints and invalid cues are acknowledg
  socket.message({toolCall:{functionCalls:[{id:'bad',name:'perform',args:{expression:'not-real'}}]}});await settle();
  assert.equal(f.calls.some(c=>c.name==='cue'),false);assert.equal(socket.sent.at(-1).toolResponse.functionResponses[0].scheduling,'SILENT');f.client.close();
 });
+test('switching to a flyer updates model context through the next silent result without triggering a new utterance',async()=>{
+ const f=fixture();await f.client.connect();const socket=FakeSocket.instances.at(-1)!;
+ const before=socket.sent.length;f.client.setAvatar({name:'لومي',species:'sprite',canFly:true});assert.equal(socket.sent.length,before);
+ socket.message({toolCall:{functionCalls:[{id:'post-switch',name:'perform',args:{expression:'happy'}}]}});await settle();
+ const response=socket.sent.at(-1).toolResponse.functionResponses[0];assert.equal(response.scheduling,'SILENT');assert.deepEqual(response.response.avatar,{name:'لومي',species:'sprite',canFly:true});
+ socket.message({toolCall:{functionCalls:[{id:'same-avatar',name:'perform',args:{expression:'thinking'}}]}});await settle();assert.equal(socket.sent.at(-1).toolResponse.functionResponses[0].response.avatar,undefined);f.client.close();
+});

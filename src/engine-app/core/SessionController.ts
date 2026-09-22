@@ -1,3 +1,4 @@
+import { parseFlight, type FlightCommand } from './flight.ts';
 import { SessionLog } from './SessionLog.ts';
 import { CueScheduler } from './CueScheduler.ts';
 import { storyTestPrompt } from '../live/performancePrompt.ts';
@@ -7,13 +8,15 @@ import { Microphone } from '../audio/Microphone.ts';
 import { GeminiAdapter } from '../live/GeminiAdapter.ts';
 import { PerformanceDirector } from './PerformanceDirector.ts';
 import type { CharacterPort, Expression, Gesture, Mode, MouthFrame } from './types.ts';
-export interface ToolTrace { id:string; turn:number; expression:string; gesture:string; status:'received'|'scheduled'|'applied'|'cancelled'|'skipped'|'rejected'; reason:string }
+export interface ToolTrace { id:string; turn:number; expression:string; gesture:string; status:'completed'|'received'|'scheduled'|'applied'|'cancelled'|'skipped'|'rejected'; reason:string }
 export interface SessionView { model:string; toolReceived:number; toolApplied:number; toolTrace:ToolTrace[]; connection: 'offline' | 'connecting' | 'connected'; mode: Mode; error: string; user: string; assistant: string; demo: boolean; energy: number }
 export const initialSessionView: SessionView = { model:'',toolReceived:0,toolApplied:0,toolTrace:[], connection: 'offline', mode: 'idle', error: '', user: '', assistant: '', demo: false, energy: 0 };
 export class SessionController {
   readonly director = new PerformanceDirector(event => this.traceUpdate(event.id,event.status,event.reason,event.turn));
   private log = new SessionLog();
   private avatarName = 'إمبر';
+  private characterPort: CharacterPort | null = null;
+  private activeFlight: {id:string;turn:number} | null = null;
   exportLog() { return this.log.export(); }
   private playback = new PlaybackClock();
   private microphone = new Microphone();
@@ -33,11 +36,20 @@ export class SessionController {
     this.publish = publish;
     this.live = new GeminiAdapter({
       model: model => { this.log.model=model; this.view.model=model; this.emit(); },
-      rejectedCue: id => { this.log.tool(id,this.turn,null,'rejected','invalid_arguments'); this.view.toolReceived++; this.view.toolTrace=[...this.view.toolTrace.slice(-39),{id,turn:this.turn,expression:'invalid',gesture:'unknown',status:'rejected',reason:'invalid_arguments'}]; this.emit(); },
+      rejectedCue: (id,tool='perform') => { this.log.tool(id,this.turn,null,'rejected','invalid_arguments',tool); this.view.toolReceived++; this.view.toolTrace=[...this.view.toolTrace.slice(-39),{id,turn:this.turn,expression:'invalid',gesture:'unknown',status:'rejected',reason:'invalid_arguments'}]; this.emit(); },
+      flight: (id, command) => {
+        this.log.flight(id,this.turn,command);this.view.toolReceived++;
+        this.view.toolTrace=[...this.view.toolTrace.slice(-39),{id,turn:this.turn,expression:'fly',gesture:command.action,status:'received',reason:''}];
+        if(this.ignored || !this.characterPort?.fly){this.traceUpdate(id,'rejected','unavailable_or_interrupted');this.emit();return false;}
+        // Validate capabilities before replacing a flight already in progress.
+        if(!this.characterPort.fly(command)){this.traceUpdate(id,'rejected','avatar_cannot_fly');this.emit();return false;}
+        this.finishFlight('cancelled','replaced_by_flight');
+        this.activeFlight={id,turn:this.turn};this.traceUpdate(id,'applied','renderer_called');this.emit();return true;
+      },
       status: connection => {
         this.view.connection = connection;
         if (connection === 'connected') this.director.mode('listening');
-        if (connection === 'offline' && !this.view.demo) { void this.microphone.stop(); this.playback.interrupt(); this.director.interrupt('connection_closed'); this.director.mode('idle'); }
+        if (connection === 'offline' && !this.view.demo) { this.stopFlight('connection_closed'); void this.microphone.stop(); this.playback.interrupt(); this.director.interrupt('connection_closed'); this.director.mode('idle'); }
         this.emit();
       },
       turn: id => { this.clearPending('new_turn'); this.turn = id; this.cues.begin(id); this.log.beginTurn(); this.complete = false; this.view.assistant = ''; if (!this.ignored) this.director.beginTurn(id, true); },
@@ -57,7 +69,7 @@ export class SessionController {
         }
         this.emit();
       },
-      cancel: ids => { this.cues.cancel(ids); for(const id of ids)this.traceUpdate(id,'cancelled','tool_cancelled'); this.director.cancelCalls(ids); },
+      cancel: ids => { if(this.activeFlight&&ids.includes(this.activeFlight.id))this.stopFlight('tool_cancelled'); this.cues.cancel(ids); for(const id of ids)this.traceUpdate(id,'cancelled','tool_cancelled'); this.director.cancelCalls(ids); },
       transcript: (role, text) => {
         if (role === 'assistant' && this.ignored) return;
         this.log.message(role,text,role==='assistant'||this.lastRole===role);
@@ -92,7 +104,16 @@ export class SessionController {
   }
   private clearPending(reason:string){for(const id of this.cues.clear())this.traceUpdate(id,'cancelled',reason);}
   private schedule(cues:ReturnType<CueScheduler['flush']>,reason:string){for(const cue of cues){this.traceUpdate(cue.id,'scheduled',reason);this.director.enqueue(cue);}}
-  attach(port: CharacterPort,avatar?:AvatarContext) { this.clearPending('character_changed'); this.director.attach(port); if(avatar){this.live.setAvatar(avatar);if(this.avatarName!==avatar.name){this.avatarName=avatar.name;this.log.avatar(avatar.name);}} }
+  attach(port: CharacterPort,avatar?:AvatarContext) { this.stopFlight('character_changed'); this.characterPort=port; this.clearPending('character_changed'); this.director.attach(port); if(avatar){this.live.setAvatar(avatar);if(this.avatarName!==avatar.name){this.avatarName=avatar.name;this.log.avatar(avatar.name);}} }
+  private finishFlight(status:'completed'|'cancelled',reason:string){if(this.activeFlight){this.traceUpdate(this.activeFlight.id,status,reason,this.activeFlight.turn);this.activeFlight=null;}}
+  private stopFlight(reason:string){this.finishFlight('cancelled',reason);this.characterPort?.stopFlight?.();}
+  manualFlight(command: FlightCommand){const valid=parseFlight(command);if(valid && this.characterPort?.fly?.(valid))this.finishFlight('cancelled','manual_flight');}
+  flightTest(){this.send(`الشخصية المعروضة حالياً ${this.avatarName}. احكي للطفل الحكاية التالية كاملة من غير أسئلة أو انتظار، واستخدم fly للحركة أثناء الكلام وperform للتعبيرات، وحركة كل جملتين على الأقل. وزع الأوامر أثناء السرد ولا ترسلها كلها في البداية. لا تقرأ تعليمات الحركة بصوتك.
+ابدأ بالسرد والترحيب مع happy/wave والطيران بقوس إلى يسار أعلى المسرح x=0.2 y=0.2 speed=0.45: كان يا ما كان نجمة صغيرة اسمها نونو بتحب تنور لأصحابها. سلمت عليهم وطارت ناحية سحابة لونها بنفسجي.
+أثناء الجملتين التاليتين thinking/think مع fly hover: بس السحابة كانت تايهة ومش لاقية طريق البيت. نونو هديت شوية وفكرت إزاي تساعدها.
+أثناء الجملتين التاليتين surprised/explain مع fly move x=0.8 y=0.3 speed=0.6 path=swoop: وفجأة لمحت نقطة نور بتلمع بعيد. قربت منها واكتشفت إنها خريطة مرسومة من النجوم.
+أثناء الجملتين التاليتين excited/celebrate مع fly move x=0.5 y=0.1 speed=0.5 path=arc: اتبعت نونو الخريطة وطلعت فوق الغيمة الكبيرة. ومن هناك شافت بيت السحابة منور قدامها.
+في النهاية happy/wave مع fly land x=0.5 speed=0.3 path=direct: رجعت السحابة لبيتها ونونو نزلت بهدوء جنب أصحابها. ومن يومها عرفوا إن فكرة صغيرة وقلب طيب يقدروا ينوروا السما كلها.`, '[اختبار الطيران مع الكلام] حكاية نونو والسحابة؛ قوس، تحويم، انحناءة، صعود وهبوط، مع تعبيرات متزامنة.');}
   storyTest(){this.send(storyTestPrompt,'[قراءة قصة مكتوبة كاملة] نادر ونونو وفانوس الغابة؛ 30 جملة، وحركة في كل جملتين، باستخدام جميع الحركات الست، بدون انتظار كمل.');}
 
   async start() {
@@ -116,7 +137,7 @@ export class SessionController {
     ++this.operation; this.demoStart = null; this.view.demo = false; this.ignored = false;
     this.live.close(); this.clearPerformance(); this.director.mode('idle'); this.emit(); await this.microphone.stop();
   }
-  private clearPerformance(reason = 'session_stopped') { this.clearPending(reason); this.complete = true; this.playback.interrupt(); this.director.interrupt(reason); }
+  private clearPerformance(reason = 'session_stopped') { this.stopFlight(reason); this.clearPending(reason); this.complete = true; this.playback.interrupt(); this.director.interrupt(reason); }
   interrupt() {
     if (this.demoStart !== null) { this.demoStart = null; this.view.demo = false; }
     this.clearPerformance('user_interrupt'); this.ignored = this.view.connection === 'connected';
@@ -138,6 +159,7 @@ export class SessionController {
   }
   private get now() { return this.demoStart !== null || this.view.connection === 'offline' ? performance.now() / 1000 : this.playback.now; }
   private tick = (ms: number) => {
+    if(this.activeFlight && this.characterPort?.flightState?.()?.moving===false)this.finishFlight('completed','arrived');
     if (this.demoStart !== null) {
       const now = ms / 1000, elapsed = now - this.demoStart;
       const names = ['REST', 'MBP', 'AA', 'EE', 'L', 'OH', 'OO', 'REST'] as const;

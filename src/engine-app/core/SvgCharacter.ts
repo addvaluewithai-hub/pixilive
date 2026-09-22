@@ -1,8 +1,10 @@
+import type { FlightCommand, FlightState } from './flight.ts';
 import type { CharacterDefinition } from './registry.ts';
 import type { CharacterPort, Expression, Gesture, Mode, MouthFrame } from './types.ts';
 interface Rig {
   setEmotion(name: string): void; setIntensity(value: number): void; setEnergy(value: number): void;
   setMouthPose(pose: MouthFrame | null): void; setGesture(name: string, duration?: number): void;
+  setFlight(command: FlightCommand): boolean; stopFlight(): void; flightState(): FlightState | null;
   cancelActions(): void; destroy(): void;
 }
 interface Recipe { species: string; [key: string]: unknown }
@@ -39,6 +41,9 @@ export class SvgCharacter implements CharacterPort {
   gesture(value: Gesture, duration?: number) { if (this.definition.gestures.includes(value)) this.rig.setGesture(value, duration); }
   mouth(value: MouthFrame | null) { this.rig.setMouthPose(value); }
   mode(value: Mode) { this.rig.setEnergy((value === 'speaking' ? .55 : value === 'listening' ? .18 : .12) * this.definition.motionScale); }
+  fly(command: FlightCommand) { return !!this.definition.canFly && this.rig.setFlight(command); }
+  stopFlight() { this.rig.stopFlight(); }
+  flightState() { return this.rig.flightState(); }
   cancel() { this.rig.cancelActions(); }
   destroy() { this.rig.destroy(); }
 }

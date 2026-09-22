@@ -1,9 +1,11 @@
+import { parseFlight, type FlightCommand } from '../core/flight.ts';
 import { performanceInstructions, type AvatarContext } from './performancePrompt.ts';
 import { expressions, gestures, parseCue } from '../core/types.ts';
 import type { Cue } from '../core/types.ts';
 export interface LiveEvents {
   model?(value: string): void;
-  rejectedCue?(id: string): void;
+  rejectedCue?(id: string, tool?: string): void;
+  flight?(id: string, command: FlightCommand): boolean;
   status(value: 'connecting' | 'connected' | 'offline'): void;
   turn(id: number): void; audio(data: string, rate: number): void;
   cue(id: string, value: Cue): void; cancel(ids: string[]): void;
@@ -29,12 +31,23 @@ export const performanceTool = {
     duration: { type: 'NUMBER', description: 'Hold in seconds, 0.6 to 6.' },
   }, required: ['expression'] },
 };
+export const flightTool = {
+  name: 'fly', description: 'Move the currently visible winged avatar inside its stage, independently of face, hands and speech. Only sprites can fly. Starts immediately, including during speech. Continue speaking without waiting for arrival; never repeat a sentence after calling. Coordinates are screen-relative, not RTL. New move smoothly replaces the current destination; hover brakes in place; land descends to the floor.', behavior: 'NON_BLOCKING',
+  parameters: { type: 'OBJECT', properties: {
+    action: { type: 'STRING', enum: ['move','hover','land'] },
+    x: { type: 'NUMBER', description: '0 left to 1 right inside safe stage bounds. Required for move; default center for land.' },
+    y: { type: 'NUMBER', description: '0 high, 1 floor. Required for move, ignored for land/hover.' },
+    speed: { type: 'NUMBER', description: '0.1 gentle to 1 brisk. Default 0.5. Smooth acceleration and braking are automatic.' },
+    path: { type: 'STRING', enum: ['direct','arc','swoop'], description: 'direct travels straight; arc curves upward; swoop dips downward. Default direct.' },
+  }, required: ['action'] },
+};
 export class GeminiAdapter {
   private events: LiveEvents;
   private avatar: AvatarContext = { name: 'إمبر', species: 'fox' };
   private cueSequence = 0;
   private acknowledged = new Set<string>();
-  setAvatar(avatar: AvatarContext) { this.avatar = avatar; }
+  private avatarDirty = false;
+  setAvatar(avatar: AvatarContext) { this.avatar = avatar; if(this.socket)this.avatarDirty = true; }
   private socket: WebSocket | null = null;
   private generation = 0;
   private controller: AbortController | null = null;
@@ -69,8 +82,9 @@ export class GeminiAdapter {
       const current = () => generation === this.generation && this.socket === socket;
       socket.onopen = () => {
         if (!current()) return;
+        this.avatarDirty = false;
         this.send({ setup: { model: `models/${token.model}`, generationConfig: { responseModalities: ['AUDIO'] },
-          systemInstruction: { parts: [{ text: performanceInstructions(this.avatar) }] }, tools: [{ functionDeclarations: [performanceTool] }],
+          systemInstruction: { parts: [{ text: performanceInstructions(this.avatar) }] }, tools: [{ functionDeclarations: [performanceTool, flightTool] }],
           realtimeInputConfig: { activityHandling: 'START_OF_ACTIVITY_INTERRUPTS', automaticActivityDetection: { disabled: false, prefixPaddingMs: 120, silenceDurationMs: 420 } },
           inputAudioTranscription: { languageCodes: ['ar-EG', 'en-US'] }, outputAudioTranscription: {}, contextWindowCompression: { slidingWindow: {} },
           sessionResumption: this.handle ? { handle: this.handle } : {} } });
@@ -103,7 +117,7 @@ export class GeminiAdapter {
     if (message.toolCallCancellation?.ids) this.events.cancel(message.toolCallCancellation.ids);
     if (content?.inputTranscription?.text) this.events.transcript('user', content.inputTranscription.text);
     if (!content?.interrupted && content?.outputTranscription?.text) { this.begin(); this.events.transcript('assistant', content.outputTranscription.text); }
-    const responses: {id?:string;name:string;scheduling:'SILENT';response:{result:string}}[] = [];
+    const responses: {id?:string;name:string;scheduling:'SILENT';response:{result:string;avatar?:AvatarContext}}[] = [];
     for (const call of message.toolCall?.functionCalls ?? []) {
       if (call.id && this.acknowledged.has(call.id)) continue;
       if (call.id) this.acknowledged.add(call.id);
@@ -111,15 +125,24 @@ export class GeminiAdapter {
         responses.push({id:call.id,name:call.name,scheduling:'SILENT',response:{result:'cancelled'}});
         continue;
       }
-      this.begin(); const cue = call.name === 'perform' ? parseCue(call.args) : null;
+      this.begin();
       const cueId = call.id ?? `cue-${this.turnId}-${++this.cueSequence}`;
-      if (cue) this.events.cue(cueId, cue); else this.events.rejectedCue?.(cueId);
+      let result = 'invalid stage direction';
+      if (call.name === 'fly') {
+        const flight = parseFlight(call.args);
+        if (flight) result = this.events.flight?.(cueId, flight) ? 'accepted' : 'not applied: current avatar cannot fly or session interrupted';
+        else this.events.rejectedCue?.(cueId, 'fly');
+      } else {
+        const cue = call.name === 'perform' ? parseCue(call.args) : null;
+        if (cue) { this.events.cue(cueId, cue); result = 'accepted'; }
+        else this.events.rejectedCue?.(cueId, call.name);
+      }
       // Scheduling is a FunctionResponse field, NOT part of the tool's JSON output.
       // Nested scheduling silently defaults to WHEN_IDLE, potentially triggering extra speech.
       responses.push({ id: call.id, name: call.name, scheduling: 'SILENT',
-        response: { result: cue ? 'accepted' : 'invalid stage direction' } });
+        response: { result, ...(this.avatarDirty ? {avatar:{...this.avatar,canFly:!!this.avatar.canFly}} : {}) } });
     }
-    if (responses.length) this.send({toolResponse:{functionResponses:responses}});
+    if (responses.length) { this.send({toolResponse:{functionResponses:responses}}); if(!content?.interrupted)this.avatarDirty=false; }
     if (!content?.interrupted) for (const part of content?.modelTurn?.parts ?? []) {
       const data = part.inlineData;
       if (data?.data && data.mimeType?.startsWith('audio/pcm')) {

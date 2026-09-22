@@ -1,3 +1,4 @@
+import type { FlightCommand, FlightState } from './flight.ts';
 export const expressions = ['neutral', 'happy', 'sad', 'crying', 'surprised', 'thinking', 'angry', 'sleepy', 'laughing', 'excited'] as const;
 export type Expression = typeof expressions[number];
 export const gestures = ['none', 'wave', 'blink', 'jump', 'explain', 'think', 'celebrate'] as const;
@@ -12,6 +13,9 @@ export interface CharacterPort {
   gesture(value: Gesture, duration?: number): void;
   mouth(value: MouthFrame | null): void;
   mode(value: Mode): void;
+  fly?(command: FlightCommand): boolean;
+  stopFlight?(): void;
+  flightState?(): FlightState | null;
   cancel(): void;
   destroy(): void;
 }

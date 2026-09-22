@@ -4,6 +4,7 @@
 (function(root,factory){if(typeof module==='object'&&module.exports)module.exports=factory(require('./geometry.js'));else root.CharacterEngine=factory(root.CharacterGeometry);})(typeof window!=='undefined'?window:this,function(Geometry){
  'use strict';
  const DEFAULTS={
+  sprite:{name:'لومي',species:'sprite',fur:'#F4E8F5',cream:'#FFF8F0',accent:'#A080E8',eyes:'#8A60D2',head:96,body:90,ears:100,eyeSize:114,accessory:'none'},
   fox:{name:'إمبر',species:'fox',fur:'#F58A35',cream:'#FFF2DA',accent:'#519B8C',eyes:'#AF7337',head:100,body:100,ears:100,eyeSize:100,accessory:'scarf'},
   cat:{name:'لوز',species:'cat',fur:'#8EABC1',cream:'#F0F2E9',accent:'#C67B78',eyes:'#71915C',head:98,body:96,ears:100,eyeSize:97,accessory:'bow'},
   rabbit:{name:'سكّر',species:'rabbit',fur:'#E9CFC0',cream:'#FFF7EF',accent:'#A18FBE',eyes:'#8C6663',head:94,body:94,ears:100,eyeSize:104,accessory:'scarf'},
@@ -62,7 +63,7 @@
    grad('tail-fur',[mix(fur,'#FFEBC3',.48),mix(fur,'#FFCD9F',.15),fur,mix(fur,'#59312D',.44)]);
    grad('ear-dark',[mix(fur,'#4E3436',.58),mix(fur,'#392C34',.73)]);
    grad('ear-inner',[mix(fur,'#F6C4BA',.77),mix(fur,'#BD777A',.7),mix(fur,'#603F4B',.58)]);
-   const paws=r.species==='fox'?mix(fur,'#44302C',.73):mix(fur,'#533B3B',r.species==='rabbit'?.08:.3);
+   const paws=r.species==='sprite'?mix(fur,cream,.5):r.species==='fox'?mix(fur,'#44302C',.73):mix(fur,'#533B3B',r.species==='rabbit'?.08:.3);
    grad('paw-fur',[mix(paws,cream,.4),paws,mix(paws,'#3B2C32',.22)]);
    grad('leg-fur',[mix(fur,cream,.25),fur,mix(fur,paws,.55),paws]);
    const arm=[mix(fur,ink,.12),mix(fur,cream,.25),mix(fur,ink,.06)];
@@ -120,6 +121,23 @@
    put('teeth',{transform:''});
    for(const side of ['l','r']){const x=302+((side==='l'?219:384)-302)*r.body/100;for(const [id,a]of Object.entries(Geometry.arm({side,x,y:414,body:r.body/100}).attributes))put(id,a);}
    for(const [id,a]of Object.entries(Geometry.mouth(Geometry.expressionMouth.happy,r.species).attributes))put(id,a);
+   const flying=r.species==='sprite';
+   for(const id of ['wings','sprite-tuft','sprite-star'])put(id,{opacity:flying?1:0});
+   for(const id of ['ear-l','ear-r','tail','muzzle-patch'])put(id,{opacity:flying?0:1});
+   grad('wing-glass',[mix(accent,'#FFF7FF',.68),accent,mix(accent,'#554394',.42)]);
+   for(const side of ['l','r']){
+    put('toe-lines-'+side,{opacity:flying?0:.48});
+    const x=side==='l'?269:335;
+    setD('sprite-foot-'+side,flying?`M${x-12} 460 Q${x+8} 452 ${x+13} 472 C${x+19} 487 ${x-2} 498 ${x-15} 485 Q${x-20} 475 ${x-12} 460Z`:original['sprite-foot-'+side].d);
+   }
+   if(flying){
+    setD('head-silhouette','M180 235 C175 174 220 135 281 136 Q306 129 334 138 C392 141 427 181 424 237 C427 298 376 345 303 345 C230 345 178 302 180 235Z');
+    put('cheek-patch',{opacity:0});put('cheek-streak',{opacity:0});put('freckles',{opacity:0});
+    grad('head-fur',['#FFFCF6',mix(fur,'#FFFFFF',.6),fur,mix(fur,accent,.14),mix(fur,accent,.28)]);
+    grad('nose-fur',['#F8D6DD','#EAB9C4','#CB8E9F']);
+    setD('nose','M296 276 Q302 272 308 277 Q307 283 302 282 Q298 283 296 276Z');put('nose-shine',{opacity:0});
+    for(const side of ['l','r'])put('palm-creases-'+side,{opacity:.18});
+   }else{put('cheek-patch',{opacity:1});for(const side of ['l','r'])put('palm-creases-'+side,{opacity:original['palm-creases-'+side].opacity??1});}
    return {recipe:r,attributes:p};
   }
   function escape(s){return String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}

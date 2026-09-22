@@ -4,6 +4,7 @@
  'use strict';
  function createRig(root, options={}) {
  const Geometry=host.CharacterGeometry;
+ const flight=options.appearance?.().species==='sprite'?host.CharacterFlight.createFlight():null;
  const appearance=()=>options.appearance?options.appearance():({head:1,body:1,eyes:1,species:'fox'});
  const uiSet=(id,key,value)=>{const el=$(id);if(el)el[key]=value;};
  const nodes=new Map();
@@ -187,7 +188,7 @@
  function settle(){const goal=targets();for(const k in goal){rig[k]=goal[k];velocity[k]=0;}updateArms(goal,0,true);draw();}
  function eye(side, open, blink){
   const close=1-blink;
-  const w=25.5, top=43*clamp(open*close*(appearance().species==='cat'?.9:1),.007,1.3), bottom=35*rig.bottom*close;
+  const w=appearance().species==='sprite'?30:25.5, top=43*clamp(open*close*(appearance().species==='cat'?.9:1),.007,1.3), bottom=35*rig.bottom*close;
   const tilt=rig.tilt*(side==='l'?1:-1)*close;
   const left=-tilt*.65, right=tilt*.65;
   const upper=`M${-w} ${fmt(left)} C${-w} ${fmt(-top-tilt)} ${w} ${fmt(-top+tilt)} ${w} ${fmt(right)}`;
@@ -203,6 +204,15 @@
  }
  function draw(){
   const shape=appearance();
+  if(flight){
+   const f=flight.state(),hover=reduced?0:Math.sin(time*2.2)*3*f.lift;
+   transform('flight',`translate(${fmt(190+260*f.x)} ${fmt(150+200*f.y+hover)}) rotate(${fmt(f.bank)}) scale(.76) translate(-302 -310)`);
+   const spread=reduced?.92:.68+f.lift*(.16+.16*Math.cos(time*(5+Math.hypot(f.vx,f.vy)*10)));
+   for(const side of ['l','r']){const x=side==='l'?269:335;transform('wing-'+side,`translate(${x} 373) scale(${fmt(spread)} 1) rotate(${fmt((side==='l'?1:-1)*(4+Math.sin(time*5)*6)*f.lift*(reduced?0:1))}) translate(${-x} -373)`);}
+   const shadowScale=.48+f.y*.22;
+   transform('flight-shadow',`translate(${fmt(190+260*f.x)} 498) scale(${fmt(shadowScale)} ${fmt(shadowScale)}) translate(-311 -498)`);
+   opacity('flight-shadow',.25+f.y*.55);
+  }
   const motion=reduced?0:1, energy=.35+rig.energy*.85;
   const idle=Math.sin(time*2.1)*energy*motion;
   const gait=Math.sin(phase), stride=rig.walk;
@@ -268,7 +278,7 @@
   if(disposed)return;
   const dt=(previous?Math.min((now-previous)/1000,.05):1/60)*settings.playbackRate;previous=now;
   if(!paused && !document.hidden){
-   time+=dt;
+   time+=dt;flight?.step(dt,reduced);
    if(!reduced && time>nextBlink){blinkStart=time;nextBlink=time+3.2+Math.random()*2.6;}
    updateSpeech();const goal=targets();updateArms(goal,dt,reduced);
    for(const key in goal)smooth(key,goal[key],dt,key==='mouthOpen'&&externalMouth&&['REST','MBP'].includes(externalMouth.viseme)?80:key.startsWith('mouth')?32:key==='lookX'||key==='lookY'?15:key==='wave'?10:11);
@@ -324,7 +334,7 @@
  on(window,'pagehide',destroy);
  uiSet('motion-note','hidden',!reduced);
  settle();raf=requestAnimationFrame(frame);
- return {setIntensity:n=>{settings.intensity=clamp(n,0,1);},setMouthPose:p=>{externalMouth=p;if(paused||reduced)settle();},setGesture,cancelActions,setEmotion,setPace,setViseme,stopSpeech,playVisemes,wave:doWave,jump:doJump,blink:doBlink,pause:setPause,reset,destroy,refresh:()=>{if(paused||reduced)settle();else draw();},setEnergy:n=>{if(typeof n!=='number'||!Number.isFinite(n))throw new Error('Energy must be a finite number.');settings.energy=clamp(n,0,1);},getState:()=>({...settings,paused,speech:speech?.name||null,speaking:!!speechQueue,presence:{voice:rig.speechActivity,hands:rig.speechHands},arms:{l:{...tracks.l},r:{...tracks.r}}})};
+ return {setFlight:c=>flight?flight.command(c):false,stopFlight:()=>flight?.command({action:'hover'}),flightState:()=>flight?.state()??null,setIntensity:n=>{settings.intensity=clamp(n,0,1);},setMouthPose:p=>{externalMouth=p;if(paused||reduced)settle();},setGesture,cancelActions,setEmotion,setPace,setViseme,stopSpeech,playVisemes,wave:doWave,jump:doJump,blink:doBlink,pause:setPause,reset,destroy,refresh:()=>{if(paused||reduced)settle();else draw();},setEnergy:n=>{if(typeof n!=='number'||!Number.isFinite(n))throw new Error('Energy must be a finite number.');settings.energy=clamp(n,0,1);},getState:()=>({...settings,paused,speech:speech?.name||null,speaking:!!speechQueue,presence:{voice:rig.speechActivity,hands:rig.speechHands},arms:{l:{...tracks.l},r:{...tracks.r}}})};
  }
  host.CharacterMotion={createRig};
 })(typeof window!=='undefined'?window:this);

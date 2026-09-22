@@ -1,12 +1,14 @@
+import type { FlightCommand } from './core/flight';
 import { useEffect, useMemo, useRef, useState, type FormEvent, type CSSProperties } from 'react';
 import { characters, getCharacter } from './core/registry';
 import { loadCharacterEngine, portrait, SvgCharacter } from './core/SvgCharacter';
 import { SessionController, initialSessionView } from './core/SessionController';
 import { expressions, type Expression, type Gesture } from './core/types';
-const traceLabels = {received:'وصل',scheduled:'اتحدد توقيته',applied:'وصل للمحرّك',cancelled:'اتلغى',skipped:'اتخطّى',rejected:'غير صالح'};
+const traceLabels = {completed:'وصل للوجهة',received:'وصل',scheduled:'اتحدد توقيته',applied:'وصل للمحرّك',cancelled:'اتلغى',skipped:'اتخطّى',rejected:'غير صالح'};
 const labels: Record<Expression, string> = { neutral: 'هادي', happy: 'مبسوط', sad: 'زعلان', crying: 'بيعيّط', surprised: 'متفاجئ', thinking: 'بيفكّر', angry: 'متعصّب', sleepy: 'نعسان', laughing: 'بيضحك', excited: 'متحمّس' };
 export function App() {
   const [id, setId] = useState('ember');
+  const [flight, setFlight] = useState<FlightCommand>({action:'move',x:.5,y:.3,speed:.5,path:'arc'});
   const [engine, setEngine] = useState<Awaited<ReturnType<typeof loadCharacterEngine>> | null>(null);
   const [view, setView] = useState(initialSessionView);
   const [loadError, setLoadError] = useState('');
@@ -27,7 +29,7 @@ export function App() {
   }, []);
   useEffect(() => {
     if (!engine || !host.current || !session.current) return;
-    try { session.current.attach(new SvgCharacter(host.current, engine, character), {name:character.name,species:character.species}); setExpression('neutral'); }
+    try { session.current.attach(new SvgCharacter(host.current, engine, character), {name:character.name,species:character.species,canFly:character.canFly}); setExpression('neutral'); }
     catch(error) { setLoadError(error instanceof Error ? error.message : 'تعذّر عرض الشخصية.'); }
   }, [engine, character]);
   const copyLog = async () => {
@@ -48,11 +50,19 @@ export function App() {
         <div className="character-list" role="group" aria-label="الشخصيات">{characters.map(c => <button type="button" className={`character-card ${id === c.id ? 'selected' : ''}`} aria-pressed={id === c.id} key={c.id} onClick={() => setId(c.id)}>
           <span className="portrait">{engine && <img src={portraits[c.id]} alt="" />}</span><span><strong>{c.name}</strong><small>{c.description}</small></span><span className="selection-mark" aria-hidden="true">{id === c.id ? '✓' : ''}</span>
         </button>)}</div>
-        <div className="panel-note"><span>01 — 04</span><p>أربع شخصيات.<br />ومكان لحكايات كتير.</p></div>
+        <div className="panel-note"><span>01 — {String(characters.length).padStart(2,'0')}</span><p>أصحاب على الأرض وفي السما.<br />ومكان لحكايات كتير.</p></div>
       </aside>
       <section className="stage-panel" aria-label="مساحة الشخصية">
         <div className="stage-heading"><div><span className="overline">معاك دلوقتي</span><h2>{character.name}</h2></div><span className={`mode-pill ${connected ? 'live' : ''}`} role="status">{mode}</span></div>
-        <div className="character-scene"><div className="scene-orbit" aria-hidden="true" /><div className="character-host" ref={host} />{!engine && <p className="loading">{loadError || 'بنجهّز الشخصيات…'}</p>}</div>
+        <div className={`character-scene ${character.canFly ? 'flight-scene' : ''}`}><div className="scene-orbit" aria-hidden="true" /><div className="character-host" ref={host} />{!engine && <p className="loading">{loadError || 'بنجهّز الشخصيات…'}</p>}</div>
+        {character.canFly && <fieldset className="flight-controls" disabled={!engine}><legend>خد لفة في السما</legend>
+          <p>اختار المكان والمسار والسرعة، أو اطلب منه يطير بصوتك.</p>
+          <div className="flight-fields">
+            <label>المكان أفقيًا <output>{Math.round(flight.x*100)}%</output><input aria-label="المكان أفقيًا: صفر يسار، مئة يمين" dir="ltr" type="range" min="0" max="1" step=".05" value={flight.x} onChange={e=>setFlight({...flight,x:Number(e.target.value)})}/><small>يسار ← → يمين</small></label>
+            <label>الارتفاع <output>{Math.round((1-flight.y)*100)}%</output><input aria-label="الارتفاع" dir="ltr" type="range" min="0" max="1" step=".05" value={1-flight.y} onChange={e=>setFlight({...flight,y:1-Number(e.target.value)})}/><small>واطي ← → عالي</small></label>
+            <label>السرعة <output>{Math.round(flight.speed*100)}%</output><input aria-label="سرعة الطيران" dir="ltr" type="range" min=".1" max="1" step=".05" value={flight.speed} onChange={e=>setFlight({...flight,speed:Number(e.target.value)})}/><small>براحة ← → بسرعة</small></label>
+          </div><div className="flight-actions"><label className="sr-only" htmlFor="flight-path">مسار الطيران</label><select id="flight-path" value={flight.path} onChange={e=>setFlight({...flight,path:e.target.value as FlightCommand['path']})}><option value="direct">مباشر</option><option value="arc">قوس لفوق</option><option value="swoop">انحناءة لتحت</option></select><button onClick={()=>session.current?.manualFlight({...flight,action:'move'})}>طير هنا ↗</button><button onClick={()=>session.current?.manualFlight({...flight,action:'hover'})}>حوّم مكانك</button><button onClick={()=>session.current?.manualFlight({...flight,action:'land'})}>انزل بهدوء</button></div>
+        </fieldset>}
         <div className="stage-caption"><span className="sound-bars" aria-hidden="true">{[.4,.8,1,.65,.35].map((v,i) => <i key={i} style={{ height: `${5 + view.energy * 40 * v}px` }} />)}</span><span>{connected ? 'اتكلم بطبيعتك. تقدر تقاطعه في أي وقت.' : 'ابدأ محادثة، أو جرّب تعبيراته الأول.'}</span></div>
         <div className="conversation-controls"><button className={`talk-button ${connected || busy ? 'end' : ''}`} disabled={!engine} onClick={() => { if (connected || busy) void session.current?.stop(); else void session.current?.start(); }}>{busy ? 'إلغاء الاتصال' : connected ? 'إنهاء المحادثة' : 'ابدأ الكلام'}<span aria-hidden="true">{connected || busy ? '■' : '◉'}</span></button>
           <button className="secondary-button" disabled={!engine} onClick={() => { if (view.demo) session.current?.interrupt(); else void session.current?.demo(); }}>{view.demo ? 'إيقاف العرض' : 'جرّب الحركات'}</button>
@@ -66,7 +76,7 @@ export function App() {
         <form className="text-input" onSubmit={submit}><label className="sr-only" htmlFor="message">رسالتك</label><input id="message" value={text} onChange={e => setText(e.target.value)} disabled={!connected} placeholder={connected ? 'أو اكتب له هنا…' : 'ابدأ المحادثة عشان تكتب'} /><button disabled={!connected || !text.trim()} aria-label="إرسال الرسالة">↑</button></form>
         <details className="live-test-panel"><summary>اختبار تفاعل Gemini</summary>
           <p>النموذج المطلوب: <b dir="ltr">{view.model || 'يظهر بعد بدء الاتصال'}</b></p>
-          <div className="test-buttons"><button disabled={!connected || view.mode==='speaking' || view.mode==='thinking'} onClick={() => session.current?.storyTest()}>اقرأ القصة كاملة</button><button disabled={!connected} onClick={() => session.current?.send('اعمل وش تفكير دلوقتي باستخدام حركة التفكير، واثبت عليه أربع ثواني.')}>اطلب وش تفكير</button></div>
+          <div className="test-buttons">{character.canFly && <button disabled={!connected || view.mode==='speaking' || view.mode==='thinking'} onClick={()=>session.current?.flightTest()}>حكاية وطيران</button>}<button disabled={!connected || view.mode==='speaking' || view.mode==='thinking'} onClick={() => session.current?.storyTest()}>اقرأ القصة كاملة</button><button disabled={!connected} onClick={() => session.current?.send('اعمل وش تفكير دلوقتي باستخدام حركة التفكير، واثبت عليه أربع ثواني.')}>اطلب وش تفكير</button></div>
           <p>قصة مكتوبة من 30 جملة، وحركة في كل جملتين. دي طلبات لـGemini نفسه. العرض الصامت والأزرار اليدوية مش محسوبين هنا.</p>
           <p>أوامر وصلت: <b>{view.toolReceived}</b> · اتبعتت للمحرّك: <b>{view.toolApplied}</b></p>
           <p className="test-hint">لو العدّاد فضل صفر بعد الرد، الموديل ما بعتش أداة. التنفيذ في السجل يثبت وصول الأمر للمحرّك؛ راقب الشخصية عشان تحكم على الحركة والتوقيت.</p>

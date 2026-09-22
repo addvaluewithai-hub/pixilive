@@ -1,6 +1,6 @@
 const test=require('node:test'),assert=require('node:assert/strict'),{setup}=require('./rig-fixture.cjs');
-test('four families keep arms independent of emotion and lips closed during silence',()=>{
- for(const species of ['fox','cat','rabbit','bear']){
+test('five families keep arms independent of emotion and lips closed during silence',()=>{
+ for(const species of ['fox','cat','rabbit','bear','sprite']){
   const a=setup(species);a.motion.setMouthPose({viseme:'REST',energy:0,open:0});a.tick(100);
   for(const expression of ['happy','sad','crying','surprised','thinking','angry','sleepy','laughing','excited']){
    a.motion.setEmotion(expression);a.tick(70);assert.ok(!/NaN|Infinity|undefined/.test(a.svg()));
@@ -20,10 +20,10 @@ test('MBP closure hides cavity and teeth after an open vowel',()=>{
  a.motion.setMouthPose({viseme:'MBP',energy:.7,open:.8});a.tick(12);assert.equal(a.$('mouth-fill').getAttribute('opacity'),'0');assert.equal(a.$('teeth').getAttribute('opacity'),'0');a.motion.destroy();
 });
 test('recipe rendering produces unique ids and escapes names',()=>{
- const a=setup();for(const species of ['fox','cat','rabbit','bear']){const svg=a.engine.render({species,name:'<script>bad</script>'});assert.ok(!svg.includes('<script>'));const ids=[...svg.matchAll(/\bid="([^"]+)"/g)].map(x=>x[1]);assert.equal(ids.length,new Set(ids).size);}a.motion.destroy();
+ const a=setup();for(const species of ['fox','cat','rabbit','bear','sprite']){const svg=a.engine.render({species,name:'<script>bad</script>'});assert.ok(!svg.includes('<script>'));const ids=[...svg.matchAll(/\bid="([^"]+)"/g)].map(x=>x[1]);assert.equal(ids.length,new Set(ids).size);}a.motion.destroy();
 });
 test('speech accents follow audible energy, yield to explicit hands, and settle in silence',()=>{
- for(const species of ['fox','cat','rabbit','bear']){
+ for(const species of ['fox','cat','rabbit','bear','sprite']){
   const a=setup(species);a.motion.setMouthPose({viseme:'AA',energy:.5,open:.6});a.tick(60);
   assert.ok(a.motion.getState().presence.voice>.8);assert.ok(a.motion.getState().presence.hands>.8);
   a.motion.setGesture('think',4);a.tick(70);assert.ok(a.motion.getState().presence.hands<.001);assert.ok(a.motion.getState().presence.voice>.8);

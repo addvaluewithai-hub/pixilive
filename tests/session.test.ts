@@ -74,3 +74,31 @@ test('a tool received before already queued audio starts uses the queue head, no
   assert.ok(session.exportLog().includes('route=queued_audio_start'));assert.ok(session.exportLog().includes('audio=playing'));
  }finally{session.dispose();Microphone.prototype.start=originalStart;Microphone.prototype.stop=originalStop;}
 });
+test('flight calls run during audio independently of gestures, log one outcome, and cancel on interruption/switch',async()=>{
+ const originalStart=Microphone.prototype.start,originalStop=Microphone.prototype.stop;
+ Microphone.prototype.start=async()=>{};Microphone.prototype.stop=async()=>{};
+ let view:SessionView;let flights=0,stops=0,moving=false,destroyed=0;
+ const session=new SessionController(value=>{view=value;});
+ const port={expression(){},gesture(){},mouth(){},mode(){},cancel(){},destroy(){destroyed++;},fly(){flights++;moving=true;return true;},stopFlight(){stops++;moving=false;},flightState(){return {x:.5,y:.5,vx:0,vy:0,bank:0,lift:1,moving,landed:false};}};
+ try{
+  session.attach(port,{name:'لومي',species:'sprite',canFly:true});await session.start();const socket=FakeSocket.last;
+  const setup=socket.sent[0].setup;assert.equal(setup.tools[0].functionDeclarations[1].name,'fly');assert.equal(setup.tools[0].functionDeclarations[1].behavior,'NON_BLOCKING');assert.ok(setup.systemInstruction.parts[0].text.includes('initial avatar CAN fly'));
+  socket.message({serverContent:{modelTurn:{parts:[{inlineData:{data:btoa('\0'.repeat(24000*8*2)),mimeType:'audio/pcm;rate=24000'}}]}}});await settle();FakeContext.last.currentTime=1;frame(1000);
+  const fly={id:'flight-1',name:'fly',args:{action:'move',x:.8,y:.1,speed:.6,path:'arc'}};
+  socket.message({toolCall:{functionCalls:[fly,{id:'pose',name:'perform',args:{expression:'happy',gesture:'wave',timing:'with_speech'}}]}});await settle();frame(1200);
+  assert.equal(flights,1);assert.equal(moving,true);assert.equal(view!.toolApplied,2);assert.ok(session.exportLog().includes('audio=playing'));
+  socket.message({toolCall:{functionCalls:[fly]}});await settle();assert.equal(flights,1);
+  const reply=socket.sent.find(m=>m.toolResponse).toolResponse.functionResponses[0];assert.equal(reply.scheduling,'SILENT');assert.equal(reply.response.result,'accepted');
+  socket.message({serverContent:{turnComplete:true}});await settle();frame(1500);assert.equal(moving,true);
+  moving=false;frame(1700);assert.equal(view!.toolTrace.find(t=>t.id==='flight-1')?.status,'completed');assert.equal(view!.toolApplied,2);
+  session.flightTest();assert.ok(socket.sent.at(-1).realtimeInput.text.includes('fly'));assert.equal(view!.toolReceived,2);
+  session.manualFlight({action:'hover',x:.5,y:.5,speed:.5,path:'direct'});assert.equal(view!.toolReceived,2);
+  socket.message({toolCall:{functionCalls:[{...fly,id:'flight-2'}]}});await settle();const stopBefore=stops;
+  socket.message({serverContent:{interrupted:true}});await settle();assert.ok(stops>stopBefore);assert.equal(moving,false);assert.ok(session.exportLog().includes('applied → cancelled (server_interrupted)'));
+  socket.message({toolCall:{functionCalls:[{...fly,id:'flight-3'}]}});await settle();
+  session.attach({expression(){},gesture(){},mouth(){},mode(){},cancel(){},destroy(){}},{name:'بندق',species:'bear'});assert.equal(destroyed,1);assert.equal(moving,false);
+  socket.message({toolCall:{functionCalls:[{...fly,id:'ground'},{id:'invalid-flight',name:'fly',args:{action:'move',x:999,y:0}}]}});await settle();
+  assert.equal(view!.toolTrace.find(t=>t.id==='ground')?.status,'rejected');assert.ok(socket.sent.at(-1).toolResponse.functionResponses[0].response.result.startsWith('not applied'));
+  const log=session.exportLog();assert.equal(log.match(/fly \[/g)?.length,5);assert.ok(!log.includes('audio/pcm'));assert.ok(!log.includes('DO_NOT_EXPORT_TOKEN'));assert.ok(log.includes('character_changed'));
+ }finally{session.dispose();Microphone.prototype.start=originalStart;Microphone.prototype.stop=originalStop;}
+});
