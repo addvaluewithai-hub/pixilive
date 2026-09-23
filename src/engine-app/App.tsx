@@ -7,7 +7,7 @@ import { expressions, type Expression, type Gesture } from './core/types';
 const traceLabels = {completed:'وصل للوجهة',received:'وصل',scheduled:'اتحدد توقيته',applied:'وصل للمحرّك',cancelled:'اتلغى',skipped:'اتخطّى',rejected:'غير صالح'};
 const labels: Record<Expression, string> = { neutral: 'هادي', happy: 'مبسوط', sad: 'زعلان', crying: 'بيعيّط', surprised: 'متفاجئ', thinking: 'بيفكّر', angry: 'متعصّب', sleepy: 'نعسان', laughing: 'بيضحك', excited: 'متحمّس' };
 export function App() {
-  const [id, setId] = useState('ember');
+  const [id, setId] = useState('hakim');
   const [flight, setFlight] = useState<FlightCommand>({action:'move',x:.5,y:.3,speed:.5,path:'arc'});
   const [engine, setEngine] = useState<Awaited<ReturnType<typeof loadCharacterEngine>> | null>(null);
   const [view, setView] = useState(initialSessionView);
@@ -54,7 +54,7 @@ export function App() {
       </aside>
       <section className="stage-panel" aria-label="مساحة الشخصية">
         <div className="stage-heading"><div><span className="overline">معاك دلوقتي</span><h2>{character.name}</h2></div><span className={`mode-pill ${connected ? 'live' : ''}`} role="status">{mode}</span></div>
-        <div className={`character-scene ${character.canFly ? 'flight-scene' : ''}`}><div className="scene-orbit" aria-hidden="true" /><div className="character-host" ref={host} />{!engine && <p className="loading">{loadError || 'بنجهّز الشخصيات…'}</p>}</div>
+        <div className={`character-scene ${character.canFly ? 'flight-scene' : character.species==='human'?'human-scene':''}`}><div className="scene-orbit" aria-hidden="true" /><div className="character-host" ref={host} />{!engine && <p className="loading">{loadError || 'بنجهّز الشخصيات…'}</p>}</div>
         {character.canFly && <fieldset className="flight-controls" disabled={!engine}><legend>خد لفة في السما</legend>
           <p>اختار المكان والمسار والسرعة، أو اطلب منه يطير بصوتك.</p>
           <div className="flight-fields">
@@ -70,7 +70,7 @@ export function App() {
         </div>
         {(view.error || loadError) && <p className="error" role="alert">{view.error || loadError}</p>}
         <button className="controls-toggle" aria-expanded={showControls} onClick={() => setShowControls(!showControls)}>تعبيرات وحركات <span aria-hidden="true">{showControls ? '−' : '+'}</span></button>
-        {showControls && <div className="expression-controls"><div className="expression-grid">{expressions.map(value => <button disabled={!engine} key={value} aria-pressed={expression === value} onClick={() => cue(value)}>{labels[value]}</button>)}</div><div className="gesture-row">{([['wave','سلّم'],['blink','ارمش'],['explain','اشرح'],['think','فكّر'],['celebrate','احتفل']] as [Gesture,string][]).map(([gesture,label]) => <button disabled={!engine} key={gesture} onClick={() => cue(expression,gesture)}>{label}</button>)}</div></div>}
+        {showControls && <div className="expression-controls"><div className="expression-grid">{expressions.map(value => <button disabled={!engine} key={value} aria-pressed={expression === value} onClick={() => cue(value)}>{labels[value]}</button>)}</div><div className="gesture-row">{([['wave','سلّم'],['jump','انط'],['blink','ارمش'],['explain','اشرح'],['think','فكّر'],['celebrate','احتفل']] as [Gesture,string][]).map(([gesture,label]) => <button disabled={!engine} key={gesture} onClick={() => cue(expression,gesture)}>{label}</button>)}</div></div>}
       </section>
       <aside className="conversation-panel"><div className="conversation-heading"><button className="copy-log-button" type="button" onClick={() => void copyLog()}>نسخ السجل</button><span className="overline">بينكم</span><h2>الكلام اللي اتقال</h2></div><span className="copy-log-status" role="status">{copyStatus}</span>{copyFallback && <textarea className="copy-log-fallback" aria-label="سجل المحادثة للنسخ" readOnly value={copyFallback} onFocus={e=>e.currentTarget.select()} />}<div className="transcript" aria-live="polite" aria-atomic="false">{!view.user && !view.assistant ? <div className="empty-chat"><span aria-hidden="true">“</span><p>كل حكاية بتبدأ<br />بـ «عامل إيه؟»</p><small>كلامكم هيظهر هنا لما تبدأوا.</small></div> : <>{view.user && <div className="message user"><small>إنت</small><p>{view.user}</p></div>}{view.assistant && <div className="message assistant"><small>{character.name}</small><p>{view.assistant}</p></div>}</>}</div>
         <form className="text-input" onSubmit={submit}><label className="sr-only" htmlFor="message">رسالتك</label><input id="message" value={text} onChange={e => setText(e.target.value)} disabled={!connected} placeholder={connected ? 'أو اكتب له هنا…' : 'ابدأ المحادثة عشان تكتب'} /><button disabled={!connected || !text.trim()} aria-label="إرسال الرسالة">↑</button></form>

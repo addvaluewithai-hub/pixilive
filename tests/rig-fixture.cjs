@@ -48,3 +48,14 @@ function setup(species='fox',reduced=false){
  tick(n=1){for(let i=0;i<n&&!stopped;i++){clock+=1000/60;frame(clock);}},svg:()=>tree.querySelector('svg').outerHTML};
 }
 module.exports={setup};
+function setupHuman(preset='hakim',reduced=false){
+ doc=new Target();doc.hidden=false;const win=new Target(),media=new Target();media.matches=reduced;win.matchMedia=()=>media;
+ let frame=null,clock=0,stopped=false;
+ const context={window:win,document:doc,AbortController,Math,Number,Object,Array,String,JSON,console,requestAnimationFrame:fn=>(frame=fn,1),cancelAnimationFrame:()=>{stopped=true;}};
+ vm.createContext(context);for(const f of ['geometry.js','human-art.js','human-motion.js'])vm.runInContext(fs.readFileSync(path.join(here,f),'utf8'),context,{filename:f});
+ const tree=parse(win.HumanArt.render(preset));
+ const motion=win.HumanMotion.createRig(tree,{preset,speechMotionScale:.35});
+ return {motion,art:win.HumanArt,geometry:win.CharacterGeometry,$:id=>tree.querySelector('#'+id),document:doc,media,
+ tick(n=1){for(let i=0;i<n&&!stopped;i++){clock+=1000/60;frame(clock);}},svg:()=>tree.querySelector('svg').outerHTML};
+}
+module.exports.setupHuman=setupHuman;

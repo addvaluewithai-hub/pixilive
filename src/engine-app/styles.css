@@ -14,3 +14,7 @@
 .flight-fields input{width:100%;accent-color:var(--character-accent)}.flight-fields small{font-size:9px;color:#8c8b83;text-align:center}
 .flight-actions{display:flex;gap:6px;flex-wrap:wrap;margin-top:12px}.flight-actions button,.flight-actions select{font:11px 'Noto Sans Arabic',sans-serif;border:1px solid #ded6e5;background:#fbf8ff;color:#655476;border-radius:9px;padding:8px}
 .flight-actions select:focus-visible{outline:3px solid #df9b40;outline-offset:3px}
+
+.human-scene .character-host{inset:0}.human-scene .scene-orbit{width:270px;height:350px;border-radius:45%;opacity:.5}
+@media(min-width:651px){.character-list{max-height:520px;overflow-y:auto;padding:2px 4px 4px;scrollbar-width:thin}}
+@media(max-width:650px){.character-list{display:flex;overflow-x:auto;scroll-snap-type:x proximity;padding-bottom:6px}.character-card{min-width:86px;width:86px;flex-shrink:0;scroll-snap-align:start}.human-scene .scene-orbit{height:300px;width:220px}}
