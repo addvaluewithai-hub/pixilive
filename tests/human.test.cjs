@@ -35,8 +35,8 @@ test('mid-gesture replacement, cancellation and expiry preserve hand continuity 
   if(i===70)f.motion.cancelActions();
   f.tick();const now=hand(f);maximum=Math.max(maximum,Math.hypot(now[0]-previous[0],now[1]-previous[1]));previous=now;
  }
- assert.ok(maximum<8,`largest hand step: ${maximum}`);assert.ok(Math.abs(previous[0]-338)<.1);assert.ok(Math.abs(previous[1]-354)<.1);
- f.motion.setGesture('explain',.7);f.tick(170);assert.equal(f.motion.getState().gesture,'none');assert.ok(Math.abs(f.motion.getState().rx-338)<.1);
+ assert.ok(maximum<8,`largest hand step: ${maximum}`);assert.ok(Math.abs(previous[0]-365)<.1);assert.ok(Math.abs(previous[1]-378)<.1);
+ f.motion.setGesture('explain',.7);f.tick(170);assert.equal(f.motion.getState().gesture,'none');assert.ok(Math.abs(f.motion.getState().rx-365)<.1);
 });
 test('shared human visemes close MBP completely, stay inside the mouth clip, and run alongside gestures',()=>{
  const f=setupHuman('hakim');f.motion.setGesture('wave',6);
@@ -56,4 +56,19 @@ test('reduced motion still speaks and gestures; disposed rigs stop and remove li
  assert.equal(f.motion.getState().jump,0);assert.ok(f.motion.getState().mouthOpen>.7);
  f.motion.setGesture('explain',2);f.tick(60);assert.ok(f.motion.getState().rx>390);
  f.motion.destroy();const svg=f.svg();f.tick(100);assert.equal(f.svg(),svg);assert.equal(f.document.listeners.visibilitychange.length,0);assert.equal(f.media.listeners.change.length,0);
+});
+test('resting hands hang outside the torso and wrist angles never flip during interrupted gestures',()=>{
+ const f=setupHuman('hakim');f.tick(60);let prev=f.motion.getState();
+ assert.ok(prev.lx<248&&prev.rx>352);assert.ok(prev.ly>370&&prev.ry>370);
+ for(const side of ['l','r']){assert.ok(-Math.cos(prev[side+'a']*Math.PI/180)>.95);assert.equal(prev[side+'o'],0);}
+ let peak=0;
+ for(let i=0;i<420;i++){
+  if(i%45===0)f.motion.setGesture(['wave','think','explain','celebrate','none'][Math.floor(i/45)%5],3);
+  if(i===290)f.motion.cancelActions();
+  f.tick();const q=f.motion.getState();
+  for(const side of ['l','r']){peak=Math.max(peak,Math.abs(q[side+'a']-prev[side+'a']));assert.ok(q[side+'o']>=0&&q[side+'o']<=1.001);}
+  prev=q;
+ }
+ assert.ok(peak<10,`wrist change per frame ${peak}`);
+ f.motion.cancelActions();f.tick(200);assert.ok(f.motion.getState().ro<.001);assert.ok(-Math.cos(f.motion.getState().ra*Math.PI/180)>.95);
 });

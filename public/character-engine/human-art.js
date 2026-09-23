@@ -72,8 +72,8 @@
  ${p.headset?`<path d="M278 370 H323 V377 H278Z" fill="#61505A"/><rect x="297" y="368" width="12" height="11" rx="1" fill="none" stroke="#C5A77E" stroke-width="2"/>`:''}
  </g>`;}
  function hand(side,p){return `<g id="h-hand-${side}"><g transform="${side==='l'?'scale(-1 1)':''}">
- ${path('M-9 3 L-9 -8 Q-12 -17-7 -20 Q-3 -21 1 -12 L2 -29 Q3 -34 6 -32 L7 -15 L8 -34 Q10 -38 13 -34 L13 -14 L15 -29 Q18 -32 20 -28 L18 -10 L21 -20 Q25 -23 26 -18 L22 -1 Q18 14 6 15 Q-4 14-9 3Z','url(#h-skin)')}
- ${line('M2 -9 Q10 -5 14 3 M7 -12 L8 -5 M13 -12 L13 -5 M18 -8 L17 -3',mix(p.skin,'#AA6353',.35),.9,'opacity=".6"')}
+ <path id="h-palm-${side}" d="M-8 0 Q-12-16-5-21 Q2-29 10-24 Q22-22 16-3 Q8 4-8 0Z" fill="url(#h-skin)"/>
+ ${line('M-4 -12 Q3 -9 7 -5 M1 -19 L2 -14 M7 -19 L7 -14 M12 -17 L12 -12',mix(p.skin,'#AA6353',.35),.85,`id="h-fingers-${side}" opacity=".24"`)}
  </g></g>`;}
  function arms(p){return ['l','r'].map(side=>`<g id="h-arm-${side}"><path id="h-sleeve-${side}" fill="url(#h-coat)" stroke="${mix(p.coat,'#423742',.14)}" stroke-width=".6"/><path id="h-sleeve-light-${side}" fill="none" stroke="${mix(p.coat,'#FFFFFF',.28)}" stroke-width="2" opacity=".45"/><path id="h-cuff-${side}" fill="url(#h-shirt)"/>${hand(side,p)}</g>`).join('');}
  function render(id,{portrait=false,prefix=''}={}){

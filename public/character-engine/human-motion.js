@@ -9,11 +9,24 @@
   angry:{eye:.7,brow:5,tilt:15,head:-2,smile:-.5},sleepy:{eye:.3,brow:2,tilt:-2,head:5,smile:.1},
   laughing:{eye:.05,brow:0,tilt:0,head:-4,smile:.9},excited:{eye:1.15,brow:-6,tilt:0,head:-3,smile:.8}
  };
- function sleeve(side,x,y){
+ const resting={lx:235,ly:378,rx:365,ry:378,la:-175,ra:175,lo:0,ro:0};
+ const openHand=[[-8,0],[-11,-6],[-15,-15],[-13,-19],[-9,-18],[-5,-12],[-5,-29],[-3,-35],[0,-35],[2,-17],[3,-37],[6,-39],[9,-36],[9,-17],[11,-32],[14,-34],[16,-31],[15,-15],[18,-26],[21,-27],[23,-24],[20,-8],[16,-1],[8,2],[0,2]];
+ const relaxedHand=[[-8,0],[-10,-5],[-11,-12],[-10,-16],[-7,-17],[-5,-13],[-5,-21],[-3,-25],[0,-25],[1,-21],[1,-25],[4,-27],[7,-25],[7,-21],[8,-24],[11,-25],[13,-23],[12,-19],[14,-21],[16,-21],[17,-18],[17,-8],[13,-1],[7,2],[0,2]];
+ function handShape(openness){
+  const pts=relaxedHand.map((p,i)=>p.map((n,j)=>n+(openHand[i][j]-n)*clamp(openness)));
+  let d=`M${pts[0].map(fmt).join(' ')}`;
+  for(let i=0;i<pts.length;i++){const a=pts[i],b=pts[(i+1)%pts.length],prev=pts[(i+pts.length-1)%pts.length],next=pts[(i+2)%pts.length];d+=` C${fmt(a[0]+(b[0]-prev[0])*.12)} ${fmt(a[1]+(b[1]-prev[1])*.12)} ${fmt(b[0]-(next[0]-a[0])*.12)} ${fmt(b[1]-(next[1]-a[1])*.12)} ${b.map(fmt).join(' ')}`;}
+  return d+'Z';
+ }
+ function sleeve(side,x,y,angle=side==='l'?-175:175){
   const sign=side==='l'?-1:1,s=[300+sign*52,263];
   const dx=x-s[0],dy=y-s[1],distance=Math.hypot(dx,dy),reach=132;
   if(distance>reach){x=s[0]+dx*reach/distance;y=s[1]+dy*reach/distance;}
-  const c1=[s[0]+sign*21,290],c2=[x+(sign*(x-s[0])>15?-sign*15:sign*23),Math.max(279,y+10)],end=[x,y];
+  // The pose owns wrist orientation; the sleeve follows it with the same tangent.
+  // This avoids both the old inward resting palms and the discontinuous x-threshold flip.
+  const radians=angle*Math.PI/180,tangent=[Math.sin(radians),-Math.cos(radians)];
+  const lift=clamp((350-y)/110),handle=clamp(distance*.32,20,38);
+  const c1=[s[0]+sign*(8+28*lift),s[1]+40+20*lift],c2=[x-tangent[0]*handle,y-tangent[1]*handle];
   const points=[];
   for(let i=0;i<=16;i++){
    const t=i/16,u=1-t;
@@ -21,14 +34,14 @@
    const v=[3*u*u*(c1[0]-s[0])+6*u*t*(c2[0]-c1[0])+3*t*t*(x-c2[0]),3*u*u*(c1[1]-s[1])+6*u*t*(c2[1]-c1[1])+3*t*t*(y-c2[1])],len=Math.max(.01,Math.hypot(...v));
    points.push({p,n:[-v[1]/len,v[0]/len],w:16.5-6*t});
   }
-  const n=points.at(-1).n,u=[-n[1],n[0]],angle=Math.atan2(y-c2[1],x-c2[0])*180/Math.PI+90;
+  const n=points.at(-1).n,u=[n[1],-n[0]];
   const edge=(q,side)=>[q.p[0]+q.n[0]*q.w*side,q.p[1]+q.n[1]*q.w*side];
   const smooth=pts=>pts.map((p,i)=>{if(!i)return `M${p.map(fmt).join(' ')}`;const a=pts[i-1],prev=pts[Math.max(0,i-2)],next=pts[Math.min(pts.length-1,i+1)];return ` C${fmt(a[0]+(p[0]-prev[0])/6)} ${fmt(a[1]+(p[1]-prev[1])/6)} ${fmt(p[0]-(next[0]-a[0])/6)} ${fmt(p[1]-(next[1]-a[1])/6)} ${fmt(p[0])} ${fmt(p[1])}`;}).join('');
   const left=points.map(q=>edge(q,1)),right=points.map(q=>edge(q,-1)).reverse();
   const d=smooth(left)+` L${right[0].map(fmt).join(' ')}`+smooth(right).replace(/^M[^C]+/,'')+` Q${s[0]-sign*16} ${s[1]-18} ${left[0].map(fmt).join(' ')}Z`;
   const a=[x+n[0]*10,y+n[1]*10],b=[x-n[0]*10,y-n[1]*10];
   const cuff=`M${a.map(fmt).join(' ')} L${b.map(fmt).join(' ')} l${fmt(-u[0]*7)} ${fmt(-u[1]*7)} l${fmt(n[0]*20)} ${fmt(n[1]*20)}Z`;
-  return {d,cuff,highlight:`M${s[0]+sign*5} 270 C${c1[0]} ${c1[1]} ${c2[0]} ${c2[1]} ${fmt(x-u[0]*14)} ${fmt(y-u[1]*14)}`,hand:`translate(${fmt(x)} ${fmt(y)}) rotate(${fmt(angle)}) scale(.85) translate(0 -14)`};
+  return {d,cuff,highlight:`M${s[0]+sign*5} 270 C${c1[0]} ${c1[1]} ${c2[0]} ${c2[1]} ${fmt(x-u[0]*14)} ${fmt(y-u[1]*14)}`,hand:`translate(${fmt(x)} ${fmt(y)}) rotate(${fmt(angle)}) scale(.85)`};
  }
  function createRig(root,options={}){
   const Geometry=host.CharacterGeometry,p=host.HumanArt.presets[options.preset];if(!p)throw new Error('Unknown human rig');
@@ -36,17 +49,18 @@
   const attr=(id,k,v)=>$(id)?.setAttribute(k,String(v));
   const media=window.matchMedia('(prefers-reduced-motion: reduce)');let reduced=media.matches;
   let emotion='neutral',intensity=.7,energy=.1,externalMouth=null,gesture='none',until=0,time=0,last=0,raf=0,disposed=false,blinkStart=-99,nextBlink=3,jumpStart=-99;
-  const q={eye:1,brow:0,tilt:0,head:0,smile:.18,lx:263,ly:354,rx:338,ry:354,voice:0,jump:0,...Geometry.mouthBase};
+  const q={eye:1,brow:0,tilt:0,head:0,smile:.18,...resting,voice:0,jump:0,...Geometry.mouthBase};
   const velocity=Object.fromEntries(Object.keys(q).map(k=>[k,0]));
   const smooth=(k,target,dt,omega=11)=>{const x=q[k]-target,v=velocity[k],e=Math.exp(-omega*dt);q[k]=target+(x+(v+omega*x)*dt)*e;velocity[k]=(v-omega*(v+omega*x)*dt)*e;};
   function targets(){
    const face=faces[emotion]||faces.neutral,goal={};for(const k of ['eye','brow','tilt','head','smile'])goal[k]=faces.neutral[k]+(face[k]-faces.neutral[k])*intensity;
-   Object.assign(goal,{lx:263,ly:354,rx:338,ry:354,voice:0,jump:0});
+   Object.assign(goal,{...resting,voice:0,jump:0});
    const active=time<until?gesture:'none';
-   if(active==='wave'){goal.rx=408;goal.ry=227;}
-   if(active==='explain'){goal.rx=414;goal.ry=301;}
-   if(active==='think'){goal.rx=342;goal.ry=250;}
-   if(active==='celebrate'){goal.lx=204;goal.ly=209;goal.rx=397;goal.ry=209;}
+   if(active==='wave'){goal.rx=408;goal.ry=227;goal.ra=12;goal.ro=1;}
+   if(active==='explain'){goal.rx=414;goal.ry=301;goal.ra=65;goal.ro=.85;}
+   if(active==='think'){goal.rx=342;goal.ry=250;goal.ra=-25;goal.ro=.12;}
+   if(active==='celebrate'){goal.lx=204;goal.ly=209;goal.rx=397;goal.ry=209;goal.la=-15;goal.ra=15;goal.lo=1;goal.ro=1;}
+   for(const k of ['la','ra'])goal[k]+=360*Math.round((q[k]-goal[k])/360);
    const mouth=Geometry.expressionMouth[emotion]||Geometry.mouthBase;
    Object.assign(goal,Geometry.mouthBase,mouth,{mouthOpen:mouth.mouthOpen*intensity||0});
    if(externalMouth){
@@ -88,11 +102,11 @@
      const a=head*Math.PI/180,weight=clamp(1-Math.hypot(x-342,y-250)/35),dx=x-301,dy=y-226;
      x+=(301+dx*Math.cos(a)-dy*Math.sin(a)-x)*weight;y+=(226+dx*Math.sin(a)+dy*Math.cos(a)-y)*weight;
     }
-    const arm=sleeve(side,x,y);attr('h-sleeve-'+side,'d',arm.d);attr('h-cuff-'+side,'d',arm.cuff);attr('h-sleeve-light-'+side,'d',arm.highlight);attr('h-hand-'+side,'transform',arm.hand);
+    const arm=sleeve(side,x,y,q[side+'a']);attr('h-palm-'+side,'d',handShape(q[side+'o']));attr('h-fingers-'+side,'opacity',fmt(.24+.24*q[side+'o']));attr('h-sleeve-'+side,'d',arm.d);attr('h-cuff-'+side,'d',arm.cuff);attr('h-sleeve-light-'+side,'d',arm.highlight);attr('h-hand-'+side,'transform',arm.hand);
    }
   }
   function frame(ms){if(disposed)return;const dt=last?clamp((ms-last)/1000,0,.05):1/60;last=ms;if(!document.hidden){time+=dt;if(!reduced&&time>nextBlink){blinkStart=time;nextBlink=time+3.4+Math.random()*2;}
-   const {goal,active}=targets();for(const k of Object.keys(goal))smooth(k,goal[k],dt,k==='mouthOpen'&&externalMouth&&['REST','MBP'].includes(externalMouth.viseme)?80:k.startsWith('mouth')?32:['lx','ly','rx','ry'].includes(k)?8:11);draw(active);}
+   const {goal,active}=targets();for(const k of Object.keys(goal))smooth(k,goal[k],dt,k==='mouthOpen'&&externalMouth&&['REST','MBP'].includes(externalMouth.viseme)?80:k.startsWith('mouth')?32:['lx','ly','rx','ry','la','ra','lo','ro'].includes(k)?7:11);draw(active);}
    raf=requestAnimationFrame(frame);
   }
   const visibility=()=>{last=0;},preference=()=>{reduced=media.matches;};
@@ -107,5 +121,5 @@
    getState:()=>({emotion,intensity,energy,gesture:time<until?gesture:'none',disposed,...q})
   };
  }
- host.HumanMotion={createRig,sleeve};
+ host.HumanMotion={createRig,sleeve,handShape};
 })(typeof window!=='undefined'?window:this);
