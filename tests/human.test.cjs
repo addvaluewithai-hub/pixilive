@@ -35,15 +35,15 @@ test('mid-gesture replacement, cancellation and expiry preserve hand continuity 
   if(i===70)f.motion.cancelActions();
   f.tick();const now=hand(f);maximum=Math.max(maximum,Math.hypot(now[0]-previous[0],now[1]-previous[1]));previous=now;
  }
- assert.ok(maximum<8,`largest hand step: ${maximum}`);assert.ok(Math.abs(previous[0]-365)<.1);assert.ok(Math.abs(previous[1]-378)<.1);
- f.motion.setGesture('explain',.7);f.tick(170);assert.equal(f.motion.getState().gesture,'none');assert.ok(Math.abs(f.motion.getState().rx-365)<.1);
+ assert.ok(maximum<8,`largest hand step: ${maximum}`);assert.ok(Math.abs(previous[0]-f.art.presets.reem.anatomy.rest.rx)<.1);assert.ok(Math.abs(previous[1]-f.art.presets.reem.anatomy.rest.ry)<.1);
+ f.motion.setGesture('explain',.7);f.tick(170);assert.equal(f.motion.getState().gesture,'none');assert.ok(Math.abs(f.motion.getState().rx-f.art.presets.reem.anatomy.rest.rx)<.1);
 });
 test('shared human visemes close MBP completely, stay inside the mouth clip, and run alongside gestures',()=>{
  const f=setupHuman('hakim');f.motion.setGesture('wave',6);
  for(const viseme of Object.keys(f.geometry.visemes)){
   f.motion.setMouthPose({viseme,energy:.7,open:viseme==='REST'||viseme==='MBP'?0:.65});f.tick(45);
   const s=f.motion.getState();assert.ok(s.mouthOpen>=0&&s.mouthOpen<=1);assert.ok(!/NaN|Infinity/.test(f.svg()));
-  assert.equal(f.$('mouth').getAttribute('transform').includes('195'),true);
+  assert.equal(f.$('mouth').getAttribute('transform').includes(String(f.art.presets.hakim.anatomy.mouthY)),true);
   if(viseme==='REST'||viseme==='MBP'){assert.ok(Number(f.$('mouth-fill').getAttribute('opacity'))<.001);assert.equal(Number(f.$('teeth').getAttribute('opacity')),0);}
  }
 });
@@ -60,7 +60,7 @@ test('reduced motion still speaks and gestures; disposed rigs stop and remove li
 test('resting hands hang outside the torso and wrist angles never flip during interrupted gestures',()=>{
  const f=setupHuman('hakim');f.tick(60);let prev=f.motion.getState();
  assert.ok(prev.lx<248&&prev.rx>352);assert.ok(prev.ly>370&&prev.ry>370);
- for(const side of ['l','r']){assert.ok(-Math.cos(prev[side+'a']*Math.PI/180)>.95);assert.equal(prev[side+'o'],0);}
+ for(const side of ['l','r']){assert.ok(-Math.cos(prev[side+'a']*Math.PI/180)>.95);assert.equal(prev[side+'o'],f.art.presets.hakim.anatomy.rest[side+'o']);}
  let peak=0;
  for(let i=0;i<420;i++){
   if(i%45===0)f.motion.setGesture(['wave','think','explain','celebrate','none'][Math.floor(i/45)%5],3);
@@ -70,5 +70,38 @@ test('resting hands hang outside the torso and wrist angles never flip during in
   prev=q;
  }
  assert.ok(peak<10,`wrist change per frame ${peak}`);
- f.motion.cancelActions();f.tick(200);assert.ok(f.motion.getState().ro<.001);assert.ok(-Math.cos(f.motion.getState().ra*Math.PI/180)>.95);
+ f.motion.cancelActions();f.tick(200);assert.ok(Math.abs(f.motion.getState().ro-f.art.presets.hakim.anatomy.rest.ro)<.001);assert.ok(-Math.cos(f.motion.getState().ra*Math.PI/180)>.95);
+});
+
+test('silent neutral keeps a gentle closed smile at zero intensity, while MBP still seals the lips',()=>{
+ for(const name of names){
+  const f=setupHuman(name);f.motion.setEmotion('neutral');f.motion.setIntensity(0);
+  f.motion.setMouthPose({viseme:'REST',open:0,energy:0});f.tick(60);
+  assert.ok(f.motion.getState().mouthSmile>.25,`${name}: silence erased the neutral smile`);
+  assert.ok(Number(f.$('mouth-fill').getAttribute('opacity'))<.001);
+  assert.equal(Number(f.$('teeth').getAttribute('opacity')),0);
+  f.motion.setMouthPose({viseme:'AA',open:.85,energy:.6});f.tick(35);
+  assert.ok(f.motion.getState().mouthOpen>.8);
+  f.motion.setMouthPose({viseme:'MBP',open:0,energy:.5});f.tick(12);
+  assert.ok(f.motion.getState().mouthOpen<.001);
+  assert.ok(Math.abs(f.motion.getState().mouthSmile)<.01);
+  f.motion.setMouthPose({viseme:'REST',open:0,energy:0});f.tick(30);
+  assert.ok(f.motion.getState().mouthSmile>.25);
+ }
+});
+
+test('every body returns to its own relaxed pose after a tightly folded arm is interrupted',()=>{
+ for(const name of names){
+  const f=setupHuman(name),rest=f.art.presets[name].anatomy.rest;
+  f.motion.setGesture('think',5);f.tick(80);
+  let previous=hand(f),peak=0;
+  f.motion.setGesture('wave',5);
+  for(let i=0;i<240;i++){
+   if(i===24)f.motion.cancelActions();
+   f.tick();const now=hand(f);peak=Math.max(peak,Math.hypot(now[0]-previous[0],now[1]-previous[1]));previous=now;
+  }
+  assert.ok(peak<8,`${name}: abrupt hand movement ${peak}`);
+  assert.ok(Math.abs(previous[0]-rest.rx)<.1&&Math.abs(previous[1]-rest.ry)<.1);
+  assert.ok(Math.abs(f.motion.getState().lo-rest.lo)<.001);
+ }
 });

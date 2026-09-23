@@ -17,3 +17,15 @@ Human capabilities: all ten face states, all six active gestures, and audio-driv
 ## Review
 
 The four identities and representative poses were rendered offline for visual inspection. `tests/human.test.cjs` covers preset rendering and unique prefixed IDs, expressions/gestures, interrupted hand transitions, mouth closure, thinking placement and lifecycle cleanup. Existing session tests cover shared clock, tool and avatar-switch behavior. Browser checks and a real Gemini microphone session were not run.
+
+## Proportion and silhouette revision
+
+Each preset now owns `anatomy`: head width/height, eye scale/spacing, shoulder width/height, sleeve width, palm scale, mouth placement and an asymmetric relaxed pose. The rig reads the same metrics as the artwork. Shorter legs, curved hems, grounded shoes and differently cut cardigan/blazers balance the smaller eyes and head. Reem has a longer, softer face and flowing hair; Amal has a shorter face, compact bob and cropped jacket. Hakim has swept gray locks and a fuller beard; Marwan has an irregular curly silhouette, broader shoulders and a shorter beard.
+
+The beard follows the jaw below a continuous cheek/lip area. A neutral REST viseme preserves a closed smile even when expression intensity is zero; MBP remains fully closed and speech visemes retain their own shape. The mouth and chin do not move as separate patches.
+
+Sleeves share a lighting field with the torso. Tapered strips and round joins form one filled sleeve path; a tightly folded arm cannot invert an offset edge into an elbow spike. Wrist orientation stays continuous through retargeting, cuffs overlap the wrist, and relaxed palms interpolate into open palms with the same contour topology. A close wrist target retains elbow room rather than shortening the whole limb.
+
+The human SVG uses an explicit 410 × 550 viewBox with animation margins and `xMidYMid meet`. Its absolutely positioned viewport is bounded by the stage; it no longer contributes an intrinsic grid height or paints across the caption and controls. Human-only containment leaves the other character families' layout unchanged.
+
+Validation includes offline full-body renders, representative speech/gesture poses and intermediate thinking-transition frames, plus regression coverage for neutral silence, MBP closure and return to each preset's resting pose. This is not a browser layout or live microphone verification.
