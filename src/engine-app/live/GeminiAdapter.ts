@@ -57,6 +57,10 @@ export class GeminiAdapter {
   private turnId = 0;
   private resuming = false;
   private cancelSetup: (() => void) | null = null;
+  private localSpeaking = false;
+  private localHotMs = 0;
+  private localQuietMs = 0;
+  private localNoiseFloor = 0.0035;
   constructor(events: LiveEvents) { this.events = events; }
   async connect() {
     this.close(); const generation = ++this.generation;
@@ -85,11 +89,16 @@ export class GeminiAdapter {
         this.avatarDirty = false;
         this.send({ setup: { model: `models/${token.model}`, generationConfig: { responseModalities: ['AUDIO'] },
           systemInstruction: { parts: [{ text: performanceInstructions(this.avatar) }] }, tools: [{ functionDeclarations: [performanceTool, flightTool] }],
-          realtimeInputConfig: { activityHandling: 'START_OF_ACTIVITY_INTERRUPTS', automaticActivityDetection: { disabled: false, prefixPaddingMs: 120, silenceDurationMs: 420 } },
+          realtimeInputConfig: { activityHandling: 'START_OF_ACTIVITY_INTERRUPTS', automaticActivityDetection: {
+            disabled: false,
+            startOfSpeechSensitivity: 'START_SENSITIVITY_HIGH',
+            endOfSpeechSensitivity: 'END_SENSITIVITY_HIGH',
+            prefixPaddingMs: 180,
+            silenceDurationMs: 650,
+          } },
           inputAudioTranscription: { languageCodes: ['ar-EG', 'en-US'] }, outputAudioTranscription: {}, contextWindowCompression: { slidingWindow: {} },
           sessionResumption: this.handle ? { handle: this.handle } : {} } });
       };
-      // Ordered decoding also handles Blob frames without racing later frames.
       let messages = Promise.resolve();
       socket.onmessage = event => { messages = messages.then(async () => {
         if (!current()) return;
@@ -137,8 +146,6 @@ export class GeminiAdapter {
         if (cue) { this.events.cue(cueId, cue); result = 'accepted'; }
         else this.events.rejectedCue?.(cueId, call.name);
       }
-      // Scheduling is a FunctionResponse field, NOT part of the tool's JSON output.
-      // Nested scheduling silently defaults to WHEN_IDLE, potentially triggering extra speech.
       responses.push({ id: call.id, name: call.name, scheduling: 'SILENT',
         response: { result, ...(this.avatarDirty ? {avatar:{...this.avatar,canFly:!!this.avatar.canFly}} : {}) } });
     }
@@ -159,12 +166,55 @@ export class GeminiAdapter {
     try { await this.open(generation); } catch { if (generation === this.generation) { this.events.error('تعذّر استكمال الجلسة. ابدأ جلسة جديدة.'); this.close(); } }
     finally { this.resuming = false; }
   }
-  audio(data: string) { if (this.ready) this.send({ realtimeInput: { audio: { data, mimeType: 'audio/pcm;rate=16000' } } }); }
+  private observeLocalSpeechEnd(data: string) {
+    try {
+      const raw = atob(data);
+      if (raw.length < 2) return false;
+      const view = new DataView(new ArrayBuffer(raw.length));
+      for (let i = 0; i < raw.length; i++) view.setUint8(i, raw.charCodeAt(i));
+      let energy = 0;
+      const samples = Math.floor(raw.length / 2);
+      for (let i = 0; i < samples; i++) {
+        const value = view.getInt16(i * 2, true) / 32768;
+        energy += value * value;
+      }
+      const rms = Math.sqrt(energy / Math.max(1, samples));
+      const chunkMs = samples / 16000 * 1000;
+      const startThreshold = Math.max(0.012, this.localNoiseFloor * 3.2);
+      const endThreshold = Math.max(0.007, startThreshold * 0.58);
+      if (!this.localSpeaking) {
+        if (rms < 0.03) this.localNoiseFloor = this.localNoiseFloor * 0.985 + rms * 0.015;
+        this.localHotMs = rms >= startThreshold ? this.localHotMs + chunkMs : 0;
+        if (this.localHotMs >= 80) {
+          this.localSpeaking = true;
+          this.localHotMs = 0;
+          this.localQuietMs = 0;
+        }
+        return false;
+      }
+      this.localQuietMs = rms <= endThreshold ? this.localQuietMs + chunkMs : 0;
+      if (this.localQuietMs < 720) return false;
+      this.localSpeaking = false;
+      this.localQuietMs = 0;
+      this.localHotMs = 0;
+      return true;
+    } catch {
+      return false;
+    }
+  }
+  audio(data: string) {
+    if (!this.ready) return;
+    this.send({ realtimeInput: { audio: { data, mimeType: 'audio/pcm;rate=16000' } } });
+    if (this.observeLocalSpeechEnd(data)) this.audioStreamEnd();
+  }
+  audioStreamEnd() { if (this.ready) this.send({ realtimeInput: { audioStreamEnd: true } }); }
   text(text: string) { if (this.ready && text.trim()) this.send({ realtimeInput: { text: text.trim() } }); }
   close() {
     ++this.generation; this.controller?.abort(); this.cancelSetup?.(); this.cancelSetup = null;
     const socket = this.socket; this.socket = null; socket?.close();
-    this.ready = false; this.receiving = false; this.handle = null; this.resuming = false; this.acknowledged.clear(); this.events.status('offline');
+    this.ready = false; this.receiving = false; this.handle = null; this.resuming = false; this.acknowledged.clear();
+    this.localSpeaking = false; this.localHotMs = 0; this.localQuietMs = 0; this.localNoiseFloor = 0.0035;
+    this.events.status('offline');
   }
   private send(data: unknown) { if (this.socket?.readyState === WebSocket.OPEN) this.socket.send(JSON.stringify(data)); }
 }
