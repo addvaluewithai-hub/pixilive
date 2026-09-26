@@ -17,26 +17,33 @@
   for(let i=0;i<pts.length;i++){const a=pts[i],b=pts[(i+1)%pts.length],prev=pts[(i+pts.length-1)%pts.length],next=pts[(i+2)%pts.length];d+=` C${fmt(a[0]+(b[0]-prev[0])*.12)} ${fmt(a[1]+(b[1]-prev[1])*.12)} ${fmt(b[0]-(next[0]-a[0])*.12)} ${fmt(b[1]-(next[1]-a[1])*.12)} ${b.map(fmt).join(' ')}`;}
   return d+'Z';
  }
- function sleeve(side,x,y,angle=side==='l'?-169:171,anatomy={shoulder:55,shoulderY:263,sleeve:18,hand:1}){
-  const sign=side==='l'?-1:1,s=[301+sign*anatomy.shoulder,anatomy.shoulderY];
-  const dx=x-s[0],dy=y-s[1],distance=Math.hypot(dx,dy),reach=132;
-  if(distance>reach){x=s[0]+dx*reach/distance;y=s[1]+dy*reach/distance;}
-  // The pose owns wrist orientation; the sleeve follows it with the same tangent.
-  // This avoids both the old inward resting palms and the discontinuous x-threshold flip.
-  const radians=angle*Math.PI/180,tangent=[Math.sin(radians),-Math.cos(radians)];
-  const lift=clamp((350-y)/110),folded=clamp((85-distance)/65),handle=clamp(distance*.25,15,31)+folded*34;
-  // A wrist close to its shoulder still needs room for a bent upper arm and elbow.
-  const c1=[s[0]+sign*(20+24*lift+20*folded),s[1]+34+17*lift+78*folded],c2=[x-tangent[0]*handle,y-tangent[1]*handle];
+ const radians=degrees=>degrees*Math.PI/180;
+ const degrees=angle=>angle*180/Math.PI;
+ const lengthsFor=a=>{
+  const reach=Math.max(...['l','r'].map(side=>Math.hypot(a.rest[side+'x']-(301+(side==='l'?-1:1)*a.shoulder),a.rest[side+'y']-a.shoulderY)))*1.005;
+  return [reach*.5,reach*.5];
+ };
+ function solvePose(side,x,y,handAngle,anatomy){
+  const sign=side==='l'?-1:1,s=[301+sign*anatomy.shoulder,anatomy.shoulderY],lengths=lengthsFor(anatomy);
+  const dx=(x-s[0])*sign,dy=y-s[1],distance=clamp(Math.hypot(dx,dy),6,lengths[0]+lengths[1]-.01);
+  const direction=Math.atan2(dy,dx),alpha=Math.acos(clamp((lengths[0]**2+distance**2-lengths[1]**2)/(2*lengths[0]*distance),-1,1));
+  const upper=direction+alpha,bend=-Math.acos(clamp((distance**2-lengths[0]**2-lengths[1]**2)/(2*lengths[0]*lengths[1]),-1,1));
+  const wrist=clamp(handAngle*sign-(degrees(upper+bend)+90),-25,25);
+  return {upper:degrees(upper),bend:degrees(bend),wrist};
+ }
+ function sleeve(side,upper,bend,wrist,anatomy){
+  bend=clamp(bend,-175,0);
+  const sign=side==='l'?-1:1,s=[301+sign*anatomy.shoulder,anatomy.shoulderY],lengths=lengthsFor(anatomy);
+  const u=[Math.cos(radians(upper))*sign,Math.sin(radians(upper))],v=[Math.cos(radians(upper+bend))*sign,Math.sin(radians(upper+bend))];
+  const e=s.map((n,i)=>n+u[i]*lengths[0]),w=e.map((n,i)=>n+v[i]*lengths[1]);
+  const round=Math.min(...lengths)*.18,a=e.map((n,i)=>n-u[i]*round),b=e.map((n,i)=>n+v[i]*round);
   const points=[];
-  for(let i=0;i<=16;i++){
-   const t=i/16,u=1-t;
-   const p=[u*u*u*s[0]+3*u*u*t*c1[0]+3*u*t*t*c2[0]+t*t*t*x,u*u*u*s[1]+3*u*u*t*c1[1]+3*u*t*t*c2[1]+t*t*t*y];
-   const v=[3*u*u*(c1[0]-s[0])+6*u*t*(c2[0]-c1[0])+3*t*t*(x-c2[0]),3*u*u*(c1[1]-s[1])+6*u*t*(c2[1]-c1[1])+3*t*t*(y-c2[1])],len=Math.max(.01,Math.hypot(...v));
-   points.push({p,n:[-v[1]/len,v[0]/len],w:anatomy.sleeve+(10-anatomy.sleeve)*t+1.3*Math.sin(t*Math.PI)});
-  }
-  const n=points.at(-1).n,u=[n[1],-n[0]];
-  // Union of tapered strips and round joins: an offset outline can invert at a
-  // tightly bent elbow. Every subpath has the same winding and shares one paint.
+  const add=(p,t)=>points.push({p,w:anatomy.sleeve+(10-anatomy.sleeve)*t});
+  // Two fixed-length bones drive one tapered sleeve with a rounded elbow.
+  // The contour has no independent wrist-controlled loop or variable reach.
+  for(let i=0;i<=6;i++){const t=i/6;add(s.map((n,j)=>n+(a[j]-n)*t),t*.4);}
+  for(let i=1;i<=8;i++){const t=i/8,q=1-t;add(a.map((n,j)=>q*q*n+2*q*t*e[j]+t*t*b[j]),.4+t*.2);}
+  for(let i=1;i<=6;i++){const t=i/6;add(b.map((n,j)=>n+(w[j]-n)*t),.6+t*.4);}
   let d='';
   for(let i=0;i<points.length-1;i++){
    const a=points[i],b=points[i+1],dx=b.p[0]-a.p[0],dy=b.p[1]-a.p[1],len=Math.max(.001,Math.hypot(dx,dy)),nx=-dy/len,ny=dx/len;
@@ -44,31 +51,46 @@
    d+=`M${corner(a,1)} L${corner(b,1)} L${corner(b,-1)} L${corner(a,-1)}Z`;
    d+=`M${fmt(a.p[0]+a.w)} ${fmt(a.p[1])} a${fmt(a.w)} ${fmt(a.w)} 0 1 0 ${fmt(-a.w*2)} 0 a${fmt(a.w)} ${fmt(a.w)} 0 1 0 ${fmt(a.w*2)} 0Z`;
   }
-  const local=(across,along)=>[fmt(x+n[0]*across+u[0]*along),fmt(y+n[1]*across+u[1]*along)].join(' ');
-  // A curved cuff overlaps the wrist; no exposed joint or rectangular cut through the palm.
+  const n=[-v[1],v[0]],local=(across,along)=>w.map((p,i)=>fmt(p+n[i]*across+v[i]*along)).join(' ');
   const cuff=`M${local(10,-6)} Q${local(0,-4)} ${local(-10,-6)} L${local(-9.7,0)} Q${local(0,2)} ${local(9.7,0)}Z`;
-  const elbow=points[9],fold=`M${fmt(elbow.p[0]+elbow.n[0]*8)} ${fmt(elbow.p[1]+elbow.n[1]*8)} q${fmt(-elbow.n[0]*9+u[0]*3)} ${fmt(-elbow.n[1]*9+u[1]*3)} ${fmt(-elbow.n[0]*13)} ${fmt(-elbow.n[1]*13)}`;
-  return {d,cuff,fold,highlight:`M${s[0]+sign*5} ${s[1]+8} C${c1[0]} ${c1[1]} ${c2[0]} ${c2[1]} ${fmt(x-u[0]*16)} ${fmt(y-u[1]*16)}`,hand:`translate(${fmt(x)} ${fmt(y)}) rotate(${fmt(angle)}) scale(${anatomy.hand})`};
+  const fore=(t,offset=0)=>e.map((p,i)=>fmt(p+v[i]*t+n[i]*offset)).join(' ');
+  const fold=`M${fore(7,-8)} Q${fore(12,0)} ${fore(7,8)}`;
+  const highlight=`M${fore(17,-3)} Q${fore(lengths[1]*.55,-4)} ${fore(lengths[1]-13,-3)}`;
+  const angle=sign*(upper+bend+90+clamp(wrist,-25,25));
+  return {d,cuff,fold,highlight,hand:`translate(${w.map(fmt).join(' ')}) rotate(${fmt(angle)}) scale(${anatomy.hand})`,x:w[0],y:w[1],angle,
+   joints:{shoulder:s,elbow:e,wrist:w,lengths,upper,bend,wristBend:clamp(wrist,-25,25)}};
  }
  function createRig(root,options={}){
   const Geometry=host.CharacterGeometry,p=host.HumanArt.presets[options.preset];if(!p)throw new Error('Unknown human rig');
   const anatomy=p.anatomy,resting=anatomy.rest;
+  const poses={none:{},wave:{},explain:{},think:{},celebrate:{}};
+  for(const side of ['l','r']){
+   const rest=solvePose(side,resting[side+'x'],resting[side+'y'],resting[side+'a'],anatomy);
+   for(const name of Object.keys(poses))poses[name][side]=rest;
+  }
+  poses.wave.r=solvePose('r',408,227,12,anatomy);
+  poses.explain.r=solvePose('r',414,301,65,anatomy);
+  poses.think.r=solvePose('r',301+anatomy.shoulder+6,anatomy.shoulderY-3,-40,anatomy);
+  poses.celebrate.l=solvePose('l',204,209,-15,anatomy);
+  poses.celebrate.r=solvePose('r',397,209,15,anatomy);
+  const arms={};
   const nodes=new Map(),$=id=>{if(!nodes.has(id))nodes.set(id,root.querySelector('#'+id));return nodes.get(id);};
   const attr=(id,k,v)=>$(id)?.setAttribute(k,String(v));
   const media=window.matchMedia('(prefers-reduced-motion: reduce)');let reduced=media.matches;
   let emotion='neutral',intensity=.7,energy=.1,externalMouth=null,gesture='none',until=0,time=0,last=0,raf=0,disposed=false,blinkStart=-99,nextBlink=3,jumpStart=-99;
-  const q={...faces.neutral,...resting,voice:0,jump:0,...Geometry.mouthBase,mouthSmile:faces.neutral.smile};
+  const q={...faces.neutral,...resting,voice:0,jump:0,wave:0,speechHands:0,...Geometry.mouthBase,mouthSmile:faces.neutral.smile};
+  for(const side of ['l','r']){const pose=poses.none[side];q[side+'u']=pose.upper;q[side+'b']=pose.bend;q[side+'w']=pose.wrist;}
   const velocity=Object.fromEntries(Object.keys(q).map(k=>[k,0]));
   const smooth=(k,target,dt,omega=11)=>{const x=q[k]-target,v=velocity[k],e=Math.exp(-omega*dt);q[k]=target+(x+(v+omega*x)*dt)*e;velocity[k]=(v-omega*(v+omega*x)*dt)*e;};
   function targets(){
    const face=faces[emotion]||faces.neutral,goal={};for(const k of ['eye','brow','tilt','head','smile'])goal[k]=faces.neutral[k]+(face[k]-faces.neutral[k])*intensity;
-   Object.assign(goal,{...resting,voice:0,jump:0});
-   const active=time<until?gesture:'none';
-   if(active==='wave'){goal.rx=408;goal.ry=227;goal.ra=12;goal.ro=1;}
-   if(active==='explain'){goal.rx=414;goal.ry=301;goal.ra=65;goal.ro=.85;}
-   if(active==='think'){goal.rx=342;goal.ry=250;goal.ra=-25;goal.ro=.12;}
-   if(active==='celebrate'){goal.lx=204;goal.ly=209;goal.rx=397;goal.ry=209;goal.la=-15;goal.ra=15;goal.lo=1;goal.ro=1;}
-   for(const k of ['la','ra'])goal[k]+=360*Math.round((q[k]-goal[k])/360);
+   Object.assign(goal,{lo:resting.lo,ro:resting.ro,voice:0,jump:0,wave:0,speechHands:0});
+   const active=time<until?gesture:'none',pose=poses[active]||poses.none;
+   for(const side of ['l','r']){goal[side+'u']=pose[side].upper;goal[side+'b']=pose[side].bend;goal[side+'w']=pose[side].wrist;}
+   if(active==='wave'){goal.ro=1;goal.wave=reduced?0:clamp(1-Math.hypot(q.ru-pose.r.upper,q.rb-pose.r.bend)/30);}
+   if(active==='explain')goal.ro=.85;
+   if(active==='think')goal.ro=.12;
+   if(active==='celebrate'){goal.lo=1;goal.ro=1;}
    const mouth=Geometry.expressionMouth[emotion]||Geometry.mouthBase;
    Object.assign(goal,Geometry.mouthBase,mouth,{mouthOpen:mouth.mouthOpen*intensity||0,mouthSmile:goal.smile});
    if(externalMouth){
@@ -79,10 +101,11 @@
     if(externalMouth.round!==undefined)goal.mouthRound=clamp(externalMouth.round);
     goal.voice=reduced?0:clamp(externalMouth.energy*2)*(options.speechMotionScale??.35);
    }
+   goal.speechHands=active==='none'?goal.voice:0;
    const jt=time-jumpStart;if(!reduced&&jt>0&&jt<.9)goal.jump=-30*Math.sin(jt/.9*Math.PI);
    return {goal,active};
   }
-  function draw(active){
+  function draw(){
    const motion=reduced?0:1,bob=Math.sin(time*1.7)*.6*motion,head=q.head+Math.sin(time*3)*q.voice*1.5;
    attr('h-character','transform',`translate(0 ${fmt(bob+q.jump)})`);
    attr('h-shadow','transform',`translate(304 514) scale(${fmt(1+q.jump*.007)} 1) translate(-304 -514)`);
@@ -104,31 +127,34 @@
    attr('mouth','transform',`translate(${fmt(302+q.mouthOffset*.65)} ${anatomy.mouthY}) scale(${anatomy.mouthScale})`);
    attr('h-lower-lip','opacity',fmt(.3*(1-clamp(q.mouthOpen*5))));
    for(const side of ['l','r']){
-    let x=q[side+'x'],y=q[side+'y'];
-    if(active==='wave'&&side==='r'){const arrival=clamp(1-Math.hypot(x-408,y-227)/28);x+=Math.sin(time*7)*4*arrival*motion;}
-    if(active==='none'){x+=Math.sin(time*2.5+(side==='l'?0:2))*q.voice*3;y-=q.voice*(1+Math.sin(time*3))*3;}
-    if(active==='think'&&side==='r'){
-     const a=head*Math.PI/180,weight=clamp(1-Math.hypot(x-342,y-250)/35),dx=x-301,dy=y-226;
-     x+=(301+dx*Math.cos(a)-dy*Math.sin(a)-x)*weight;y+=(226+dx*Math.sin(a)+dy*Math.cos(a)-y)*weight;
-    }
-    const arm=sleeve(side,x,y,q[side+'a'],anatomy);attr('h-palm-'+side,'d',handShape(q[side+'o']));attr('h-fingers-'+side,'opacity',fmt(.24+.24*q[side+'o']));attr('h-sleeve-'+side,'d',arm.d);attr('h-cuff-'+side,'d',arm.cuff);attr('h-sleeve-fold-'+side,'d',arm.fold);attr('h-sleeve-light-'+side,'d',arm.highlight);attr('h-hand-'+side,'transform',arm.hand);
+    const accent=Math.sin(time*2.5+(side==='l'?0:2))*q.speechHands*motion;
+    const wave=side==='r'?q.wave*motion:0;
+    const arm=sleeve(side,q[side+'u']+accent*1.6,q[side+'b']+accent*2+Math.sin(time*7)*wave*1.2,q[side+'w']+Math.sin(time*7)*wave*9,anatomy);
+    arms[side]=arm.joints;q[side+'x']=arm.x;q[side+'y']=arm.y;q[side+'a']=arm.angle;
+    attr('h-palm-'+side,'d',handShape(q[side+'o']));attr('h-fingers-'+side,'opacity',fmt(.24+.24*q[side+'o']));
+    attr('h-sleeve-'+side,'d',arm.d);attr('h-cuff-'+side,'d',arm.cuff);attr('h-sleeve-fold-'+side,'d',arm.fold);
+    attr('h-sleeve-fold-'+side,'opacity',fmt(.14+.24*clamp(Math.abs(q[side+'b'])/120)));
+    attr('h-sleeve-light-'+side,'d',arm.highlight);attr('h-hand-'+side,'transform',arm.hand);
    }
   }
+
   function frame(ms){if(disposed)return;const dt=last?clamp((ms-last)/1000,0,.05):1/60;last=ms;if(!document.hidden){time+=dt;if(!reduced&&time>nextBlink){blinkStart=time;nextBlink=time+3.4+Math.random()*2;}
-   const {goal,active}=targets();for(const k of Object.keys(goal))smooth(k,goal[k],dt,k==='mouthOpen'&&externalMouth&&['REST','MBP'].includes(externalMouth.viseme)?80:k.startsWith('mouth')?32:['lx','ly','rx','ry','la','ra','lo','ro'].includes(k)?7:11);draw(active);}
+   const {goal}=targets();for(const k of Object.keys(goal))smooth(k,goal[k],dt,k==='mouthOpen'&&externalMouth&&['REST','MBP'].includes(externalMouth.viseme)?80:k.startsWith('mouth')?32:['lu','lb','lw','ru','rb','rw'].includes(k)?5.5:['lo','ro','wave','speechHands'].includes(k)?8:11);
+   for(const side of ['l','r']){const k=side+'b',limited=clamp(q[k],-175,0);if(limited!==q[k]){q[k]=limited;velocity[k]=0;}}
+   draw();}
    raf=requestAnimationFrame(frame);
   }
   const visibility=()=>{last=0;},preference=()=>{reduced=media.matches;};
   document.addEventListener('visibilitychange',visibility);media.addEventListener('change',preference);
-  draw('none');raf=requestAnimationFrame(frame);
+  draw();raf=requestAnimationFrame(frame);
   return {
    setEmotion:name=>{if(Object.hasOwn(faces,name))emotion=name;},setIntensity:n=>{if(Number.isFinite(n))intensity=clamp(n);},setEnergy:n=>{if(Number.isFinite(n))energy=clamp(n);},
    setMouthPose:value=>{externalMouth=value;},
    setGesture:(name,duration=3)=>{if(!['none','wave','blink','jump','explain','think','celebrate'].includes(name))return;gesture=name;until=time+clamp(Number.isFinite(duration)?duration:3,.1,6);if(name==='blink')blinkStart=time;if(name==='jump')jumpStart=time;},
    cancelActions:()=>{gesture='none';until=0;jumpStart=-99;},setFlight:()=>false,stopFlight:()=>{},flightState:()=>null,
    destroy:()=>{disposed=true;cancelAnimationFrame(raf);document.removeEventListener('visibilitychange',visibility);media.removeEventListener('change',preference);},
-   getState:()=>({emotion,intensity,energy,gesture:time<until?gesture:'none',disposed,...q})
+   getState:()=>({emotion,intensity,energy,gesture:time<until?gesture:'none',disposed,...q,arms:JSON.parse(JSON.stringify(arms))})
   };
  }
- host.HumanMotion={createRig,sleeve,handShape};
+ host.HumanMotion={createRig,sleeve,solvePose,handShape};
 })(typeof window!=='undefined'?window:this);

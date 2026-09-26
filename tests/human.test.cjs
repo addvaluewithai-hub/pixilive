@@ -105,3 +105,50 @@ test('every body returns to its own relaxed pose after a tightly folded arm is i
   assert.ok(Math.abs(f.motion.getState().lo-rest.lo)<.001);
  }
 });
+
+test('upper arm and forearm retain their lengths and the wrist cannot bend backwards across interruptions',()=>{
+ for(const name of names){
+  const f=setupHuman(name),initial=f.motion.getState().arms;
+  for(let i=0;i<350;i++){
+   if(i%47===0)f.motion.setGesture(['wave','think','explain','celebrate','none'][Math.floor(i/47)%5],4);
+   if(i===210)f.motion.cancelActions();
+   f.tick();const q=f.motion.getState();
+   for(const side of ['l','r']){
+    const arm=q.arms[side],length=(a,b)=>Math.hypot(a[0]-b[0],a[1]-b[1]);
+    assert.ok(Math.abs(length(arm.shoulder,arm.elbow)-initial[side].lengths[0])<1e-7,`${name}: stretching upper arm`);
+    assert.ok(Math.abs(length(arm.elbow,arm.wrist)-initial[side].lengths[1])<1e-7,`${name}: stretching forearm`);
+    assert.deepEqual(arm.shoulder,initial[side].shoulder);
+    assert.ok(Math.abs(arm.wristBend)<=25,`${name}: broken wrist`);
+    assert.ok(arm.bend>=-175&&arm.bend<=0,`${name}: elbow inverted`);
+   }
+  }
+ }
+});
+
+test('cancelling or replacing a wave fades its secondary motion rather than removing a draw-time offset',()=>{
+ for(const replacement of ['none','think','explain'])for(const phase of [90,107,126]){
+  const actual=setupHuman('reem'),continued=setupHuman('reem');
+  for(const f of [actual,continued]){f.motion.setGesture('wave',6);f.tick(phase);}
+  if(replacement==='none')actual.motion.cancelActions();else actual.motion.setGesture(replacement,4);
+  actual.tick();continued.tick();const a=hand(actual),b=hand(continued);
+  assert.ok(Math.hypot(a[0]-b[0],a[1]-b[1])<1.5,`discontinuous wave hand at ${phase} -> ${replacement}`);
+  assert.ok(Math.abs(actual.motion.getState().ra-continued.motion.getState().ra)<2,`discontinuous wrist at ${phase} -> ${replacement}`);
+ }
+});
+
+test('wide arm transitions keep fingertips inside the human viewport',()=>{
+ for(const name of names){
+  const f=setupHuman(name),a=f.art.presets[name].anatomy,box=/viewBox="([-\d. ]+)"/.exec(f.svg())[1].split(' ').map(Number);
+  for(const from of ['wave','think','celebrate']){
+   f.motion.setGesture(from,6);f.tick(150);f.motion.cancelActions();
+   for(let i=0;i<120;i++){
+    f.tick();const q=f.motion.getState();
+    for(const side of ['l','r'])for(const x of [-25,25])for(const y of [-41,6]){
+     const angle=q[side+'a']*Math.PI/180,px=q[side+'x']+a.hand*(x*Math.cos(angle)-y*Math.sin(angle)),py=q[side+'y']+a.hand*(x*Math.sin(angle)+y*Math.cos(angle));
+     assert.ok(px>box[0]+3&&px<box[0]+box[2]-3,`${name} ${from}: fingertip clipped horizontally`);
+     assert.ok(py>box[1]+3&&py<box[1]+box[3]-3,`${name} ${from}: fingertip clipped vertically`);
+    }
+   }
+  }
+ }
+});
