@@ -64,7 +64,7 @@ function setupMascot(preset='fustuq',reduced=false){
  doc=new Target();doc.hidden=false;const win=new Target(),media=new Target();media.matches=reduced;win.matchMedia=()=>media;
  let frame=null,clock=0,stopped=false;
  const context={window:win,document:doc,AbortController,Math,Number,Object,Array,String,JSON,console,requestAnimationFrame:fn=>(frame=fn,1),cancelAnimationFrame:()=>{stopped=true;}};
- vm.createContext(context);for(const f of ['geometry.js','mascot-art.js','mascot-motion.js'])vm.runInContext(fs.readFileSync(path.join(here,f),'utf8'),context,{filename:f});
+ vm.createContext(context);for(const f of ['geometry.js','octopus.js','mascot-art.js','mascot-motion.js'])vm.runInContext(fs.readFileSync(path.join(here,f),'utf8'),context,{filename:f});
  const tree=parse(win.MascotArt.render(preset));
  const motion=win.MascotMotion.createRig(tree,{preset,speechMotionScale:.35});
  return {motion,art:win.MascotArt,geometry:win.CharacterGeometry,$:id=>tree.querySelector('#'+id),document:doc,media,

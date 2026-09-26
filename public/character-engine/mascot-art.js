@@ -1,13 +1,13 @@
 /* Compact graphic mascots: original vector art, shared speech/perform contract. */
 (function(host){
  'use strict';
- const presets={fustuq:{name:'فستق',body:'#AAD13B',shade:'#98C031',light:'#BBDC53',limb:'#719C2F',ink:'#263728',cheek:'#F5AB69'}};
+ const presets={octo:{name:'أوكتو',anatomy:'octopus'},fustuq:{name:'فستق',body:'#AAD13B',shade:'#98C031',light:'#BBDC53',limb:'#719C2F',ink:'#263728',cheek:'#F5AB69'}};
  function render(id,{portrait=false,prefix=''}={}){
   if(!Object.hasOwn(presets,id))throw new Error('Unknown mascot preset');
   if(prefix&&!/^[a-zA-Z][\w-]*$/.test(prefix))throw new Error('Invalid SVG prefix');
   const p=presets[id];
   const eye=(side,x,y,rx,ry)=>`<g id="m-eye-${side}" transform="translate(${x} ${y})"><path id="m-white-${side}" d="M-${rx} 0 C-${rx} -${ry*1.333} ${rx} -${ry*1.333} ${rx} 0 C${rx} ${ry*1.333} -${rx} ${ry*1.333} -${rx} 0Z" fill="#FFFFF3"/><g clip-path="url(#m-eye-clip-${side})"><g id="m-pupil-${side}"><ellipse cx="${side==='l'?3:6}" cy="1" rx="${side==='l'?10:12.5}" ry="${side==='l'?14:17}" fill="${p.ink}"/></g></g><path id="m-closed-${side}" d="M-15 0 Q0 16 15 0" fill="none" stroke="${p.ink}" stroke-width="6" stroke-linecap="round" opacity="0"/><path id="m-brow-${side}" d="M-18 -42 Q0 -49 18 -42" fill="none" stroke="${p.ink}" stroke-width="5" stroke-linecap="round" opacity="0"/></g>`;
-  let svg=`<svg xmlns="http://www.w3.org/2000/svg" viewBox="${portrait?'188 148 225 245':'60 15 490 505'}" preserveAspectRatio="xMidYMid meet" role="img" aria-labelledby="m-title"><title id="m-title">${p.name}</title><defs>
+  let svg=p.anatomy==='octopus'?host.OctopusAnatomy.render(p,portrait):`<svg xmlns="http://www.w3.org/2000/svg" viewBox="${portrait?'188 148 225 245':'60 15 490 505'}" preserveAspectRatio="xMidYMid meet" role="img" aria-labelledby="m-title"><title id="m-title">${p.name}</title><defs>
    <clipPath id="m-eye-clip-l"><path id="m-cut-l" d="M-23 0 C-23 -36 23 -36 23 0 C23 36 -23 36 -23 0Z"/></clipPath>
    <clipPath id="m-eye-clip-r"><path id="m-cut-r" d="M-31 0 C-31 -46.6 31 -46.6 31 0 C31 46.6 -31 46.6 -31 0Z"/></clipPath>
    <clipPath id="m-mouth-clip"><path id="mouth-cut"/></clipPath>

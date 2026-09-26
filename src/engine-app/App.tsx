@@ -7,7 +7,7 @@ import { expressions, type Expression, type Gesture } from './core/types';
 const traceLabels = {completed:'وصل للوجهة',received:'وصل',scheduled:'اتحدد توقيته',applied:'وصل للمحرّك',cancelled:'اتلغى',skipped:'اتخطّى',rejected:'غير صالح'};
 const labels: Record<Expression, string> = { neutral: 'هادي', happy: 'مبسوط', sad: 'زعلان', crying: 'بيعيّط', surprised: 'متفاجئ', thinking: 'بيفكّر', angry: 'متعصّب', sleepy: 'نعسان', laughing: 'بيضحك', excited: 'متحمّس' };
 export function App() {
-  const [id, setId] = useState('fustuq');
+  const [id, setId] = useState('octo');
   const [flight, setFlight] = useState<FlightCommand>({action:'move',x:.5,y:.3,speed:.5,path:'arc'});
   const [engine, setEngine] = useState<Awaited<ReturnType<typeof loadCharacterEngine>> | null>(null);
   const [view, setView] = useState(initialSessionView);
