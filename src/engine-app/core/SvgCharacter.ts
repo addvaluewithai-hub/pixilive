@@ -14,6 +14,8 @@ interface Engine {
 }
 declare global {
   interface Window {
+    MascotArt: { render(id: string, options?: { prefix?: string; portrait?: boolean }): string };
+    MascotMotion: { createRig(root: Element, options: Record<string, unknown>): Rig };
     HumanArt: { render(id: string, options?: { prefix?: string; portrait?: boolean }): string };
     HumanMotion: { createRig(root: Element, options: Record<string, unknown>): Rig };
     CharacterEngine: { createEngine(master: string): Engine };
@@ -26,13 +28,18 @@ export async function loadCharacterEngine() {
   return window.CharacterEngine.createEngine(await masterPromise);
 }
 export function portrait(engine: Engine, character: CharacterDefinition) {
-  return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(character.species === 'human' ? window.HumanArt.render(character.id, {prefix:`portrait-${character.id}-`,portrait:true}) : engine.render({ ...character.recipe, species: character.species, name: character.name }, { prefix: `portrait-${character.id}-`, portrait: true }));
+  return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(character.species === 'mascot' ? window.MascotArt.render(character.id, {prefix:`portrait-${character.id}-`,portrait:true}) : character.species === 'human' ? window.HumanArt.render(character.id, {prefix:`portrait-${character.id}-`,portrait:true}) : engine.render({ ...character.recipe, species: character.species, name: character.name }, { prefix: `portrait-${character.id}-`, portrait: true }));
 }
 export class SvgCharacter implements CharacterPort {
   private rig: Rig;
   private definition: CharacterDefinition;
   constructor(host: HTMLElement, engine: Engine, definition: CharacterDefinition) {
     this.definition = definition;
+    if(definition.species === 'mascot'){
+      host.innerHTML = window.MascotArt.render(definition.id);
+      this.rig = window.MascotMotion.createRig(host, {preset:definition.id,speechMotionScale:definition.motionScale});
+      return;
+    }
     if(definition.species === 'human'){
       host.innerHTML = window.HumanArt.render(definition.id);
       this.rig = window.HumanMotion.createRig(host, {preset:definition.id,speechMotionScale:definition.motionScale});
@@ -44,7 +51,7 @@ export class SvgCharacter implements CharacterPort {
     host.querySelector('svg')?.setAttribute('aria-label', definition.name);
     this.rig = window.CharacterMotion.createRig(host, { keyboard: false, externalControl: true, speechMotionScale: definition.motionScale, appearance: () => engine.metrics(recipe) });
   }
-  expression(value: Expression, intensity: number) { this.rig.setIntensity(value === 'neutral' ? 0 : intensity); this.rig.setEmotion(value === 'neutral' && this.definition.species !== 'human' ? 'happy' : value); }
+  expression(value: Expression, intensity: number) { this.rig.setIntensity(value === 'neutral' ? 0 : intensity); this.rig.setEmotion(value === 'neutral' && !['human','mascot'].includes(this.definition.species) ? 'happy' : value); }
   gesture(value: Gesture, duration?: number) { if (this.definition.gestures.includes(value)) this.rig.setGesture(value, duration); }
   mouth(value: MouthFrame | null) { this.rig.setMouthPose(value); }
   mode(value: Mode) { this.rig.setEnergy((value === 'speaking' ? .55 : value === 'listening' ? .18 : .12) * this.definition.motionScale); }

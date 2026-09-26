@@ -1,5 +1,5 @@
 import type { Gesture } from './types.ts';
-export type Species = 'fox' | 'cat' | 'rabbit' | 'bear' | 'sprite' | 'human';
+export type Species = 'fox' | 'cat' | 'rabbit' | 'bear' | 'sprite' | 'human' | 'mascot';
 export interface CharacterDefinition {
   canFly?: boolean;
   id: string; species: Species; name: string; description: string; accent: string;
@@ -8,6 +8,7 @@ export interface CharacterDefinition {
 }
 const common = ['none', 'wave', 'blink', 'jump', 'explain', 'think', 'celebrate'] as const;
 export const characters: readonly CharacterDefinition[] = [
+  { id: 'fustuq', species: 'mascot', name: 'فستق', description: 'فكرة صغيرة وحماس كبير', accent: '#8EB82B', gestures: common, motionScale: .65 },
   { id: 'hakim', species: 'human', name: 'حكيم', description: 'حكايات وخبرة وقلب طيب', accent: '#7E9586', gestures: common, motionScale: .28 },
   { id: 'reem', species: 'human', name: 'ريم', description: 'بتسمعك وتشجّع فضولك', accent: '#D8A3AF', gestures: common, motionScale: .35 },
   { id: 'marwan', species: 'human', name: 'مروان', description: 'كل فكرة معاه مغامرة', accent: '#9A8570', gestures: common, motionScale: .4 },

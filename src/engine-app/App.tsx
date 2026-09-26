@@ -7,7 +7,7 @@ import { expressions, type Expression, type Gesture } from './core/types';
 const traceLabels = {completed:'وصل للوجهة',received:'وصل',scheduled:'اتحدد توقيته',applied:'وصل للمحرّك',cancelled:'اتلغى',skipped:'اتخطّى',rejected:'غير صالح'};
 const labels: Record<Expression, string> = { neutral: 'هادي', happy: 'مبسوط', sad: 'زعلان', crying: 'بيعيّط', surprised: 'متفاجئ', thinking: 'بيفكّر', angry: 'متعصّب', sleepy: 'نعسان', laughing: 'بيضحك', excited: 'متحمّس' };
 export function App() {
-  const [id, setId] = useState('hakim');
+  const [id, setId] = useState('fustuq');
   const [flight, setFlight] = useState<FlightCommand>({action:'move',x:.5,y:.3,speed:.5,path:'arc'});
   const [engine, setEngine] = useState<Awaited<ReturnType<typeof loadCharacterEngine>> | null>(null);
   const [view, setView] = useState(initialSessionView);
@@ -54,7 +54,7 @@ export function App() {
       </aside>
       <section className="stage-panel" aria-label="مساحة الشخصية">
         <div className="stage-heading"><div><span className="overline">معاك دلوقتي</span><h2>{character.name}</h2></div><span className={`mode-pill ${connected ? 'live' : ''}`} role="status">{mode}</span></div>
-        <div className={`character-scene ${character.canFly ? 'flight-scene' : character.species==='human'?'human-scene':''}`}><div className="scene-orbit" aria-hidden="true" /><div className="character-host" ref={host} />{!engine && <p className="loading">{loadError || 'بنجهّز الشخصيات…'}</p>}</div>
+        <div className={`character-scene ${character.canFly ? 'flight-scene' : character.species==='human'?'human-scene':character.species==='mascot'?'mascot-scene':''}`}><div className="scene-orbit" aria-hidden="true" /><div className="character-host" ref={host} />{!engine && <p className="loading">{loadError || 'بنجهّز الشخصيات…'}</p>}</div>
         {character.canFly && <fieldset className="flight-controls" disabled={!engine}><legend>خد لفة في السما</legend>
           <p>اختار المكان والمسار والسرعة، أو اطلب منه يطير بصوتك.</p>
           <div className="flight-fields">
